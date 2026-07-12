@@ -24,7 +24,8 @@ export function EventTimeline() {
   const loadEvents = async () => {
     try {
       const result = await mrpmModule.getEvents();
-      setEvents(result);
+      const sorted = [...result].sort((a, b) => b.timestamp - a.timestamp);
+      setEvents(sorted);
     } catch (e) {
       console.error('Failed to load events:', e);
     } finally {

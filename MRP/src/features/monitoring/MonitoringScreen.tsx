@@ -191,11 +191,20 @@ export function MonitoringScreen() {
 
       <Card title="Device Admin">
         <Text style={styles.adminText}>
-          Enable Device Admin for wrong password detection
+          {isDeviceAdminEnabled
+            ? 'Device Admin is active for wrong password detection.'
+            : 'Enable Device Admin for wrong password detection'}
         </Text>
         <Button
-          title="Enable Device Admin"
-          onPress={() => mrpmModule.requestDeviceAdminEnable()}
+          title={isDeviceAdminEnabled ? 'Disable Device Admin' : 'Enable Device Admin'}
+          onPress={async () => {
+            if (isDeviceAdminEnabled) {
+              await mrpmModule.disableDeviceAdmin();
+              checkPermissions();
+            } else {
+              await mrpmModule.requestDeviceAdminEnable();
+            }
+          }}
           variant="secondary"
         />
       </Card>

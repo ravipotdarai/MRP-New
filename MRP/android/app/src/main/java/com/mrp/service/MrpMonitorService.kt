@@ -68,6 +68,8 @@ class MrpMonitorService : Service() {
     private var lastMobileDataState: Boolean? = null
     private var lastHotspotState: Boolean? = null
     private var lastBluetoothState: Boolean? = null
+    private var lastSimEventType: String? = null
+    private var lastWifiBssid: String? = null
 
     // Handler for delayed tasks
     private val handler = Handler(Looper.getMainLooper())
@@ -96,10 +98,16 @@ class MrpMonitorService : Service() {
                 WifiManager.WIFI_STATE_CHANGED_ACTION -> {
                     val state = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
                     if (state == WifiManager.WIFI_STATE_ENABLED) {
-                        handleWifiChangeExplicit(true)
+                        handleWifiChangeExplicit(true, forceLog = false)
                     } else if (state == WifiManager.WIFI_STATE_DISABLED) {
-                        handleWifiChangeExplicit(false)
+                        handleWifiChangeExplicit(false, forceLog = false)
                     }
+                }
+                "android.net.wifi.STATE_CHANGE" -> {
+                    handleWifiChangeExplicit(true, forceLog = false)
+                }
+                "com.mrp.TEST_WIFI_TOGGLE" -> {
+                    handleWifiChangeExplicit(true, forceLog = false)
                 }
                 BluetoothAdapter.ACTION_STATE_CHANGED -> {
                     val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
@@ -114,8 +122,47 @@ class MrpMonitorService : Service() {
                     handleAirplaneChangeExplicit(isAirplaneOn)
                 }
                 "android.net.wifi.WIFI_AP_STATE_CHANGED" -> {
-                    val state = intent.getIntExtra("wifi_ap_state", -1)
+                    val state = intent.getIntExtra("wifi_ap_state", intent.getIntExtra("wifi_state", -1))
                     handleHotspotChange(state)
+                }
+                "android.net.conn.TETHER_STATE_CHANGED" -> {
+                    val active = intent.getStringArrayListExtra("activeArray")
+                    if (active != null) {
+                        handleHotspotChangeExplicit(active.isNotEmpty())
+                    }
+                }
+                "com.mrp.TEST_HOTSPOT_TOGGLE" -> {
+                    val isOn = intent.getBooleanExtra("state", true)
+                    handleHotspotChangeExplicit(isOn)
+                }
+                "android.intent.action.SIM_STATE_CHANGED" -> {
+                    val simState = intent.getStringExtra("ss") ?: ""
+                    handleSimStateChangeExplicit(simState)
+                }
+                Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT,
+                "android.intent.action.MASTER_CLEAR_NOTIFICATION",
+                "android.intent.action.FACTORY_RESET" -> {
+                    handleFactoryResetOrShutdown(action)
+                }
+                "com.mrp.TEST_WRONG_UNLOCK" -> {
+                    handleWrongUnlockAttemptExplicit()
+                }
+                "com.mrp.TEST_SIM_REMOVED" -> {
+                    handleSimStateChangeExplicit("ABSENT")
+                }
+                "com.mrp.TEST_SIM_INSERTED" -> {
+                    handleSimStateChangeExplicit("READY")
+                }
+                "com.mrp.TEST_FACTORY_RESET" -> {
+                    handleFactoryResetOrShutdown("FACTORY_RESET")
+                }
+                "com.mrp.TEST_SET_SETTING" -> {
+                    val key = intent.getStringExtra("key")
+                    val value = intent.getBooleanExtra("value", true)
+                    if (key != null) {
+                        settingsStorage.updateSetting(key, value)
+                        Log.d(TAG, "TEST_SET_SETTING: $key = $value")
+                    }
                 }
             }
         }
@@ -252,7 +299,20 @@ class MrpMonitorService : Service() {
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
                 addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
+                addAction("android.net.conn.TETHER_STATE_CHANGED")
                 addAction("android.net.conn.CONNECTIVITY_CHANGE")
+                addAction("android.intent.action.SIM_STATE_CHANGED")
+                addAction(Intent.ACTION_SHUTDOWN)
+                addAction(Intent.ACTION_REBOOT)
+                addAction("android.intent.action.MASTER_CLEAR_NOTIFICATION")
+                addAction("android.intent.action.FACTORY_RESET")
+                addAction("com.mrp.TEST_WRONG_UNLOCK")
+                addAction("com.mrp.TEST_SIM_REMOVED")
+                addAction("com.mrp.TEST_SIM_INSERTED")
+                addAction("com.mrp.TEST_FACTORY_RESET")
+                addAction("android.net.wifi.STATE_CHANGE")
+                addAction("com.mrp.TEST_WIFI_TOGGLE")
+                addAction("com.mrp.TEST_HOTSPOT_TOGGLE")
             }
 
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -400,16 +460,7 @@ class MrpMonitorService : Service() {
         if (settings.captureOnWifiToggle) {
             try {
                 val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                val isWifiOn = wifiManager.isWifiEnabled
-                val prevWifi = lastWifiState
-                lastWifiState = if (isWifiOn) 1 else 0
-                if (prevWifi != null && prevWifi != (if (isWifiOn) 1 else 0)) {
-                    Log.d(TAG, "evaluateAllToggles: Wi-Fi changed to $isWifiOn")
-                    eventLogger.logEventSync(
-                        EventTypes.WIFI_TOGGLE,
-                        if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED
-                    )
-                }
+                handleWifiChangeExplicit(wifiManager.isWifiEnabled, false)
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking Wi-Fi state", e)
             }
@@ -478,46 +529,91 @@ class MrpMonitorService : Service() {
             }
         }
 
-        // 5. Hotspot
-        if (settings.captureOnHotspot) {
-            try {
-                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                val isHotspotOn = isHotspotEnabled(wifiManager)
-                val prevHotspot = lastHotspotState
-                lastHotspotState = isHotspotOn
-                if (prevHotspot != null && prevHotspot != isHotspotOn) {
-                    Log.d(TAG, "evaluateAllToggles: Hotspot changed to $isHotspotOn")
-                    eventLogger.logEventSync(
-                        EventTypes.HOTSPOT_TOGGLE,
-                        if (isHotspotOn) StatusValues.ENABLED else StatusValues.DISABLED
-                    )
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking Hotspot state", e)
-            }
+        // Hotspot is handled exclusively by WIFI_AP_STATE_CHANGED and handleHotspotChange
+    }
+
+    private fun handleHotspotChangeExplicit(isOn: Boolean) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        Log.d(TAG, "handleHotspotChangeExplicit: isOn=$isOn, captureOnHotspot=${settings.captureOnHotspot}, prev=$lastHotspotState")
+        if (!settings.captureOnHotspot) return
+
+        val prev = lastHotspotState
+        lastHotspotState = isOn
+
+        if (prev != null && prev == isOn) {
+            Log.d(TAG, "Hotspot duplicate ignored: $isOn")
+            return
         }
+
+        Log.d(TAG, "Hotspot state changed explicit: $isOn")
+        eventLogger.logEventSync(
+            EventTypes.HOTSPOT_TOGGLE,
+            if (isOn) StatusValues.ENABLED else StatusValues.DISABLED
+        )
     }
 
     private fun handleHotspotChange(state: Int) {
         if (!isMonitoringEnabled() || !settingsStorage.getSettings().captureOnHotspot) return
-        // 13 or 3 = ENABLED, 11 or 1 = DISABLED
-        val isEnabled = (state == 13 || state == 3)
-        val isDisabled = (state == 11 || state == 1)
+        val isEnabled = (state == 13 || state == 3 || state == 12 || state == 2)
+        val isDisabled = (state == 11 || state == 1 || state == 10 || state == 0)
         if (!isEnabled && !isDisabled) return
 
-        val previous = lastHotspotState
-        lastHotspotState = isEnabled
-
-        if (previous != null && previous == isEnabled) return
-
-        Log.d(TAG, "Hotspot state changed: $state, isEnabled: $isEnabled")
-        eventLogger.logEventSync(
-            EventTypes.HOTSPOT_TOGGLE,
-            if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED
-        )
+        handleHotspotChangeExplicit(isEnabled)
     }
 
-    private fun handleWifiChangeExplicit(isWifiOn: Boolean) {
+    private fun getWifiNetworkMetadata(isWifiOn: Boolean): Map<String, String> {
+        val details = mutableMapOf<String, String>()
+        if (!isWifiOn) {
+            details["wifi_name"] = "Disconnected"
+            details["wifi_id"] = "N/A"
+            details["wifi_bssid"] = "N/A"
+            details["wifi_ip"] = "0.0.0.0"
+            details["description"] = "Wi-Fi turned OFF"
+            return details
+        }
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val info = wifiManager?.connectionInfo
+            val ssidRaw = info?.ssid ?: ""
+            val ssid = if (ssidRaw.startsWith("\"") && ssidRaw.endsWith("\"") && ssidRaw.length > 2) {
+                ssidRaw.substring(1, ssidRaw.length - 1)
+            } else if (ssidRaw == "<unknown ssid>" || ssidRaw.isEmpty()) {
+                "Connected (SSID scanning)"
+            } else {
+                ssidRaw
+            }
+            val bssid = info?.bssid ?: "Unavailable"
+            val ipInt = info?.ipAddress ?: 0
+            val ipAddress = if (ipInt != 0) {
+                String.format(
+                    java.util.Locale.US, "%d.%d.%d.%d",
+                    ipInt and 0xff,
+                    ipInt shr 8 and 0xff,
+                    ipInt shr 16 and 0xff,
+                    ipInt shr 24 and 0xff
+                )
+            } else "0.0.0.0"
+
+            val linkSpeed = "${info?.linkSpeed ?: 0} Mbps"
+            val frequency = "${info?.frequency ?: 0} MHz"
+
+            details["wifi_name"] = ssid
+            details["wifi_id"] = bssid
+            details["wifi_bssid"] = bssid
+            details["wifi_ip"] = ipAddress
+            details["link_speed"] = linkSpeed
+            details["frequency"] = frequency
+            details["description"] = "Wi-Fi ON: $ssid ($ipAddress)"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching Wi-Fi details", e)
+            details["wifi_name"] = "Enabled"
+            details["description"] = "Wi-Fi turned ON"
+        }
+        return details
+    }
+
+    private fun handleWifiChangeExplicit(isWifiOn: Boolean, forceLog: Boolean = false) {
         if (!isMonitoringEnabled()) return
         val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
         if (!settings.captureOnWifiToggle) return
@@ -526,11 +622,20 @@ class MrpMonitorService : Service() {
         val current = if (isWifiOn) 1 else 0
         lastWifiState = current
 
-        if (prev == null || prev != current) {
-            Log.d(TAG, "Explicit Wi-Fi changed to $isWifiOn")
+        val metadata = getWifiNetworkMetadata(isWifiOn)
+        val currentBssid = metadata["wifi_bssid"] ?: ""
+
+        val bssidChanged = isWifiOn && currentBssid != "N/A" && currentBssid != "Unavailable" && currentBssid != lastWifiBssid
+        if (isWifiOn && currentBssid != "N/A" && currentBssid != "Unavailable") {
+            lastWifiBssid = currentBssid
+        }
+
+        if (forceLog || prev == null || prev != current || bssidChanged) {
+            Log.d(TAG, "Logging Wi-Fi toggle: isWifiOn=$isWifiOn, meta=$metadata, bssidChanged=$bssidChanged")
             eventLogger.logEventSync(
                 EventTypes.WIFI_TOGGLE,
-                if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED
+                if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED,
+                metadata
             )
         }
     }
@@ -567,6 +672,77 @@ class MrpMonitorService : Service() {
                 if (isAirplaneOn) StatusValues.ENABLED else StatusValues.DISABLED
             )
         }
+    }
+
+    private fun handleSimStateChangeExplicit(simState: String) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnSimChange) return
+
+        Log.d(TAG, "SIM state changed explicit: $simState")
+
+        val eventType = when (simState) {
+            "ABSENT", "NOT_READY" -> EventTypes.SIM_REMOVED
+            "READY", "IMSI", "LOADED" -> EventTypes.SIM_INSERTED
+            else -> return
+        }
+
+        val prevSimState = lastSimEventType
+        lastSimEventType = eventType
+
+        if (prevSimState == null || prevSimState != eventType) {
+            Log.d(TAG, "Logging SIM event: $eventType")
+            eventLogger.logEventSync(
+                eventType = eventType,
+                status = if (eventType == EventTypes.SIM_INSERTED) StatusValues.ENABLED else StatusValues.DISABLED,
+                metadata = mapOf(
+                    "sim_state" to simState,
+                    "description" to if (eventType == EventTypes.SIM_INSERTED) "SIM card inserted/ready" else "SIM card removed/absent"
+                )
+            )
+        }
+    }
+
+    private fun handleFactoryResetOrShutdown(action: String) {
+        if (!isMonitoringEnabled()) return
+        Log.w(TAG, "Critical device reset/shutdown event: $action")
+
+        val eventType = when (action) {
+            "android.intent.action.MASTER_CLEAR_NOTIFICATION",
+            "android.intent.action.FACTORY_RESET" -> EventTypes.FACTORY_RESET
+            Intent.ACTION_SHUTDOWN -> EventTypes.DEVICE_SHUTDOWN
+            Intent.ACTION_REBOOT -> EventTypes.DEVICE_REBOOT
+            else -> EventTypes.FACTORY_RESET
+        }
+
+        eventLogger.logEventSync(
+            eventType = eventType,
+            status = StatusValues.ENABLED,
+            metadata = mapOf(
+                "action" to action,
+                "description" to "Device shutdown or factory reset initiated"
+            )
+        )
+    }
+
+    private fun handleWrongUnlockAttemptExplicit() {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnWrongUnlock) return
+
+        Log.w(TAG, "Explicit Wrong Unlock attempt detected")
+        eventLogger.logEventSync(
+            eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
+            status = StatusValues.FAILED,
+            metadata = mapOf("description" to "Wrong password/PIN/pattern attempted")
+        )
+        eventLogger.logEventSync(
+            eventType = EventTypes.WRONG_PASSWORD,
+            status = StatusValues.FAILED,
+            metadata = mapOf("description" to "Wrong password entered")
+        )
+        wakeUpDevice()
+        takePhoto()
     }
 
     private fun isMonitoringEnabled(): Boolean {

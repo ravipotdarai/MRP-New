@@ -19,10 +19,6 @@ class TimelineEventLogger(private val context: Context) {
     private val locationHelper = LocationHelper(context)
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // Debounce map to prevent duplicate events within 2 seconds
-    private val lastEventTimes = mutableMapOf<String, Long>()
-    private val debounceMs = 2000L
-
     /**
      * Log an event with optional location data
      */
@@ -31,6 +27,10 @@ class TimelineEventLogger(private val context: Context) {
         status: String,
         metadata: Map<String, Any?> = emptyMap()
     ) {
+        if (shouldDebounce(eventType, status)) {
+            Log.d(TAG, "Debounced duplicate logEvent: $eventType:$status")
+            return
+        }
         mainHandler.post {
             locationHelper.getCurrentLocation { locationData ->
                 if (locationData != null) {
@@ -47,15 +47,10 @@ class TimelineEventLogger(private val context: Context) {
      */
     fun logEventSync(eventType: String, status: String, metadata: Map<String, Any?> = emptyMap()) {
         try {
-            // Debounce check per eventType+status (500ms)
-            val key = "$eventType:$status"
-            val now = System.currentTimeMillis()
-            val lastTime = lastEventTimes[key]
-            if (lastTime != null && (now - lastTime) < 500L) {
-                Log.d(TAG, "Debounced duplicate event: $key")
+            if (shouldDebounce(eventType, status)) {
+                Log.d(TAG, "Debounced duplicate logEventSync: $eventType:$status")
                 return
             }
-            lastEventTimes[key] = now
             Log.d(TAG, "Logging event: $eventType / $status")
 
             val location = getLocationSync()
@@ -226,5 +221,18 @@ class TimelineEventLogger(private val context: Context) {
         private const val TAG = "TimelineEventLogger"
         @Volatile
         private var lastValidLocation: Location? = null
+        private val lastEventTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private const val DEBOUNCE_MS = 3500L
+
+        fun shouldDebounce(eventType: String, status: String): Boolean {
+            val key = "$eventType:$status"
+            val now = System.currentTimeMillis()
+            val lastTime = lastEventTimes[key]
+            if (lastTime != null && (now - lastTime) < DEBOUNCE_MS) {
+                return true
+            }
+            lastEventTimes[key] = now
+            return false
+        }
     }
 }

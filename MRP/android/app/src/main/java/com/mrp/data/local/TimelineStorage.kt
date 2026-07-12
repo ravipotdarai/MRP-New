@@ -170,6 +170,8 @@ class TimelineStorage(private val context: Context) {
         val geofenceJson = json.optJSONObject("geofence_status")
 
         return TimelineEntry.fromTimestamp(
+            id = json.optString("id", "").takeIf { it.isNotEmpty() && it != "null" },
+            timestamp = json.optString("timestamp", "").takeIf { it.isNotEmpty() && it != "null" },
             eventType = json.optString("event_type", json.optString("eventType", "")),
             status = json.optString("status", ""),
             latitude = locationJson?.optDouble("latitude") ?: json.optDouble("latitude", 0.0).takeIf { it != 0.0 },

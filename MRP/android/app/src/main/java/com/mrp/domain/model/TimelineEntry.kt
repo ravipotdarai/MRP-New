@@ -24,6 +24,8 @@ data class TimelineEntry(
         }
 
         fun fromTimestamp(
+            id: String? = null,
+            timestamp: String? = null,
             eventType: String,
             status: String,
             latitude: Double? = null,
@@ -35,6 +37,8 @@ data class TimelineEntry(
             metadata: Map<String, Any?> = emptyMap()
         ): TimelineEntry {
             return TimelineEntry(
+                id = id ?: UUID.randomUUID().toString(),
+                timestamp = timestamp ?: ISO8601_DATE_FORMAT.format(Date()),
                 eventType = eventType,
                 status = status,
                 location = LocationData(
@@ -52,6 +56,8 @@ data class TimelineEntry(
         }
 
         fun fromLocation(
+            id: String? = null,
+            timestamp: String? = null,
             eventType: String,
             status: String,
             location: android.location.Location?,
@@ -61,6 +67,8 @@ data class TimelineEntry(
             metadata: Map<String, Any?> = emptyMap()
         ): TimelineEntry {
             return TimelineEntry(
+                id = id ?: UUID.randomUUID().toString(),
+                timestamp = timestamp ?: ISO8601_DATE_FORMAT.format(Date()),
                 eventType = eventType,
                 status = status,
                 location = LocationData(
@@ -80,6 +88,7 @@ data class TimelineEntry(
 
     fun toJsonObject(): org.json.JSONObject {
         return org.json.JSONObject().apply {
+            put("id", id)
             put("timestamp", timestamp)
             put("event_type", eventType)
             put("status", status)
@@ -114,6 +123,14 @@ object EventTypes {
     const val SCREEN_LOCK = "SCREEN_LOCK"
     const val SCREEN_UNLOCK = "SCREEN_UNLOCK"
     const val UNLOCK_FAILED = "UNLOCK_FAILED"
+    const val WRONG_UNLOCK_ATTEMPT = "WRONG_UNLOCK_ATTEMPT"
+    const val WRONG_PASSWORD = "WRONG_PASSWORD"
+    const val SIM_REMOVED = "SIM_REMOVED"
+    const val SIM_INSERTED = "SIM_INSERTED"
+    const val SIM_CHANGE = "SIM_CHANGE"
+    const val FACTORY_RESET = "FACTORY_RESET"
+    const val DEVICE_SHUTDOWN = "DEVICE_SHUTDOWN"
+    const val DEVICE_REBOOT = "DEVICE_REBOOT"
     const val AIRPLANE_MODE_TOGGLE = "AIRPLANE_MODE_TOGGLE"
     const val WIFI_TOGGLE = "WIFI_TOGGLE"
     const val MOBILE_DATA_TOGGLE = "MOBILE_DATA_TOGGLE"

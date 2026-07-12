@@ -7,6 +7,7 @@ export interface MrpNativeInterface {
   stopMonitoring(): Promise<boolean>;
   requestAccessibilityEnable(): Promise<boolean>;
   requestDeviceAdminEnable(): Promise<boolean>;
+  disableDeviceAdmin(): Promise<boolean>;
   isAccessibilityEnabled(): Promise<boolean>;
   isDeviceAdminEnabled(): Promise<boolean>;
   getEvents(): Promise<any[]>;

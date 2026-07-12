@@ -40,16 +40,32 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
         val settings = SettingsStorage(context).getSettings()
         if (!settings.isMonitoringEnabled || !settings.captureOnWrongUnlock) return
 
-        // Log the failed unlock attempt with the new schema
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
-            eventType = EventTypes.UNLOCK_FAILED,
+            eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
             status = StatusValues.FAILED,
             metadata = mapOf(
                 "description" to "Wrong password/PIN/pattern attempted",
                 "source" to "DeviceAdminReceiver"
             )
         )
+        eventLogger.logEventSync(
+            eventType = EventTypes.WRONG_PASSWORD,
+            status = StatusValues.FAILED,
+            metadata = mapOf(
+                "description" to "Wrong password entered",
+                "source" to "DeviceAdminReceiver"
+            )
+        )
+
+        try {
+            val photoIntent = Intent("com.mrp.ACTION_REQUEST_PHOTO").apply {
+                setPackage(context.packageName)
+            }
+            context.sendBroadcast(photoIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting photo on password failure", e)
+        }
     }
 
     override fun onPasswordSucceeded(context: Context, intent: Intent) {
@@ -59,6 +75,19 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         Log.d(TAG, "Disable requested")
+        try {
+            val eventLogger = TimelineEventLogger(context)
+            eventLogger.logEventSync(
+                eventType = EventTypes.FACTORY_RESET,
+                status = "warning",
+                metadata = mapOf(
+                    "description" to "Device admin disable requested (possible factory reset prep)",
+                    "source" to "DeviceAdminReceiver"
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error logging disable request", e)
+        }
         return "Removing MRP admin will disable monitoring"
     }
 
@@ -75,6 +104,20 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
                 dpm.isAdminActive(getComponentName(context))
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to check admin status", e)
+                false
+            }
+        }
+
+        fun removeAdmin(context: Context): Boolean {
+            return try {
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                val comp = getComponentName(context)
+                if (dpm.isAdminActive(comp)) {
+                    dpm.removeActiveAdmin(comp)
+                }
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove admin", e)
                 false
             }
         }

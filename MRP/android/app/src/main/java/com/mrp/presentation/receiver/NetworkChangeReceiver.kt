@@ -24,13 +24,18 @@ import com.mrp.domain.usecase.TimelineEventLogger
  */
 class NetworkChangeReceiver : BroadcastReceiver() {
 
-    private var lastAirplaneState: Boolean? = null
-    private var lastWifiState: Int? = null
-    private var lastMobileDataState: Boolean? = null
-    private var lastHotspotState: Int? = null
-
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) return
+
+        if (intent.action == "com.mrp.TEST_SET_SETTING") {
+            val key = intent.getStringExtra("key")
+            val value = intent.getBooleanExtra("value", true)
+            if (key != null) {
+                SettingsStorage(context).updateSetting(key, value)
+                Log.d(TAG, "TEST_SET_SETTING: $key = $value")
+            }
+            return
+        }
 
         val settings = SettingsStorage(context).getSettings()
         if (!settings.isMonitoringEnabled) return
@@ -43,11 +48,12 @@ class NetworkChangeReceiver : BroadcastReceiver() {
                 }
             }
 
-            WifiManager.WIFI_STATE_CHANGED_ACTION -> {
-                val wifiState = intent.getIntExtra(
-                    WifiManager.EXTRA_WIFI_STATE,
-                    WifiManager.WIFI_STATE_UNKNOWN
-                )
+            WifiManager.WIFI_STATE_CHANGED_ACTION, "com.mrp.TEST_WIFI_TOGGLE" -> {
+                val wifiState = if (intent.action == "com.mrp.TEST_WIFI_TOGGLE") {
+                    WifiManager.WIFI_STATE_ENABLED
+                } else {
+                    intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
+                }
                 if (settings.captureOnWifiToggle) {
                     handleWifiChange(context, wifiState)
                 }
@@ -59,10 +65,20 @@ class NetworkChangeReceiver : BroadcastReceiver() {
                 }
             }
 
-            "android.net.wifi.WIFI_AP_STATE_CHANGED" -> {
-                val apState = intent.getIntExtra("wifi_ap_state", -1)
+            "android.net.wifi.WIFI_AP_STATE_CHANGED", "android.net.conn.TETHER_STATE_CHANGED", "com.mrp.TEST_HOTSPOT_TOGGLE" -> {
                 if (settings.captureOnHotspot) {
-                    handleHotspotChange(context, apState)
+                    val isEnabled = when (intent.action) {
+                        "com.mrp.TEST_HOTSPOT_TOGGLE" -> intent.getBooleanExtra("state", true)
+                        "android.net.conn.TETHER_STATE_CHANGED" -> {
+                            val active = intent.getStringArrayListExtra("activeArray")
+                            active != null && active.isNotEmpty()
+                        }
+                        else -> {
+                            val apState = intent.getIntExtra("wifi_ap_state", -1)
+                            apState == 13 || apState == 3 || apState == 12 || apState == 2
+                        }
+                    }
+                    handleHotspotChangeExplicit(context, isEnabled)
                 }
             }
         }
@@ -89,25 +105,31 @@ class NetworkChangeReceiver : BroadcastReceiver() {
     }
 
     private fun handleWifiChange(context: Context, wifiState: Int) {
+        if (wifiState != WifiManager.WIFI_STATE_ENABLED && wifiState != WifiManager.WIFI_STATE_DISABLED) {
+            return
+        }
+
         val isEnabled = wifiState == WifiManager.WIFI_STATE_ENABLED
         val previous = lastWifiState
         lastWifiState = wifiState
 
-        // Avoid duplicate events and unknown states
-        if (wifiState == WifiManager.WIFI_STATE_UNKNOWN) return
-        if (previous != null && previous == wifiState) return
+        val metadata = getWifiNetworkMetadata(context, isEnabled)
+        val currentBssid = metadata["wifi_bssid"] ?: ""
 
-        Log.d(TAG, "WiFi state changed: state=$wifiState, enabled=$isEnabled")
+        val bssidChanged = isEnabled && currentBssid != "N/A" && currentBssid != "Unavailable" && currentBssid != lastWifiBssid
+        if (isEnabled && currentBssid != "N/A" && currentBssid != "Unavailable") {
+            lastWifiBssid = currentBssid
+        }
 
-        val eventLogger = TimelineEventLogger(context)
-        eventLogger.logEventSync(
-            eventType = EventTypes.WIFI_TOGGLE,
-            status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
-            metadata = mapOf(
-                "wifi_state" to getWifiStateName(wifiState),
-                "source" to "NetworkChangeReceiver"
+        if (previous == null || previous != wifiState || bssidChanged) {
+            Log.d(TAG, "WiFi state changed: state=$wifiState, enabled=$isEnabled, bssidChanged=$bssidChanged")
+            val eventLogger = TimelineEventLogger(context)
+            eventLogger.logEventSync(
+                eventType = EventTypes.WIFI_TOGGLE,
+                status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
+                metadata = metadata
             )
-        )
+        }
     }
 
     private fun handleMobileDataChange(context: Context) {
@@ -135,26 +157,74 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun handleHotspotChange(context: Context, apState: Int) {
-        // WIFI_AP_STATE_ENABLED = 13, WIFI_AP_STATE_DISABLED = 11
-        val isEnabled = apState == 13
+    private fun handleHotspotChangeExplicit(context: Context, isEnabled: Boolean) {
         val previous = lastHotspotState
-        lastHotspotState = apState
+        lastHotspotState = isEnabled
 
         // Avoid duplicate events
-        if (previous != null && previous == apState) return
+        if (previous != null && previous == isEnabled) return
 
-        Log.d(TAG, "Hotspot state changed: state=$apState, enabled=$isEnabled")
+        Log.d(TAG, "Hotspot state changed explicit: enabled=$isEnabled")
 
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
             eventType = EventTypes.HOTSPOT_TOGGLE,
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
-                "ap_state" to apState,
                 "source" to "NetworkChangeReceiver"
             )
         )
+    }
+
+    private fun getWifiNetworkMetadata(context: Context, isWifiOn: Boolean): Map<String, String> {
+        val details = mutableMapOf<String, String>()
+        if (!isWifiOn) {
+            details["wifi_name"] = "Disconnected"
+            details["wifi_id"] = "N/A"
+            details["wifi_bssid"] = "N/A"
+            details["wifi_ip"] = "0.0.0.0"
+            details["description"] = "Wi-Fi turned OFF"
+            return details
+        }
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val info = wifiManager?.connectionInfo
+            val ssidRaw = info?.ssid ?: ""
+            val ssid = if (ssidRaw.startsWith("\"") && ssidRaw.endsWith("\"") && ssidRaw.length > 2) {
+                ssidRaw.substring(1, ssidRaw.length - 1)
+            } else if (ssidRaw == "<unknown ssid>" || ssidRaw.isEmpty()) {
+                "Connected (SSID scanning)"
+            } else {
+                ssidRaw
+            }
+            val bssid = info?.bssid ?: "Unavailable"
+            val ipInt = info?.ipAddress ?: 0
+            val ipAddress = if (ipInt != 0) {
+                String.format(
+                    java.util.Locale.US, "%d.%d.%d.%d",
+                    ipInt and 0xff,
+                    ipInt shr 8 and 0xff,
+                    ipInt shr 16 and 0xff,
+                    ipInt shr 24 and 0xff
+                )
+            } else "0.0.0.0"
+
+            val linkSpeed = "${info?.linkSpeed ?: 0} Mbps"
+            val frequency = "${info?.frequency ?: 0} MHz"
+
+            details["wifi_name"] = ssid
+            details["wifi_id"] = bssid
+            details["wifi_bssid"] = bssid
+            details["wifi_ip"] = ipAddress
+            details["link_speed"] = linkSpeed
+            details["frequency"] = frequency
+            details["description"] = "Wi-Fi ON: $ssid ($ipAddress)"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error fetching Wi-Fi details", e)
+            details["wifi_name"] = "Enabled"
+            details["description"] = "Wi-Fi turned ON"
+        }
+        return details
     }
 
     private fun getWifiStateName(state: Int): String {
@@ -170,5 +240,10 @@ class NetworkChangeReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "NetworkChangeReceiver"
+        @Volatile private var lastAirplaneState: Boolean? = null
+        @Volatile private var lastWifiState: Int? = null
+        @Volatile private var lastMobileDataState: Boolean? = null
+        @Volatile private var lastHotspotState: Boolean? = null
+        @Volatile private var lastWifiBssid: String? = null
     }
 }

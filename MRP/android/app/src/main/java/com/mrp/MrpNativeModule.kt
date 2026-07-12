@@ -191,9 +191,20 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun disableDeviceAdmin(promise: Promise) {
+        try {
+            val success = MrpDeviceAdminReceiver.removeAdmin(reactContext)
+            promise.resolve(success)
+        } catch (e: Exception) {
+            promise.reject("ADMIN_ERROR", "Failed to disable device admin", e)
+        }
+    }
+
+    @ReactMethod
     fun getEvents(promise: Promise) {
         try {
-            val events = EventStorage(reactContext).getEvents()
+            val rawEvents = EventStorage(reactContext).getEvents()
+            val events = rawEvents.sortedByDescending { it.timestamp.time }
             val eventList = Arguments.createArray()
             for (event in events) {
                 val eventMap = Arguments.createMap().apply {
@@ -276,7 +287,8 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun getTimeline(promise: Promise) {
         try {
-            val timeline = TimelineStorage(reactContext).getTimeline()
+            val rawTimeline = TimelineStorage(reactContext).getTimeline()
+            val timeline = rawTimeline.sortedByDescending { it.timestamp }
             val list = Arguments.createArray()
             for (entry in timeline) {
                 val map = Arguments.createMap().apply {
