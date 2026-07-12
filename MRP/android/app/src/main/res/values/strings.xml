@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">MRP</string>
+    <string name="accessibility_service_description">MRP monitors lock and unlock events to capture photos when your device is accessed.</string>
+</resources>

@@ -1,0 +1,536 @@
+import React, {useState, useEffect, useCallback} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  Alert,
+  RefreshControl,
+  Modal,
+  ScrollView,
+  Linking,
+  ActivityIndicator,
+} from 'react-native';
+import mrpmModule from '../../shared/hooks/useNativeBridge';
+
+const EVENT_ICONS: Record<string, string> = {
+  WRONG_PASSWORD: '🔐',
+  WRONG_BIOMETRIC: '👆',
+  SCREEN_LOCK: '🔒',
+  SCREEN_UNLOCK: '🔓',
+  UNLOCK_FAILED: '❌',
+  AIRPLANE_MODE_TOGGLE: '✈️',
+  WIFI_TOGGLE: '📶',
+  MOBILE_DATA_TOGGLE: '📱',
+  HOTSPOT_TOGGLE: '🔥',
+  SIM_REMOVED: '📤',
+  SIM_INSERTED: '📥',
+  FACTORY_RESET: '⚠️',
+  DEVICE_BOOT: '🔄',
+  USB_CONNECTED: '🔌',
+};
+
+interface TimelineEntry {
+  id: string;
+  timestamp: string;
+  event_type: string;
+  status: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracy_meters: number;
+    detailed_address: string;
+  };
+  geofence_status: {
+    inside_fence: boolean;
+    fence_id: string | null;
+  };
+  metadata: Record<string, any>;
+}
+
+export function TimelineScreen() {
+  const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<TimelineEntry | null>(null);
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+
+  const loadTimeline = useCallback(async () => {
+    try {
+      const result = await mrpmModule.getTimeline();
+      setEntries(result || []);
+    } catch (e) {
+      console.error('Failed to load timeline:', e);
+      setEntries([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTimeline();
+    const interval = setInterval(loadTimeline, 5000);
+    return () => clearInterval(interval);
+  }, [loadTimeline]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadTimeline();
+  }, [loadTimeline]);
+
+  const formatEventType = (type: string | undefined): string => {
+    if (!type) return 'Unknown Event';
+    return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  };
+
+  const formatTimestamp = (timestamp: string | undefined): string => {
+    if (!timestamp) return 'Unknown';
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleString();
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const openLocation = (lat: number, lng: number) => {
+    const url = `https://maps.google.com/?q=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open maps');
+    });
+  };
+
+  const deleteEntry = (entry: TimelineEntry) => {
+    Alert.alert(
+      'Delete Entry',
+      'Are you sure?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await mrpmModule.deleteTimelineEntry(entry.id);
+              setEntries(prev => prev.filter(e => e.id !== entry.id));
+              setDetailModalVisible(false);
+            } catch (e) {
+              console.error('Failed to delete entry:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const clearAllTimeline = () => {
+    Alert.alert(
+      'Clear All Timeline',
+      'This will delete ALL events. Are you sure?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await mrpmModule.clearTimeline();
+              setEntries([]);
+              setDetailModalVisible(false);
+            } catch (e) {
+              console.error('Failed to clear timeline:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const renderEntry = ({item}: {item: TimelineEntry}) => (
+    <TouchableOpacity
+      style={styles.entryItem}
+      onPress={() => {
+        setSelectedEntry(item);
+        setDetailModalVisible(true);
+      }}>
+      <View style={styles.entryIcon}>
+        <Text style={styles.iconText}>{EVENT_ICONS[item.event_type] || '📋'}</Text>
+      </View>
+
+      <View style={styles.entryContent}>
+        <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
+        <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+        {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
+          <Text style={styles.location} numberOfLines={1}>
+            📍 {item.location.detailed_address}
+          </Text>
+        )}
+        <Text style={styles.description}>Status: {item.status || 'N/A'}</Text>
+      </View>
+
+      <View style={styles.entryRight}>
+        <View style={[styles.geofenceBadge, {backgroundColor: item.geofence_status?.inside_fence ? '#4CAF50' : '#9E9E9E'}]}>
+          <Text style={styles.geofenceText}>
+            {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderDetailModal = () => (
+    <Modal
+      visible={detailModalVisible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setDetailModalVisible(false)}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {selectedEntry && (
+              <>
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Event</Text>
+                  <Text style={styles.detailValue}>
+                    {EVENT_ICONS[selectedEntry.event_type]} {formatEventType(selectedEntry.event_type)}
+                  </Text>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Status</Text>
+                  <Text style={styles.detailValue}>{selectedEntry.status}</Text>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Timestamp</Text>
+                  <Text style={styles.detailValue}>{formatTimestamp(selectedEntry.timestamp)}</Text>
+                </View>
+
+                {selectedEntry.location && selectedEntry.location.latitude !== 0 && (
+                  <>
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>Location</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedEntry.location.detailed_address}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.mapButton}
+                        onPress={() => openLocation(selectedEntry.location.latitude, selectedEntry.location.longitude)}>
+                        <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>Coordinates</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedEntry.location.latitude.toFixed(6)}, {selectedEntry.location.longitude.toFixed(6)}
+                      </Text>
+                      <Text style={styles.detailSubvalue}>
+                        Accuracy: ±{selectedEntry.location.accuracy_meters.toFixed(0)}m
+                      </Text>
+                    </View>
+                  </>
+                )}
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Geofence Status</Text>
+                  <Text style={styles.detailValue}>
+                    {selectedEntry.geofence_status?.inside_fence ? '🏠 Inside fence' : '📍 Outside fence'}
+                  </Text>
+                  {selectedEntry.geofence_status?.fence_id && (
+                    <Text style={styles.detailSubvalue}>
+                      Fence ID: {selectedEntry.geofence_status.fence_id}
+                    </Text>
+                  )}
+                </View>
+
+                {Object.keys(selectedEntry.metadata || {}).length > 0 && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Metadata</Text>
+                    {Object.entries(selectedEntry.metadata).map(([key, value]) => (
+                      <Text key={key} style={styles.detailSubvalue}>
+                        {key}: {String(value)}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </ScrollView>
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setDetailModalVisible(false)}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => selectedEntry && deleteEntry(selectedEntry)}>
+              <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>MRP Timeline</Text>
+          <Text style={styles.headerSubtitle}>
+            {entries.length} event{entries.length !== 1 ? 's' : ''} recorded
+          </Text>
+        </View>
+        {entries.length > 0 && (
+          <TouchableOpacity onPress={clearAllTimeline} style={styles.clearAllButton}>
+            <Text style={styles.clearAllText}>Delete All</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4a90d9" />
+          <Text style={styles.loadingText}>Loading timeline...</Text>
+        </View>
+      ) : entries.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyText}>No events recorded yet</Text>
+          <Text style={styles.emptySubtext}>
+            Events will appear here when monitoring detects activity
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={entries}
+          renderItem={renderEntry}
+          keyExtractor={item => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        />
+      )}
+
+      {renderDetailModal()}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#212121',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#757575',
+    marginTop: 2,
+  },
+  clearAllButton: {
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  clearAllText: {
+    color: '#F44336',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#757575',
+    marginTop: 12,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#757575',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#9E9E9E',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  listContent: {
+    padding: 16,
+  },
+  entryItem: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: {width: 0, height: 1},
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  entryIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#E3F2FD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  iconText: {
+    fontSize: 24,
+  },
+  entryContent: {
+    flex: 1,
+  },
+  eventType: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#212121',
+  },
+  timestamp: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    marginTop: 2,
+  },
+  location: {
+    fontSize: 12,
+    color: '#4CAF50',
+    marginTop: 4,
+  },
+  description: {
+    fontSize: 12,
+    color: '#757575',
+    marginTop: 4,
+  },
+  entryRight: {
+    justifyContent: 'center',
+  },
+  geofenceBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  geofenceText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '85%',
+    padding: 20,
+  },
+  detailSection: {
+    marginBottom: 20,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#9E9E9E',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  detailValue: {
+    fontSize: 16,
+    color: '#212121',
+    fontWeight: '500',
+  },
+  detailSubvalue: {
+    fontSize: 13,
+    color: '#757575',
+    marginTop: 2,
+  },
+  mapButton: {
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 10,
+    alignSelf: 'flex-start',
+  },
+  mapButtonText: {
+    color: '#1976D2',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  closeButton: {
+    flex: 1,
+    backgroundColor: '#E0E0E0',
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginRight: 8,
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#757575',
+  },
+  deleteButton: {
+    flex: 1,
+    backgroundColor: '#FFEBEE',
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginLeft: 8,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#F44336',
+  },
+});
