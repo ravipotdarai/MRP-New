@@ -136,6 +136,7 @@ object EventTypes {
     const val MOBILE_DATA_TOGGLE = "MOBILE_DATA_TOGGLE"
     const val HOTSPOT_TOGGLE = "HOTSPOT_TOGGLE"
     const val BLUETOOTH_TOGGLE = "BLUETOOTH_TOGGLE"
+    const val USB_CONNECTED = "USB_CONNECTED"
 }
 
 object StatusValues {

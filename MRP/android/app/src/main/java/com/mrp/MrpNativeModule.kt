@@ -86,10 +86,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun getPhotos(promise: Promise) {
         try {
-            val photosDir = reactContext.getExternalFilesDir("photos")
-            if (photosDir == null) {
-                promise.resolve(Arguments.createArray())
-                return
+            val photosDir = File(reactContext.getExternalFilesDir(null), "MRP")
+            if (!photosDir.exists()) {
+                photosDir.mkdirs()
             }
 
             val files = photosDir.listFiles()?.filter {

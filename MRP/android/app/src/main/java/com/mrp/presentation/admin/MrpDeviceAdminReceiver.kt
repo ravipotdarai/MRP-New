@@ -59,10 +59,7 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
         )
 
         try {
-            val photoIntent = Intent("com.mrp.ACTION_REQUEST_PHOTO").apply {
-                setPackage(context.packageName)
-            }
-            context.sendBroadcast(photoIntent)
+            com.mrp.service.MrpMonitorService.requestPhoto(context)
         } catch (e: Exception) {
             Log.e(TAG, "Error requesting photo on password failure", e)
         }

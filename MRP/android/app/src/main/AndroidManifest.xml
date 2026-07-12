@@ -73,6 +73,14 @@
         android:launchMode="singleInstance"
         android:taskAffinity="" />
 
+      <!-- Activity to capture background photo / selfie -->
+      <activity
+        android:name=".service.CameraCaptureActivity"
+        android:exported="false"
+        android:launchMode="singleInstance"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:taskAffinity="" />
+
       <!-- Persistent Foreground Monitor Service -->
       <service
         android:name=".service.MrpMonitorService"

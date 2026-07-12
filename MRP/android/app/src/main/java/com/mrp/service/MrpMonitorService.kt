@@ -80,88 +80,101 @@ class MrpMonitorService : Service() {
             val action = intent?.action ?: return
             Log.d(TAG, "Hardware event: $action")
 
-            evaluateAllToggles()
+            backgroundHandler?.post {
+                evaluateAllToggles()
 
-            when (action) {
-                ACTION_REQUEST_PHOTO -> {
-                    wakeUpDevice()
-                    takePhoto()
-                }
-                Intent.ACTION_SCREEN_OFF -> {
-                    handleScreenOff()
-                }
-                Intent.ACTION_USER_PRESENT -> {
-                    handleUserUnlocked()
-                    wakeUpDevice()
-                    takePhoto()
-                }
-                WifiManager.WIFI_STATE_CHANGED_ACTION -> {
-                    val state = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
-                    if (state == WifiManager.WIFI_STATE_ENABLED) {
+                when (action) {
+                    ACTION_REQUEST_PHOTO -> {
+                        wakeUpDevice()
+                        takePhoto()
+                    }
+                    Intent.ACTION_SCREEN_OFF -> {
+                        handleScreenOff()
+                    }
+                    Intent.ACTION_USER_PRESENT -> {
+                        handleUserUnlocked()
+                        wakeUpDevice()
+                        takePhoto()
+                    }
+                    WifiManager.WIFI_STATE_CHANGED_ACTION -> {
+                        val state = intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, WifiManager.WIFI_STATE_UNKNOWN)
+                        if (state == WifiManager.WIFI_STATE_ENABLED) {
+                            handleWifiChangeExplicit(true, forceLog = false)
+                        } else if (state == WifiManager.WIFI_STATE_DISABLED) {
+                            handleWifiChangeExplicit(false, forceLog = false)
+                        }
+                    }
+                    "android.net.wifi.STATE_CHANGE" -> {
                         handleWifiChangeExplicit(true, forceLog = false)
-                    } else if (state == WifiManager.WIFI_STATE_DISABLED) {
-                        handleWifiChangeExplicit(false, forceLog = false)
                     }
-                }
-                "android.net.wifi.STATE_CHANGE" -> {
-                    handleWifiChangeExplicit(true, forceLog = false)
-                }
-                "com.mrp.TEST_WIFI_TOGGLE" -> {
-                    handleWifiChangeExplicit(true, forceLog = false)
-                }
-                BluetoothAdapter.ACTION_STATE_CHANGED -> {
-                    val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
-                    if (state == BluetoothAdapter.STATE_ON) {
-                        handleBluetoothChangeExplicit(true)
-                    } else if (state == BluetoothAdapter.STATE_OFF) {
-                        handleBluetoothChangeExplicit(false)
+                    "com.mrp.TEST_WIFI_TOGGLE" -> {
+                        val state = intent.getBooleanExtra("state", true)
+                        handleWifiChangeExplicit(state, forceLog = false)
                     }
-                }
-                Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
-                    val isAirplaneOn = intent.getBooleanExtra("state", false)
-                    handleAirplaneChangeExplicit(isAirplaneOn)
-                }
-                "android.net.wifi.WIFI_AP_STATE_CHANGED" -> {
-                    val state = intent.getIntExtra("wifi_ap_state", intent.getIntExtra("wifi_state", -1))
-                    handleHotspotChange(state)
-                }
-                "android.net.conn.TETHER_STATE_CHANGED" -> {
-                    val active = intent.getStringArrayListExtra("activeArray")
-                    if (active != null) {
-                        handleHotspotChangeExplicit(active.isNotEmpty())
+                    BluetoothAdapter.ACTION_STATE_CHANGED -> {
+                        val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
+                        if (state == BluetoothAdapter.STATE_ON) {
+                            handleBluetoothChangeExplicit(true)
+                        } else if (state == BluetoothAdapter.STATE_OFF) {
+                            handleBluetoothChangeExplicit(false)
+                        }
                     }
-                }
-                "com.mrp.TEST_HOTSPOT_TOGGLE" -> {
-                    val isOn = intent.getBooleanExtra("state", true)
-                    handleHotspotChangeExplicit(isOn)
-                }
-                "android.intent.action.SIM_STATE_CHANGED" -> {
-                    val simState = intent.getStringExtra("ss") ?: ""
-                    handleSimStateChangeExplicit(simState)
-                }
-                Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT,
-                "android.intent.action.MASTER_CLEAR_NOTIFICATION",
-                "android.intent.action.FACTORY_RESET" -> {
-                    handleFactoryResetOrShutdown(action)
-                }
-                "com.mrp.TEST_WRONG_UNLOCK" -> {
-                    handleWrongUnlockAttemptExplicit()
-                }
-                "com.mrp.TEST_SIM_REMOVED" -> {
-                    handleSimStateChangeExplicit("ABSENT")
-                }
-                "com.mrp.TEST_SIM_INSERTED" -> {
-                    handleSimStateChangeExplicit("READY")
-                }
-                "com.mrp.TEST_FACTORY_RESET" -> {
-                    handleFactoryResetOrShutdown("FACTORY_RESET")
-                }
-                "com.mrp.TEST_SET_SETTING" -> {
-                    val key = intent.getStringExtra("key")
-                    val value = intent.getBooleanExtra("value", true)
-                    if (key != null) {
-                        settingsStorage.updateSetting(key, value)
-                        Log.d(TAG, "TEST_SET_SETTING: $key = $value")
+                    Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
+                        val isAirplaneOn = intent.getBooleanExtra("state", false)
+                        handleAirplaneChangeExplicit(isAirplaneOn)
+                    }
+                    "android.net.wifi.WIFI_AP_STATE_CHANGED" -> {
+                        val state = intent.getIntExtra("wifi_ap_state", intent.getIntExtra("wifi_state", -1))
+                        handleHotspotChange(state)
+                    }
+                    "android.net.conn.TETHER_STATE_CHANGED" -> {
+                        val active = intent.getStringArrayListExtra("activeArray")
+                        if (active != null) {
+                            handleHotspotChangeExplicit(active.isNotEmpty())
+                        }
+                    }
+                    "com.mrp.TEST_HOTSPOT_TOGGLE" -> {
+                        val isOn = intent.getBooleanExtra("state", true)
+                        handleHotspotChangeExplicit(isOn)
+                    }
+                    "android.intent.action.SIM_STATE_CHANGED" -> {
+                        val simState = intent.getStringExtra("ss") ?: ""
+                        handleSimStateChangeExplicit(simState)
+                    }
+                    Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT,
+                    "android.intent.action.MASTER_CLEAR_NOTIFICATION",
+                    "android.intent.action.FACTORY_RESET" -> {
+                        handleFactoryResetOrShutdown(action)
+                    }
+                    "com.mrp.TEST_WRONG_UNLOCK" -> {
+                        handleWrongUnlockAttemptExplicit()
+                    }
+                    "com.mrp.TEST_SIM_REMOVED" -> {
+                        handleSimStateChangeExplicit("ABSENT")
+                    }
+                    "com.mrp.TEST_SIM_INSERTED" -> {
+                        handleSimStateChangeExplicit("READY")
+                    }
+                    "com.mrp.TEST_FACTORY_RESET" -> {
+                        handleFactoryResetOrShutdown("FACTORY_RESET")
+                    }
+                    "com.mrp.TEST_SET_SETTING" -> {
+                        val key = intent.getStringExtra("key")
+                        val value = intent.getBooleanExtra("value", true)
+                        if (key != null) {
+                            settingsStorage.updateSetting(key, value)
+                            Log.d(TAG, "TEST_SET_SETTING: $key = $value")
+                        }
+                    }
+                    "android.hardware.usb.action.USB_STATE" -> {
+                        val connected = intent.getBooleanExtra("connected", false)
+                        handleUsbChangeExplicit(connected)
+                    }
+                    Intent.ACTION_POWER_CONNECTED -> {
+                        handleUsbChangeExplicit(true)
+                    }
+                    "com.mrp.TEST_USB_CONNECTED" -> {
+                        handleUsbChangeExplicit(true)
                     }
                 }
             }
@@ -214,11 +227,19 @@ class MrpMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "Service onStartCommand")
+        Log.d(TAG, "Service onStartCommand: action=${intent?.action}")
 
         val notification = createNotification()
         startForegroundSafe(notification)
         isRunning = true
+
+        if (intent != null) {
+            when (intent.action) {
+                ACTION_REQUEST_PHOTO -> {
+                    takePhoto()
+                }
+            }
+        }
 
         // START_STICKY ensures the service is restarted if killed by the system
         return START_STICKY
@@ -313,6 +334,9 @@ class MrpMonitorService : Service() {
                 addAction("android.net.wifi.STATE_CHANGE")
                 addAction("com.mrp.TEST_WIFI_TOGGLE")
                 addAction("com.mrp.TEST_HOTSPOT_TOGGLE")
+                addAction("android.hardware.usb.action.USB_STATE")
+                addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction("com.mrp.TEST_USB_CONNECTED")
             }
 
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -508,7 +532,6 @@ class MrpMonitorService : Service() {
         }
 
         // 4. Bluetooth
-        // 4. Bluetooth
         if (settings.captureOnBluetooth) {
             try {
                 val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
@@ -674,6 +697,52 @@ class MrpMonitorService : Service() {
         }
     }
 
+    private fun getSimMetadata(context: Context): Map<String, String> {
+        val details = mutableMapOf<String, String>()
+        try {
+            val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            if (tm != null) {
+                details["provider"] = tm.simOperatorName.ifEmpty { tm.networkOperatorName.ifEmpty { "Unknown" } }
+            }
+
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED)) {
+                val subscriptionManager = context.getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as? android.telephony.SubscriptionManager
+                val activeList = subscriptionManager?.activeSubscriptionInfoList
+                if (!activeList.isNullOrEmpty()) {
+                    val numberList = mutableListOf<String>()
+                    val providerList = mutableListOf<String>()
+                    for (info in activeList) {
+                        providerList.add(info.carrierName?.toString() ?: info.displayName?.toString() ?: "Unknown")
+                        val num = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            subscriptionManager.getPhoneNumber(info.subscriptionId)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            info.number
+                        }
+                        if (!num.isNullOrEmpty()) {
+                            numberList.add(num)
+                        }
+                    }
+                    if (numberList.isNotEmpty()) {
+                        details["mobile_number"] = numberList.joinToString(", ")
+                    }
+                    if (providerList.isNotEmpty()) {
+                        details["provider"] = providerList.joinToString(", ")
+                    }
+                } else {
+                    val line1Number = tm?.line1Number
+                    if (!line1Number.isNullOrEmpty()) {
+                        details["mobile_number"] = line1Number
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reading SIM metadata", e)
+        }
+        return details
+    }
+
     private fun handleSimStateChangeExplicit(simState: String) {
         if (!isMonitoringEnabled()) return
         val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
@@ -692,21 +761,27 @@ class MrpMonitorService : Service() {
 
         if (prevSimState == null || prevSimState != eventType) {
             Log.d(TAG, "Logging SIM event: $eventType")
+            val simMeta = getSimMetadata(this)
+            val finalMetadata = mutableMapOf<String, Any?>().apply {
+                put("sim_state", simState)
+                put("description", if (eventType == EventTypes.SIM_INSERTED) "SIM card inserted/ready" else "SIM card removed/absent")
+                putAll(simMeta)
+            }
             eventLogger.logEventSync(
                 eventType = eventType,
                 status = if (eventType == EventTypes.SIM_INSERTED) StatusValues.ENABLED else StatusValues.DISABLED,
-                metadata = mapOf(
-                    "sim_state" to simState,
-                    "description" to if (eventType == EventTypes.SIM_INSERTED) "SIM card inserted/ready" else "SIM card removed/absent"
-                )
+                metadata = finalMetadata
             )
+            // Trigger photo capture on SIM insertion/removal
+            wakeUpDevice()
+            takePhoto()
         }
     }
 
     private fun handleFactoryResetOrShutdown(action: String) {
         if (!isMonitoringEnabled()) return
-        Log.w(TAG, "Critical device reset/shutdown event: $action")
-
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        
         val eventType = when (action) {
             "android.intent.action.MASTER_CLEAR_NOTIFICATION",
             "android.intent.action.FACTORY_RESET" -> EventTypes.FACTORY_RESET
@@ -715,6 +790,10 @@ class MrpMonitorService : Service() {
             else -> EventTypes.FACTORY_RESET
         }
 
+        // Only log factory reset if setting is enabled
+        if (eventType == EventTypes.FACTORY_RESET && !settings.captureOnFactoryReset) return
+
+        Log.w(TAG, "Critical device reset/shutdown event: $action")
         eventLogger.logEventSync(
             eventType = eventType,
             status = StatusValues.ENABLED,
@@ -723,6 +802,34 @@ class MrpMonitorService : Service() {
                 "description" to "Device shutdown or factory reset initiated"
             )
         )
+        // Trigger photo capture on Factory Reset
+        if (eventType == EventTypes.FACTORY_RESET) {
+            wakeUpDevice()
+            takePhoto()
+        }
+    }
+
+    private var lastUsbState: Boolean? = null
+
+    private fun handleUsbChangeExplicit(isConnected: Boolean) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnUsb) return
+
+        val prev = lastUsbState
+        lastUsbState = isConnected
+
+        if (prev == null || prev != isConnected) {
+            Log.d(TAG, "USB state changed: isConnected=$isConnected")
+            eventLogger.logEventSync(
+                EventTypes.USB_CONNECTED,
+                if (isConnected) StatusValues.ENABLED else StatusValues.DISABLED,
+                mapOf(
+                    "description" to if (isConnected) "USB connection detected" else "USB disconnected",
+                    "source" to "MrpMonitorService"
+                )
+            )
+        }
     }
 
     private fun handleWrongUnlockAttemptExplicit() {
@@ -756,12 +863,14 @@ class MrpMonitorService : Service() {
         }
     }
 
+    @Volatile private var pendingPhotoCapture = false
+
     @SuppressLint("MissingPermission")
     private fun openCamera() {
-        // Check permission first before doing any camera operations
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED) {
             Log.w(TAG, "Camera permission not granted, skipping camera open")
+            pendingPhotoCapture = false
             return
         }
 
@@ -771,11 +880,13 @@ class MrpMonitorService : Service() {
         try {
             val cameraId = getFrontCameraId(cameraManager) ?: run {
                 Log.e(TAG, "No front camera found")
+                pendingPhotoCapture = false
                 return
             }
 
-            // Clean up any existing camera resources first
-            closeCamera()
+            if (cameraDevice != null) {
+                closeCamera()
+            }
 
             imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
@@ -798,17 +909,20 @@ class MrpMonitorService : Service() {
                     Log.w(TAG, "Camera disconnected")
                     camera.close()
                     cameraDevice = null
+                    pendingPhotoCapture = false
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.e(TAG, "Camera error: $error")
                     camera.close()
                     cameraDevice = null
+                    pendingPhotoCapture = false
                 }
             }, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open camera", e)
             closeCamera()
+            pendingPhotoCapture = false
         }
     }
 
@@ -839,16 +953,22 @@ class MrpMonitorService : Service() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
                         Log.d(TAG, "Capture session configured")
+                        if (pendingPhotoCapture) {
+                            pendingPhotoCapture = false
+                            executePhotoCapture()
+                        }
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         Log.e(TAG, "Capture session configuration failed")
+                        pendingPhotoCapture = false
                     }
                 },
                 backgroundHandler
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create capture session", e)
+            pendingPhotoCapture = false
         }
     }
 
@@ -872,19 +992,23 @@ class MrpMonitorService : Service() {
             return
         }
 
-        val camera = cameraDevice
-        val session = captureSession
-        val reader = imageReader
-        val handler = backgroundHandler
-
-        if (camera == null || session == null || reader == null || handler == null) {
-            Log.w(TAG, "Camera not ready, reopening...")
-            closeCamera()
-            backgroundHandler?.postDelayed({
-                openCamera()
-            }, 500)
-            return
+        Log.d(TAG, "Launching CameraCaptureActivity for selfie capture")
+        try {
+            val intent = Intent(this, CameraCaptureActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start CameraCaptureActivity", e)
         }
+    }
+
+    private fun executePhotoCapture() {
+        val camera = cameraDevice ?: return
+        val session = captureSession ?: return
+        val reader = imageReader ?: return
+        val handler = backgroundHandler ?: return
 
         try {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
@@ -925,6 +1049,10 @@ class MrpMonitorService : Service() {
             Log.d(TAG, "Photo saved: ${photoFile.path}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
+        } finally {
+            backgroundHandler?.postDelayed({
+                closeCamera()
+            }, 1000)
         }
     }
 
@@ -982,9 +1110,14 @@ class MrpMonitorService : Service() {
         }
 
         fun requestPhoto(context: Context) {
-            val intent = Intent(ACTION_REQUEST_PHOTO)
-            intent.setPackage(context.packageName)
-            context.sendBroadcast(intent)
+            val intent = Intent(context, MrpMonitorService::class.java).apply {
+                action = ACTION_REQUEST_PHOTO
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
     }
 }
