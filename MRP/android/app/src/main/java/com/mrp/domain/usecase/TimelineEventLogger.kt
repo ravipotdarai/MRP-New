@@ -8,6 +8,7 @@ import android.os.Looper
 import android.util.Log
 import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.model.*
+import kotlinx.coroutines.*
 
 /**
  * Centralized event logger that creates timeline entries with location and geofencing.
@@ -18,9 +19,10 @@ class TimelineEventLogger(private val context: Context) {
     private val timelineStorage = TimelineStorage(context)
     private val locationHelper = LocationHelper(context)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
-     * Log an event with optional location data
+     * Log an event with optional location data reliably in a background coroutine
      */
     fun logEvent(
         eventType: String,
@@ -31,14 +33,8 @@ class TimelineEventLogger(private val context: Context) {
             Log.d(TAG, "Debounced duplicate logEvent: $eventType:$status")
             return
         }
-        mainHandler.post {
-            locationHelper.getCurrentLocation { locationData ->
-                if (locationData != null) {
-                    logEventWithLocation(eventType, status, locationData, metadata)
-                } else {
-                    logEventWithoutLocation(eventType, status, metadata)
-                }
-            }
+        scope.launch {
+            logEventSync(eventType, status, metadata)
         }
     }
 

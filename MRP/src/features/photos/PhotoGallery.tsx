@@ -60,18 +60,30 @@ export function PhotoGallery() {
     );
   };
 
+  const formatPhotoEventName = (filename: string) => {
+    const nameWithoutExt = filename.replace(/\.jpe?g$/i, '');
+    const parts = nameWithoutExt.split('_');
+    if (parts.length >= 3) {
+      const eventParts = parts.slice(0, -2);
+      return eventParts.join(' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    return nameWithoutExt;
+  };
+
   const renderPhoto = ({item}: {item: Photo}) => (
     <TouchableOpacity
       style={styles.photoContainer}
       onPress={() => {
-        // Could open full-screen viewer
-        Alert.alert('Photo Details', `Captured: ${new Date(item.timestamp).toLocaleString()}`);
+        Alert.alert(
+          formatPhotoEventName(item.name),
+          `Captured: ${new Date(item.timestamp).toLocaleString()}`,
+        );
       }}
       onLongPress={() => deletePhoto(item)}>
       <Image source={{uri: `file://${item.path}`}} style={styles.photo} />
       <View style={styles.photoOverlay}>
-        <Text style={styles.photoTime} numberOfLines={1}>
-          {item.name.replace('.jpg', '')}
+        <Text style={[styles.photoTime, {fontWeight: 'bold', fontSize: 11}]} numberOfLines={1}>
+          {formatPhotoEventName(item.name)}
         </Text>
         <Text style={styles.photoTime}>
           {new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}

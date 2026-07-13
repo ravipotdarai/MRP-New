@@ -836,7 +836,7 @@ class MrpMonitorService : Service() {
             )
             // Trigger photo capture on SIM insertion/removal
             wakeUpDevice()
-            takePhoto()
+            takePhoto(eventType)
         }
     }
 
@@ -867,7 +867,7 @@ class MrpMonitorService : Service() {
         // Trigger photo capture on Factory Reset
         if (eventType == EventTypes.FACTORY_RESET) {
             wakeUpDevice()
-            takePhoto()
+            takePhoto(EventTypes.FACTORY_RESET)
         }
     }
 
@@ -913,7 +913,7 @@ class MrpMonitorService : Service() {
             metadata = mapOf("description" to "Wrong password entered")
         )
         wakeUpDevice()
-        takePhoto()
+        takePhoto(EventTypes.WRONG_UNLOCK_ATTEMPT)
     }
 
     private fun isMonitoringEnabled(): Boolean {

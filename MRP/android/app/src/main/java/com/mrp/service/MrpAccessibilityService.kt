@@ -65,7 +65,10 @@ class MrpAccessibilityService : AccessibilityService() {
         }
 
         // Detect biometric failure text on the lock screen
-        if (wasLocked && (
+        val packageName = event.packageName?.toString() ?: ""
+        val className = event.className?.toString() ?: ""
+        val isLockPackage = isLockScreenPackage(packageName, className)
+        if ((wasLocked || isLockPackage) && (
             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || 
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
             event.eventType == AccessibilityEvent.TYPE_ANNOUNCEMENT ||
@@ -77,10 +80,12 @@ class MrpAccessibilityService : AccessibilityService() {
                 val textContent = (textNodes.joinToString(" ") + " " + contentDesc).lowercase()
                 Log.d(TAG, "Lock screen text parsed: $textContent")
                 
-                if (textContent.contains("not recognized") || 
-                    textContent.contains("try again") || 
-                    textContent.contains("no match") || 
-                    textContent.contains("fingerprint didn't match")) {
+                val failureKeywords = listOf(
+                    "not recognized", "try again", "no match", "fingerprint didn't match",
+                    "fingerprint not recognized", "didn't recognize", "couldn't recognize",
+                    "incorrect", "wrong fingerprint", "biometric"
+                )
+                if (failureKeywords.any { textContent.contains(it) }) {
                     
                     Log.d(TAG, "Biometric failure detected via Accessibility: $textContent")
                     
@@ -91,10 +96,10 @@ class MrpAccessibilityService : AccessibilityService() {
                             try {
                                 val eventLogger = TimelineEventLogger(this)
                                 eventLogger.logEventSync(
-                                    eventType = EventTypes.WRONG_BIOMETRIC,
+                                    eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
                                     status = StatusValues.FAILED,
                                     metadata = mapOf(
-                                        "description" to "Biometric failure detected",
+                                        "description" to "Biometric unlock failure detected",
                                         "source" to "AccessibilityService",
                                         "detected_text" to textContent
                                     )
@@ -103,7 +108,7 @@ class MrpAccessibilityService : AccessibilityService() {
                                 // Give the lock screen a tiny moment to stabilize before snapping
                                 Thread.sleep(500)
                                 
-                                com.mrp.service.MrpMonitorService.requestPhoto(this, EventTypes.WRONG_BIOMETRIC)
+                                com.mrp.service.MrpMonitorService.requestPhoto(this, EventTypes.WRONG_UNLOCK_ATTEMPT)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to log biometric failure", e)
                             }

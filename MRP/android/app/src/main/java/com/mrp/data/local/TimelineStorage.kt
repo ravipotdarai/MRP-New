@@ -98,10 +98,11 @@ class TimelineStorage(private val context: Context) {
             val jsonArray = JSONArray(content)
             jsonArray.put(entryJson)
 
-            // Trim to max entries
+            // Trim to max entries (keeping the newest entries)
             val trimmedArray = if (jsonArray.length() > MAX_ENTRIES) {
                 val newArray = JSONArray()
-                for (i in 0 until MAX_ENTRIES) {
+                val startIndex = jsonArray.length() - MAX_ENTRIES
+                for (i in startIndex until jsonArray.length()) {
                     newArray.put(jsonArray.getJSONObject(i))
                 }
                 newArray

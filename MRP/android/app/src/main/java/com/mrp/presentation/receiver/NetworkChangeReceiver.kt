@@ -44,6 +44,11 @@ class NetworkChangeReceiver : BroadcastReceiver() {
 
         val settings = SettingsStorage(context).getSettings()
         if (!settings.isMonitoringEnabled) return
+        try {
+            com.mrp.service.MrpMonitorService.startService(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not auto-start monitor service from network receiver", e)
+        }
 
         when (intent.action) {
             Intent.ACTION_AIRPLANE_MODE_CHANGED -> {

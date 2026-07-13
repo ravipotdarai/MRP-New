@@ -62,7 +62,7 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
                 )
 
                 // Route the request through the background service to avoid blank screens
-                com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_PASSWORD)
+                com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_UNLOCK_ATTEMPT)
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling password failure in background thread", e)
             } finally {

@@ -9,6 +9,23 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: android.os.Bundle?) {
     super.onCreate(savedInstanceState)
+    ensureMonitoringRunning()
+  }
+
+  override fun onResume() {
+    super.onResume()
+    ensureMonitoringRunning()
+  }
+
+  private fun ensureMonitoringRunning() {
+    try {
+        val settings = com.mrp.data.local.SettingsStorage(this).getSettings()
+        if (settings.isMonitoringEnabled) {
+            com.mrp.service.MrpMonitorService.startService(this)
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("MainActivity", "Failed to start monitoring service", e)
+    }
   }
 
   /**
