@@ -20,6 +20,11 @@ class SimStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) return
 
+        if (com.mrp.service.MrpMonitorService.isServiceRunning) {
+            Log.d(TAG, "Service is running, letting service handle action: ${intent.action}")
+            return
+        }
+
         val settings = SettingsStorage(context).getSettings()
         if (!settings.isMonitoringEnabled) return
 

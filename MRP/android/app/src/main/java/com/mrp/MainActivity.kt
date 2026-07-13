@@ -9,14 +9,6 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: android.os.Bundle?) {
     super.onCreate(savedInstanceState)
-    try {
-      val settings = com.mrp.data.local.SettingsStorage(this).getSettings()
-      if (settings.isMonitoringEnabled) {
-        com.mrp.service.MrpMonitorService.startService(this)
-      }
-    } catch (e: Exception) {
-      android.util.Log.e("MainActivity", "Failed to auto-start MrpMonitorService", e)
-    }
   }
 
   /**

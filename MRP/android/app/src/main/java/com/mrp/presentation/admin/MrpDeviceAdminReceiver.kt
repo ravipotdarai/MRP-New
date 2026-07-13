@@ -40,29 +40,35 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
         val settings = SettingsStorage(context).getSettings()
         if (!settings.isMonitoringEnabled || !settings.captureOnWrongUnlock) return
 
-        val eventLogger = TimelineEventLogger(context)
-        eventLogger.logEventSync(
-            eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
-            status = StatusValues.FAILED,
-            metadata = mapOf(
-                "description" to "Wrong password/PIN/pattern attempted",
-                "source" to "DeviceAdminReceiver"
-            )
-        )
-        eventLogger.logEventSync(
-            eventType = EventTypes.WRONG_PASSWORD,
-            status = StatusValues.FAILED,
-            metadata = mapOf(
-                "description" to "Wrong password entered",
-                "source" to "DeviceAdminReceiver"
-            )
-        )
+        val pendingResult = goAsync()
+        Thread {
+            try {
+                val eventLogger = TimelineEventLogger(context)
+                eventLogger.logEventSync(
+                    eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
+                    status = StatusValues.FAILED,
+                    metadata = mapOf(
+                        "description" to "Wrong password/PIN/pattern attempted",
+                        "source" to "DeviceAdminReceiver"
+                    )
+                )
+                eventLogger.logEventSync(
+                    eventType = EventTypes.WRONG_PASSWORD,
+                    status = StatusValues.FAILED,
+                    metadata = mapOf(
+                        "description" to "Wrong password entered",
+                        "source" to "DeviceAdminReceiver"
+                    )
+                )
 
-        try {
-            com.mrp.service.MrpMonitorService.requestPhoto(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error requesting photo on password failure", e)
-        }
+                // Route the request through the background service to avoid blank screens
+                com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_PASSWORD)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling password failure in background thread", e)
+            } finally {
+                pendingResult.finish()
+            }
+        }.start()
     }
 
     override fun onPasswordSucceeded(context: Context, intent: Intent) {
@@ -72,19 +78,21 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
         Log.d(TAG, "Disable requested")
-        try {
-            val eventLogger = TimelineEventLogger(context)
-            eventLogger.logEventSync(
-                eventType = EventTypes.FACTORY_RESET,
-                status = "warning",
-                metadata = mapOf(
-                    "description" to "Device admin disable requested (possible factory reset prep)",
-                    "source" to "DeviceAdminReceiver"
+        Thread {
+            try {
+                val eventLogger = TimelineEventLogger(context)
+                eventLogger.logEventSync(
+                    eventType = EventTypes.FACTORY_RESET,
+                    status = "warning",
+                    metadata = mapOf(
+                        "description" to "Device admin disable requested (possible factory reset prep)",
+                        "source" to "DeviceAdminReceiver"
+                    )
                 )
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Error logging disable request", e)
-        }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error logging disable request", e)
+            }
+        }.start()
         return "Removing MRP admin will disable monitoring"
     }
 

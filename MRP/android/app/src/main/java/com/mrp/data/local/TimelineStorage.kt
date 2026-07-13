@@ -43,7 +43,7 @@ class TimelineStorage(private val context: Context) {
      */
     fun appendTimelineEntry(entry: TimelineEntry) {
         scope.launch {
-            fileMutex.withLock {
+            synchronized(globalWriteLock) {
                 appendEntrySyncInternal(entry)
             }
         }
@@ -54,15 +54,13 @@ class TimelineStorage(private val context: Context) {
      * Uses synchronized block for thread safety without coroutines.
      */
     fun appendTimelineEntrySync(entry: TimelineEntry) {
-        synchronized(writeLock) {
+        synchronized(globalWriteLock) {
             appendEntrySyncInternal(entry)
         }
     }
 
-    private val writeLock = Any()
-
     private fun appendEntrySync(entry: TimelineEntry) {
-        synchronized(writeLock) {
+        synchronized(globalWriteLock) {
             appendEntrySyncInternal(entry)
         }
     }
@@ -137,19 +135,21 @@ class TimelineStorage(private val context: Context) {
     fun getTimeline(): List<TimelineEntry> {
         if (!timelineFile.exists()) return emptyList()
 
-        return try {
-            val content = timelineFile.readText(StandardCharsets.UTF_8)
-            if (content.isBlank()) return emptyList()
+        return synchronized(globalWriteLock) {
+            try {
+                val content = timelineFile.readText(StandardCharsets.UTF_8)
+                if (content.isBlank()) return@synchronized emptyList()
 
-            val array = JSONArray(content)
-            val list = mutableListOf<TimelineEntry>()
-            for (i in 0 until array.length()) {
-                list.add(jsonToEntry(array.getJSONObject(i)))
+                val array = JSONArray(content)
+                val list = mutableListOf<TimelineEntry>()
+                for (i in 0 until array.length()) {
+                    list.add(jsonToEntry(array.getJSONObject(i)))
+                }
+                list
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read timeline", e)
+                emptyList()
             }
-            list
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read timeline", e)
-            emptyList()
         }
     }
 
@@ -158,9 +158,14 @@ class TimelineStorage(private val context: Context) {
     }
 
     fun clearAllTimeline() {
-        synchronized(writeLock) {
+        synchronized(globalWriteLock) {
             if (timelineFile.exists()) {
                 timelineFile.delete()
+            }
+            
+            val photosDir = getPhotosDirectory()
+            if (photosDir.exists()) {
+                photosDir.deleteRecursively()
             }
         }
     }
@@ -197,5 +202,6 @@ class TimelineStorage(private val context: Context) {
         private const val TAG = "TimelineStorage"
         private const val TIMELINE_FILE = "timeline.json"
         private const val MAX_ENTRIES = 1000
+        private val globalWriteLock = Any()
     }
 }

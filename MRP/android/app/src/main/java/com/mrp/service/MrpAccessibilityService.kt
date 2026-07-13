@@ -27,7 +27,10 @@ class MrpAccessibilityService : AccessibilityService() {
         settings = SettingsStorage(this)
 
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or 
+                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or 
+                         AccessibilityEvent.TYPE_ANNOUNCEMENT or
+                         AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
@@ -38,27 +41,76 @@ class MrpAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            return
+        if (event == null) return
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val packageName = event.packageName?.toString() ?: ""
+            val className = event.className?.toString() ?: ""
+
+            Log.d(TAG, "Window changed: $packageName / $className")
+
+            val isLockScreen = isLockScreenPackage(packageName, className)
+
+            if (isLockScreen) {
+                if (!wasLocked) {
+                    wasLocked = true
+                    Log.d(TAG, "Device locked: $packageName")
+                    handleScreenLock()
+                }
+            } else if (wasLocked) {
+                wasLocked = false
+                Log.d(TAG, "Device unlocked: $packageName")
+                handleScreenUnlock()
+            }
         }
 
-        val packageName = event.packageName?.toString() ?: return
-        val className = event.className?.toString() ?: return
+        // Detect biometric failure text on the lock screen
+        if (wasLocked && (
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || 
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            event.eventType == AccessibilityEvent.TYPE_ANNOUNCEMENT ||
+            event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED)) {
+            
+            val textNodes = event.text ?: emptyList()
+            val contentDesc = event.contentDescription?.toString() ?: ""
+            if (textNodes.isNotEmpty() || contentDesc.isNotEmpty()) {
+                val textContent = (textNodes.joinToString(" ") + " " + contentDesc).lowercase()
+                Log.d(TAG, "Lock screen text parsed: $textContent")
+                
+                if (textContent.contains("not recognized") || 
+                    textContent.contains("try again") || 
+                    textContent.contains("no match") || 
+                    textContent.contains("fingerprint didn't match")) {
+                    
+                    Log.d(TAG, "Biometric failure detected via Accessibility: $textContent")
+                    
+                    val currentSettings = try { this.settings?.getSettings() } catch (e: Exception) { null }
+                    if (currentSettings?.isMonitoringEnabled == true && currentSettings.captureOnWrongUnlock) {
+                        // Log event and request selfie in background
+                        Thread {
+                            try {
+                                val eventLogger = TimelineEventLogger(this)
+                                eventLogger.logEventSync(
+                                    eventType = EventTypes.WRONG_BIOMETRIC,
+                                    status = StatusValues.FAILED,
+                                    metadata = mapOf(
+                                        "description" to "Biometric failure detected",
+                                        "source" to "AccessibilityService",
+                                        "detected_text" to textContent
+                                    )
+                                )
 
-        Log.d(TAG, "Window changed: $packageName / $className")
-
-        val isLockScreen = isLockScreenPackage(packageName, className)
-
-        if (isLockScreen) {
-            if (!wasLocked) {
-                wasLocked = true
-                Log.d(TAG, "Device locked: $packageName")
-                handleScreenLock()
+                                // Give the lock screen a tiny moment to stabilize before snapping
+                                Thread.sleep(500)
+                                
+                                com.mrp.service.MrpMonitorService.requestPhoto(this, EventTypes.WRONG_BIOMETRIC)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to log biometric failure", e)
+                            }
+                        }.start()
+                    }
+                }
             }
-        } else if (wasLocked) {
-            wasLocked = false
-            Log.d(TAG, "Device unlocked: $packageName")
-            handleScreenUnlock()
         }
     }
 
@@ -106,7 +158,6 @@ class MrpAccessibilityService : AccessibilityService() {
     private fun handleScreenUnlock() {
         // Screen unlock is handled by MrpMonitorService via BroadcastReceiver
         // Accessibility service does NOT log screen lock/unlock to avoid duplicates
-        MrpMonitorService.requestPhoto(this)
     }
 
     companion object {

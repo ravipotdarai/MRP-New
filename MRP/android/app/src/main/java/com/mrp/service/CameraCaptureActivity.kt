@@ -29,6 +29,7 @@ class CameraCaptureActivity : Activity() {
     private var imageReader: ImageReader? = null
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
+    private var eventName: String = "unknown"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,9 +49,16 @@ class CameraCaptureActivity : Activity() {
             )
         }
 
-        // Set window to transparent
+        // Set window to transparent and minimize size to avoid blank screen flash on lockscreen
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.setDimAmount(0f)
+        val params = window.attributes
+        params.alpha = 0.0f
+        params.width = 1
+        params.height = 1
+        window.attributes = params
+
+        eventName = intent.getStringExtra("eventName") ?: "unknown"
 
         startBackgroundThread()
         takeSelfie()
@@ -59,12 +67,22 @@ class CameraCaptureActivity : Activity() {
     private fun startBackgroundThread() {
         backgroundThread = HandlerThread("CameraCaptureBgThread").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
+        
+        // Failsafe: Force close the activity after 3 seconds if the image never arrives
+        backgroundHandler?.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                Log.w(TAG, "Camera capture timed out. Force finishing to prevent blank screen.")
+                cleanupAndFinish()
+            }
+        }, 3000)
     }
 
     private fun stopBackgroundThread() {
         backgroundThread?.quitSafely()
         try {
-            backgroundThread?.join()
+            if (Thread.currentThread() !== backgroundThread) {
+                backgroundThread?.join()
+            }
             backgroundThread = null
             backgroundHandler = null
         } catch (e: InterruptedException) {
@@ -183,7 +201,8 @@ class CameraCaptureActivity : Activity() {
         }
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val photoFile = File(photosDir, "intruder_$timestamp.jpg")
+        val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9_]"), "_").uppercase(Locale.getDefault())
+        val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 
         try {
             val buffer = image.planes[0].buffer

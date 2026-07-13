@@ -129,9 +129,24 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun deleteAllPhotos(promise: Promise) {
+        try {
+            val storage = TimelineStorage(reactContext)
+            val photosDir = storage.getPhotosDirectory()
+            if (photosDir.exists() && photosDir.isDirectory) {
+                photosDir.listFiles()?.forEach { it.delete() }
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete all photos", e)
+            promise.reject("DELETE_ALL_ERROR", "Failed to delete all photos", e)
+        }
+    }
+
+    @ReactMethod
     fun takePhoto(promise: Promise) {
         try {
-            MrpMonitorService.requestPhoto(reactContext)
+            MrpMonitorService.requestPhoto(reactContext, "TEST_CAPTURE")
             promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to take photo", e)

@@ -70,8 +70,11 @@ export function PhotoGallery() {
       onLongPress={() => deletePhoto(item)}>
       <Image source={{uri: `file://${item.path}`}} style={styles.photo} />
       <View style={styles.photoOverlay}>
+        <Text style={styles.photoTime} numberOfLines={1}>
+          {item.name.replace('.jpg', '')}
+        </Text>
         <Text style={styles.photoTime}>
-          {new Date(item.timestamp).toLocaleDateString()}
+          {new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString()}
         </Text>
       </View>
     </TouchableOpacity>
@@ -107,20 +110,57 @@ export function PhotoGallery() {
       )}
 
       {photos.length > 0 && (
-        <Button
-          title="Test Capture"
-          onPress={async () => {
-            await mrpmModule.takePhoto();
-            loadPhotos();
-          }}
-          style={styles.testButton}
-        />
+        <View style={styles.actionRow}>
+          <Button
+            title="Delete All Images"
+            onPress={() => {
+              Alert.alert(
+                'Delete All Photos',
+                'Are you sure you want to delete ALL photos?',
+                [
+                  {text: 'Cancel', style: 'cancel'},
+                  {
+                    text: 'Delete All',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await mrpmModule.deleteAllPhotos();
+                        setPhotos([]);
+                      } catch (e) {
+                        console.error('Failed to delete all photos:', e);
+                      }
+                    },
+                  },
+                ],
+              );
+            }}
+            style={[styles.testButton, {backgroundColor: '#F44336'}]}
+          />
+          <Button
+            title="Test Capture"
+            onPress={async () => {
+              await mrpmModule.takePhoto();
+              loadPhotos();
+            }}
+            style={styles.testButton}
+          />
+        </View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  testButton: {
+    flex: 1,
+    marginHorizontal: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
@@ -184,8 +224,5 @@ const styles = StyleSheet.create({
   photoTime: {
     color: '#FFF',
     fontSize: 10,
-  },
-  testButton: {
-    margin: 16,
   },
 });

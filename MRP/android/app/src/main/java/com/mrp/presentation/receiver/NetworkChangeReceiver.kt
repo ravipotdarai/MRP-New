@@ -27,6 +27,11 @@ class NetworkChangeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null || intent == null) return
 
+        if (com.mrp.service.MrpMonitorService.isServiceRunning) {
+            Log.d(TAG, "Service is running, letting service handle action: ${intent.action}")
+            return
+        }
+
         if (intent.action == "com.mrp.TEST_SET_SETTING") {
             val key = intent.getStringExtra("key")
             val value = intent.getBooleanExtra("value", true)
@@ -95,7 +100,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
 
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
-            eventType = EventTypes.AIRPLANE_MODE_TOGGLE,
+            eventType = if (isEnabled) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED",
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "previous_state" to (previous?.toString() ?: "unknown"),
@@ -125,7 +130,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
             Log.d(TAG, "WiFi state changed: state=$wifiState, enabled=$isEnabled, bssidChanged=$bssidChanged")
             val eventLogger = TimelineEventLogger(context)
             eventLogger.logEventSync(
-                eventType = EventTypes.WIFI_TOGGLE,
+                eventType = if (isEnabled) "WIFI_ENABLED" else "WIFI_DISABLED",
                 status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
                 metadata = metadata
             )
@@ -148,7 +153,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
 
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
-            eventType = EventTypes.MOBILE_DATA_TOGGLE,
+            eventType = if (isMobileEnabled) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED",
             status = if (isMobileEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "network_type" to (capabilities?.toString() ?: "unknown"),
@@ -168,7 +173,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
 
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
-            eventType = EventTypes.HOTSPOT_TOGGLE,
+            eventType = if (isEnabled) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED",
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "source" to "NetworkChangeReceiver"

@@ -6,15 +6,26 @@ import mrpmModule, {MonitoringEvent} from '../../shared/hooks/useNativeBridge';
 const EVENT_ICONS: Record<string, string> = {
   WRONG_PASSWORD: '🔐',
   WRONG_BIOMETRIC: '👆',
-  AIRPLANE_MODE: '✈️',
   WIFI_TOGGLE: '📶',
+  WIFI_ENABLED: '📶',
+  WIFI_DISABLED: '📶',
   MOBILE_DATA_TOGGLE: '📱',
+  MOBILE_DATA_ENABLED: '📱',
+  MOBILE_DATA_DISABLED: '📱',
   HOTSPOT_TOGGLE: '🔥',
+  HOTSPOT_ENABLED: '🔥',
+  HOTSPOT_DISABLED: '🔥',
+  BLUETOOTH_TOGGLE: '🦷',
+  BLUETOOTH_ENABLED: '🦷',
+  BLUETOOTH_DISABLED: '🦷',
+  AIRPLANE_MODE_ENABLED: '✈️',
+  AIRPLANE_MODE_DISABLED: '✈️',
   SIM_REMOVED: '📤',
   SIM_INSERTED: '📥',
   FACTORY_RESET: '⚠️',
   DEVICE_BOOT: '🔄',
   USB_CONNECTED: '🔌',
+  USB_DISCONNECTED: '🚫',
 };
 
 export function EventTimeline() {

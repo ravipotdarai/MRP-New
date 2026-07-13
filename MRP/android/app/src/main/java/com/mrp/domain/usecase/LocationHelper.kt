@@ -56,7 +56,10 @@ class LocationHelper(private val context: Context) {
 
         scope.launch {
             try {
-                val location = getLocationAsync()
+                // Give GPS up to 8 seconds to get a fresh lock (crucial when screen is off)
+                val location = kotlinx.coroutines.withTimeoutOrNull(8000L) {
+                    getLocationAsync()
+                }
                 Log.d(TAG, "getCurrentLocation: ${location?.latitude}, ${location?.longitude}")
                 val locationData = location?.let {
                     LocationData(
@@ -82,18 +85,18 @@ class LocationHelper(private val context: Context) {
         fusedLocationClient.lastLocation
             .addOnSuccessListener { location ->
                 if (location != null && isLocationFresh(location)) {
-                    cont.resume(location)
+                    if (cont.isActive) cont.resume(location)
                 } else {
                     // Request fresh location
                     requestFreshLocation { freshLocation ->
                         if (freshLocation != null) {
-                            cont.resume(freshLocation)
+                            if (cont.isActive) cont.resume(freshLocation)
                         } else {
                             // Fall back to last known even if old
                             fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                                cont.resume(loc)
+                                if (cont.isActive) cont.resume(loc)
                             }.addOnFailureListener {
-                                cont.resume(null)
+                                if (cont.isActive) cont.resume(null)
                             }
                         }
                     }
@@ -101,7 +104,7 @@ class LocationHelper(private val context: Context) {
             }
             .addOnFailureListener {
                 Log.e(TAG, "Last location failed", it)
-                cont.resume(null)
+                if (cont.isActive) cont.resume(null)
             }
     }
 
@@ -116,10 +119,14 @@ class LocationHelper(private val context: Context) {
             setWaitForAccurateLocation(true)
         }.build()
 
+        val isInvoked = java.util.concurrent.atomic.AtomicBoolean(false)
+
         val locationCallback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 fusedLocationClient.removeLocationUpdates(this)
-                callback(result.lastLocation)
+                if (isInvoked.compareAndSet(false, true)) {
+                    callback(result.lastLocation)
+                }
             }
         }
 
@@ -134,11 +141,15 @@ class LocationHelper(private val context: Context) {
             scope.launch {
                 delay(10000)
                 fusedLocationClient.removeLocationUpdates(locationCallback)
-                callback(null)
+                if (isInvoked.compareAndSet(false, true)) {
+                    callback(null)
+                }
             }
         } catch (e: SecurityException) {
             Log.e(TAG, "Security exception requesting location", e)
-            callback(null)
+            if (isInvoked.compareAndSet(false, true)) {
+                callback(null)
+            }
         }
     }
 
