@@ -104,7 +104,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Airplane mode changed: enabled=$isEnabled")
 
         val eventLogger = TimelineEventLogger(context)
-        eventLogger.logEventSync(
+        eventLogger.logEvent(
             eventType = if (isEnabled) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED",
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
@@ -134,7 +134,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         if (previous == null || previous != wifiState || bssidChanged) {
             Log.d(TAG, "WiFi state changed: state=$wifiState, enabled=$isEnabled, bssidChanged=$bssidChanged")
             val eventLogger = TimelineEventLogger(context)
-            eventLogger.logEventSync(
+            eventLogger.logEvent(
                 eventType = if (isEnabled) "WIFI_ENABLED" else "WIFI_DISABLED",
                 status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
                 metadata = metadata
@@ -157,7 +157,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Mobile data changed: enabled=$isMobileEnabled")
 
         val eventLogger = TimelineEventLogger(context)
-        eventLogger.logEventSync(
+        eventLogger.logEvent(
             eventType = if (isMobileEnabled) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED",
             status = if (isMobileEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
@@ -177,7 +177,7 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Hotspot state changed explicit: enabled=$isEnabled")
 
         val eventLogger = TimelineEventLogger(context)
-        eventLogger.logEventSync(
+        eventLogger.logEvent(
             eventType = if (isEnabled) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED",
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(

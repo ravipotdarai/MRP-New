@@ -27,10 +27,7 @@ class MrpAccessibilityService : AccessibilityService() {
         settings = SettingsStorage(this)
 
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or 
-                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or 
-                         AccessibilityEvent.TYPE_ANNOUNCEMENT or
-                         AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
+            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
@@ -68,12 +65,7 @@ class MrpAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: ""
         val className = event.className?.toString() ?: ""
         val isLockPackage = isLockScreenPackage(packageName, className)
-        if ((wasLocked || isLockPackage) && (
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED || 
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
-            event.eventType == AccessibilityEvent.TYPE_ANNOUNCEMENT ||
-            event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED)) {
-            
+        if (wasLocked || isLockPackage) {
             val textNodes = event.text ?: emptyList()
             val contentDesc = event.contentDescription?.toString() ?: ""
             if (textNodes.isNotEmpty() || contentDesc.isNotEmpty()) {
@@ -83,11 +75,14 @@ class MrpAccessibilityService : AccessibilityService() {
                 val failureKeywords = listOf(
                     "not recognized", "try again", "no match", "fingerprint didn't match",
                     "fingerprint not recognized", "didn't recognize", "couldn't recognize",
-                    "incorrect", "wrong fingerprint", "biometric"
+                    "incorrect", "wrong fingerprint", "biometric", "face not recognized",
+                    "pin incorrect", "pattern incorrect", "password incorrect",
+                    "too many attempts", "unlock failed", "failed to unlock",
+                    "clean sensor", "partial fingerprint", "couldn't verify",
+                    "press harder", "move finger", "wrong", "error", "failed", "mismatch"
                 )
                 if (failureKeywords.any { textContent.contains(it) }) {
-                    
-                    Log.d(TAG, "Biometric failure detected via Accessibility: $textContent")
+                    Log.d(TAG, "Unlock/Biometric failure detected via Accessibility: $textContent")
                     
                     val currentSettings = try { this.settings?.getSettings() } catch (e: Exception) { null }
                     if (currentSettings?.isMonitoringEnabled == true && currentSettings.captureOnWrongUnlock) {
@@ -95,7 +90,7 @@ class MrpAccessibilityService : AccessibilityService() {
                         Thread {
                             try {
                                 val eventLogger = TimelineEventLogger(this)
-                                eventLogger.logEventSync(
+                                eventLogger.logEvent(
                                     eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
                                     status = StatusValues.FAILED,
                                     metadata = mapOf(

@@ -227,7 +227,7 @@ class TimelineEventLogger(private val context: Context) {
         @Volatile
         private var lastValidLocation: Location? = null
         private val lastEventTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
-        private const val DEBOUNCE_MS = 3500L
+        private const val DEBOUNCE_MS = 1000L
 
         fun shouldDebounce(eventType: String, status: String): Boolean {
             val key = "$eventType:$status"

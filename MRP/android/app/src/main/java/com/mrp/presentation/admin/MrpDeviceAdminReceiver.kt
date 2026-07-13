@@ -44,15 +44,7 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
         Thread {
             try {
                 val eventLogger = TimelineEventLogger(context)
-                eventLogger.logEventSync(
-                    eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
-                    status = StatusValues.FAILED,
-                    metadata = mapOf(
-                        "description" to "Wrong password/PIN/pattern attempted",
-                        "source" to "DeviceAdminReceiver"
-                    )
-                )
-                eventLogger.logEventSync(
+                eventLogger.logEvent(
                     eventType = EventTypes.WRONG_PASSWORD,
                     status = StatusValues.FAILED,
                     metadata = mapOf(
@@ -60,8 +52,18 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
                         "source" to "DeviceAdminReceiver"
                     )
                 )
+                com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_PASSWORD)
 
-                // Route the request through the background service to avoid blank screens
+                Thread.sleep(800) // Slight delay so camera session closes cleanly before second capture
+
+                eventLogger.logEvent(
+                    eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
+                    status = StatusValues.FAILED,
+                    metadata = mapOf(
+                        "description" to "Wrong unlock attempt detected",
+                        "source" to "DeviceAdminReceiver"
+                    )
+                )
                 com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_UNLOCK_ATTEMPT)
             } catch (e: Exception) {
                 Log.e(TAG, "Error handling password failure in background thread", e)

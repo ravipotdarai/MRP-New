@@ -148,12 +148,14 @@ class MrpMonitorService : Service() {
                     Intent.ACTION_USER_PRESENT -> {
                         handleUserUnlocked()
                     }
-                    WifiManager.WIFI_STATE_CHANGED_ACTION -> {
-                        if (wifiState == WifiManager.WIFI_STATE_ENABLED) {
-                            handleWifiChangeExplicit(true, forceLog = true)
-                        } else if (wifiState == WifiManager.WIFI_STATE_DISABLED) {
-                            handleWifiChangeExplicit(false, forceLog = true)
+                    WifiManager.WIFI_STATE_CHANGED_ACTION, "android.net.wifi.STATE_CHANGE" -> {
+                        val wifiMgr = context?.applicationContext?.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                        val isWifiOn = when (wifiState) {
+                            WifiManager.WIFI_STATE_ENABLED -> true
+                            WifiManager.WIFI_STATE_DISABLED -> false
+                            else -> wifiMgr?.isWifiEnabled == true
                         }
+                        handleWifiChangeExplicit(isWifiOn, forceLog = (wifiState == WifiManager.WIFI_STATE_ENABLED || wifiState == WifiManager.WIFI_STATE_DISABLED))
                     }
                     "com.mrp.TEST_WIFI_TOGGLE" -> {
                         handleWifiChangeExplicit(testWifiState, forceLog = false)
@@ -303,6 +305,12 @@ class MrpMonitorService : Service() {
             val hasCoarseLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             if (hasFineLocation || hasCoarseLocation) {
                 types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val hasCamera = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                if (hasCamera) {
+                    types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                }
             }
             try {
                 startForeground(NOTIFICATION_ID, notification, types)
@@ -1008,7 +1016,11 @@ class MrpMonitorService : Service() {
 
         try {
             val surface = reader.surface
-            val captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            val captureRequestBuilder = try {
+                camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            } catch (e: Exception) {
+                camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+            }
             captureRequestBuilder.addTarget(surface)
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
 
@@ -1071,7 +1083,11 @@ class MrpMonitorService : Service() {
         val handler = backgroundHandler ?: return
 
         try {
-            val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            val captureBuilder = try {
+                camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            } catch (e: Exception) {
+                camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+            }
             captureBuilder.addTarget(reader.surface)
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
