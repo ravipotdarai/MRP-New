@@ -1175,6 +1175,16 @@ class MrpMonitorService : Service() {
 
         fun requestPhoto(context: Context, eventName: String = "unknown") {
             try {
+                val serviceIntent = Intent(context, MrpMonitorService::class.java).apply {
+                    action = ACTION_REQUEST_PHOTO
+                    putExtra("eventName", eventName)
+                }
+                context.startService(serviceIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to request photo via MrpMonitorService", e)
+            }
+
+            try {
                 val intent = Intent(context, CameraCaptureActivity::class.java).apply {
                     putExtra("eventName", eventName)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

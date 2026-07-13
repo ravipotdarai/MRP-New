@@ -34,7 +34,7 @@ class TimelineEventLogger(private val context: Context) {
             return
         }
         scope.launch {
-            logEventSync(eventType, status, metadata)
+            logEventSyncInternal(eventType, status, metadata, checkDebounce = false)
         }
     }
 
@@ -42,8 +42,17 @@ class TimelineEventLogger(private val context: Context) {
      * Log event synchronously (for use in BroadcastReceivers)
      */
     fun logEventSync(eventType: String, status: String, metadata: Map<String, Any?> = emptyMap()) {
+        logEventSyncInternal(eventType, status, metadata, checkDebounce = true)
+    }
+
+    private fun logEventSyncInternal(
+        eventType: String,
+        status: String,
+        metadata: Map<String, Any?>,
+        checkDebounce: Boolean
+    ) {
         try {
-            if (shouldDebounce(eventType, status)) {
+            if (checkDebounce && shouldDebounce(eventType, status)) {
                 Log.d(TAG, "Debounced duplicate logEventSync: $eventType:$status")
                 return
             }
