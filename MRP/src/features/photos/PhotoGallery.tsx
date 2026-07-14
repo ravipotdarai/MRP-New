@@ -11,6 +11,7 @@ import {
   Modal,
   ScrollView,
   SafeAreaView,
+  Linking,
 } from 'react-native';
 import {Card} from '../../shared/components/Card';
 import {Button} from '../../shared/components/Button';
@@ -69,6 +70,13 @@ export function PhotoGallery() {
       return eventParts.join(' ').replace(/\b\w/g, c => c.toUpperCase());
     }
     return nameWithoutExt.replace(/_/g, ' ').toUpperCase();
+  };
+
+  const openLocation = (lat: number, lng: number) => {
+    const url = `https://maps.google.com/?q=${lat},${lng}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open maps');
+    });
   };
 
   const loadData = async (isRefresh = false) => {
@@ -340,9 +348,16 @@ export function PhotoGallery() {
                       <>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>📍 Address:</Text>
-                          <Text style={styles.detailValue}>
-                            {matchedEvent.location.detailed_address || 'Address lookup in progress'}
-                          </Text>
+                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                            <Text style={styles.detailValue}>
+                              {matchedEvent.location.detailed_address || 'Address lookup in progress'}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.mapButton}
+                              onPress={() => openLocation(matchedEvent.location!.latitude, matchedEvent.location!.longitude)}>
+                              <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>🌐 GPS Coordinates:</Text>
@@ -626,6 +641,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 16,
+  },
+  mapButton: {
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  mapButtonText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '500',
   },
   deleteBtn: {
     flex: 1,
