@@ -150,9 +150,9 @@ class MrpMonitorService : Service() {
                     }
                     WifiManager.WIFI_STATE_CHANGED_ACTION -> {
                         if (wifiState == WifiManager.WIFI_STATE_ENABLED) {
-                            handleWifiChangeExplicit(isWifiOn = true, forceLog = true)
-                        } else if (wifiState == WifiManager.WIFI_STATE_DISABLED) {
-                            handleWifiChangeExplicit(isWifiOn = false, forceLog = true)
+                            handleWifiChangeExplicit(isWifiOn = true, forceLog = false)
+                        } else if (wifiState == WifiManager.WIFI_STATE_DISABLED || wifiState == WifiManager.WIFI_STATE_DISABLING) {
+                            handleWifiChangeExplicit(isWifiOn = false, forceLog = false)
                         }
                         scheduleToggleEvaluation()
                     }
@@ -557,7 +557,7 @@ class MrpMonitorService : Service() {
                 val state = wifiManager.wifiState
                 if (state == WifiManager.WIFI_STATE_ENABLED) {
                     handleWifiChangeExplicit(true, false)
-                } else if (state == WifiManager.WIFI_STATE_DISABLED) {
+                } else if (state == WifiManager.WIFI_STATE_DISABLED || state == WifiManager.WIFI_STATE_DISABLING) {
                     handleWifiChangeExplicit(false, false)
                 }
             } catch (e: Exception) {
@@ -746,14 +746,15 @@ class MrpMonitorService : Service() {
         lastWifiBssid = currentBssid
 
         val isNetworkChange = isWifiOn && prev == 1 && current == 1 && prevBssid != currentBssid && currentBssid != "Unavailable" && currentBssid != "02:00:00:00:00:00"
+        val isNetworkLost = isWifiOn && prev == 1 && current == 1 && prevBssid != currentBssid && (currentBssid == "Unavailable" || currentBssid == "02:00:00:00:00:00")
 
-        // Log if the Wi-Fi adapter toggles ON/OFF, OR if forced, OR if a genuine network change occurred
-        if (forceLog || prev == null || prev != current || isNetworkChange) {
-            Log.d(TAG, "Logging Wi-Fi toggle/network change: isWifiOn=$isWifiOn, meta=$metadata")
-            val eventName = if (isWifiOn) "WIFI_ENABLED" else "WIFI_DISABLED"
+        // Log if the Wi-Fi adapter toggles ON/OFF, OR if forced, OR if a genuine network change occurred, OR if the network was disconnected
+        if (forceLog || prev == null || prev != current || isNetworkChange || isNetworkLost) {
+            Log.d(TAG, "Logging Wi-Fi toggle/network change: isWifiOn=$isWifiOn, isNetworkLost=$isNetworkLost, meta=$metadata")
+            val eventName = if (isNetworkLost) "WIFI_DISCONNECTED" else if (isWifiOn) "WIFI_ENABLED" else "WIFI_DISABLED"
             eventLogger.logEvent(
                 eventName,
-                if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED,
+                if (isNetworkLost) "DISCONNECTED" else if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED,
                 metadata
             )
             requestPhoto(this, eventName)

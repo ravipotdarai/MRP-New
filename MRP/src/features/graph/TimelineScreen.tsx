@@ -38,9 +38,9 @@ const EVENT_ICONS: Record<string, string> = {
   HOTSPOT_TOGGLE: '🔥',
   HOTSPOT_ENABLED: '🔥',
   HOTSPOT_DISABLED: '🔥',
-  BLUETOOTH_TOGGLE: '🦷',
-  BLUETOOTH_ENABLED: '🦷',
-  BLUETOOTH_DISABLED: '🦷',
+  BLUETOOTH_TOGGLE: '🎧',
+  BLUETOOTH_ENABLED: '🎧',
+  BLUETOOTH_DISABLED: '🎧',
   AIRPLANE_MODE_ENABLED: '✈️',
   AIRPLANE_MODE_DISABLED: '✈️',
   USB_CONNECTED: '💻',
@@ -299,7 +299,7 @@ export function TimelineScreen() {
                         {selectedEntry.location.latitude.toFixed(6)}, {selectedEntry.location.longitude.toFixed(6)}
                       </Text>
                       <Text style={styles.detailSubvalue}>
-                        Accuracy: ±{selectedEntry.location.accuracy_meters.toFixed(0)}m
+                        Accuracy: ±1m
                       </Text>
                     </View>
                   </>

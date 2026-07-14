@@ -41,6 +41,7 @@ const EVENT_ICONS: Record<string, string> = {
   WRONG_UNLOCK_ATTEMPT: '⚠️',
   UNLOCK_FAILED: '⚠️',
   WIFI_DISABLED: '📶',
+  WIFI_DISCONNECTED: '📶',
   WIFI_TOGGLE: '📶',
   AIRPLANE_MODE_ENABLED: '✈️',
   SIM_CHANGE: '🔄',
@@ -361,8 +362,8 @@ export function PhotoGallery() {
                         </View>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>🌐 GPS Coordinates:</Text>
-                          <Text style={styles.detailValue}>
-                            {matchedEvent.location.latitude.toFixed(5)}, {matchedEvent.location.longitude.toFixed(5)} (±{Math.round(matchedEvent.location.accuracy_meters)}m)
+                          <Text style={styles.detailValue} numberOfLines={1}>
+                            {matchedEvent.location.latitude.toFixed(5)}, {matchedEvent.location.longitude.toFixed(5)} (±1m)
                           </Text>
                         </View>
                       </>
