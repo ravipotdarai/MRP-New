@@ -35,6 +35,7 @@ import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.model.*
 import com.mrp.domain.usecase.LocationHelper
 import com.mrp.domain.usecase.TimelineEventLogger
+import com.mrp.domain.usecase.AppUsageTracker
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.util.OemBatteryMitigation
 import java.io.File
@@ -60,6 +61,7 @@ class MrpMonitorService : Service() {
     private lateinit var settingsStorage: SettingsStorage
     private lateinit var eventLogger: TimelineEventLogger
     private lateinit var locationHelper: LocationHelper
+    private lateinit var appUsageTracker: AppUsageTracker
 
     // Track states for change detection
     private var lastScreenState: Boolean? = null
@@ -70,6 +72,7 @@ class MrpMonitorService : Service() {
     private var lastBluetoothState: Boolean? = null
     private var lastSimEventType: String? = null
     private var lastWifiBssid: String? = null
+    private var lastAppUsageCheckTime: Long = 0
 
     // Handler for delayed tasks
     private val handler = Handler(Looper.getMainLooper())
@@ -277,6 +280,7 @@ class MrpMonitorService : Service() {
         settingsStorage = SettingsStorage(this)
         eventLogger = TimelineEventLogger(this)
         locationHelper = LocationHelper(this)
+        appUsageTracker = AppUsageTracker(this)
 
         startBackgroundThread()
         createNotificationChannel()
@@ -641,6 +645,15 @@ class MrpMonitorService : Service() {
         }
 
         // Hotspot is handled exclusively by WIFI_AP_STATE_CHANGED and handleHotspotChange
+
+        // App Usage Analytics (Throttle to every 5 minutes)
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastAppUsageCheckTime >= 5 * 60 * 1000) {
+            if (appUsageTracker.hasUsageStatsPermission()) {
+                appUsageTracker.trackUsage()
+                lastAppUsageCheckTime = currentTime
+            }
+        }
     }
 
     private fun handleHotspotChangeExplicit(isOn: Boolean) {

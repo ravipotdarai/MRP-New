@@ -16,6 +16,8 @@ import com.mrp.data.local.SettingsStorage
 import com.mrp.data.local.TimelineStorage
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.service.MrpMonitorService
+import com.mrp.domain.usecase.AppUsageTracker
+import com.mrp.data.local.AppUsageDao
 import java.io.File
 
 class MrpNativeModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
@@ -430,6 +432,64 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         reactContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
             .emit(eventName, params)
+    }
+
+    @ReactMethod
+    fun hasUsageStatsPermission(promise: Promise) {
+        try {
+            val tracker = AppUsageTracker(reactContext)
+            promise.resolve(tracker.hasUsageStatsPermission())
+        } catch (e: Exception) {
+            promise.reject("CHECK_PERMISSION_ERROR", "Failed to check Usage Stats permission", e)
+        }
+    }
+
+    @ReactMethod
+    fun requestUsageStatsPermission(promise: Promise) {
+        try {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("REQUEST_PERMISSION_ERROR", "Failed to open Usage Access settings", e)
+        }
+    }
+
+    @ReactMethod
+    fun getAppUsage(promise: Promise) {
+        try {
+            val dao = AppUsageDao(reactContext)
+            val sessions = dao.getAllSessions()
+            val list = Arguments.createArray()
+            for (session in sessions) {
+                val map = Arguments.createMap().apply {
+                    putString("packageName", session.packageName)
+                    putString("appName", session.appName ?: session.packageName)
+                    putString("category", session.category ?: "Uncategorized")
+                    putDouble("startTime", session.startTime.toDouble())
+                    putDouble("endTime", session.endTime.toDouble())
+                    putDouble("durationSeconds", session.durationSeconds.toDouble())
+                    if (session.batteryLevel != null) {
+                        putInt("batteryLevel", session.batteryLevel!!)
+                    }
+                    if (session.networkType != null) {
+                        putString("networkType", session.networkType)
+                    }
+                    if (session.latitude != null) {
+                        putDouble("latitude", session.latitude!!)
+                    }
+                    if (session.longitude != null) {
+                        putDouble("longitude", session.longitude!!)
+                    }
+                }
+                list.pushMap(map)
+            }
+            promise.resolve(list)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get app usage", e)
+            promise.reject("GET_APP_USAGE_ERROR", "Failed to get app usage stats", e)
+        }
     }
 
     companion object {

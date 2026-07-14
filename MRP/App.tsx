@@ -8,6 +8,7 @@ import {usePinLock} from './src/hooks/usePinLock';
 import {MonitoringScreen} from './src/features/monitoring/MonitoringScreen';
 import {TimelineScreen} from './src/features/graph/TimelineScreen';
 import {PhotoGallery} from './src/features/photos/PhotoGallery';
+import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
 import {Text} from 'react-native';
 
 const Tab = createBottomTabNavigator();
@@ -53,6 +54,15 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
         options={{
           tabBarIcon: ({color}) => (
             <Text style={{fontSize: 20}}>📷</Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="App Usage"
+        component={AppUsageScreen}
+        options={{
+          tabBarIcon: ({color}) => (
+            <Text style={{fontSize: 20}}>📊</Text>
           ),
         }}
       />

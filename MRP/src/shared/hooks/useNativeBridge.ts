@@ -10,6 +10,8 @@ export interface MrpNativeInterface {
   disableDeviceAdmin(): Promise<boolean>;
   isAccessibilityEnabled(): Promise<boolean>;
   isDeviceAdminEnabled(): Promise<boolean>;
+  checkOverlayPermission(): Promise<boolean>;
+  requestOverlayPermission(): Promise<boolean>;
   getEvents(): Promise<any[]>;
   getEventById(id: string): Promise<any | null>;
   deleteEvent(id: string): Promise<boolean>;
@@ -28,6 +30,9 @@ export interface MrpNativeInterface {
   clearTimeline(): Promise<boolean>;
   getPhotosDirectory(): Promise<string>;
   getTimelineFilePath(): Promise<string>;
+  getAppUsage(): Promise<any[]>;
+  hasUsageStatsPermission(): Promise<boolean>;
+  requestUsageStatsPermission(): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

@@ -1,157 +1,85 @@
 package com.mrp.data.local
 
 import android.content.Context
-import android.location.Location
-import android.os.Build
 import android.util.Log
 import com.mrp.domain.model.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.io.FileOutputStream
-import java.io.RandomAccessFile
 import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
-import java.util.*
-import kotlin.concurrent.thread
+import java.util.Date
+import java.util.Locale
 
-/**
- * Thread-safe TimelineStorage that appends JSON events without loading entire array into memory.
- * Uses file locking and mutex to prevent corruption during concurrent writes.
- */
 class TimelineStorage(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val fileMutex = Mutex()
+    private val eventDao = EventDao(context)
 
     private val timelineFile: File
         get() = File(context.filesDir, TIMELINE_FILE)
+    private val backupFile: File
+        get() = File(context.filesDir, "$TIMELINE_FILE.bak")
 
     private val photosDir: File
         get() = File(context.getExternalFilesDir(null), "MRP").also {
             if (!it.exists()) it.mkdirs()
         }
 
-    fun getPhotosDirectory(): File = photosDir
+    init {
+        migrateOldTimelineData()
+    }
 
-    /**
-     * Append a single TimelineEntry to the file using coroutines.
-     * Thread-safe via Mutex.
-     */
-    fun appendTimelineEntry(entry: TimelineEntry) {
-        scope.launch {
-            synchronized(globalWriteLock) {
-                appendEntrySyncInternal(entry)
+    private fun migrateOldTimelineData() {
+        if (timelineFile.exists() && !backupFile.exists()) {
+            scope.launch {
+                try {
+                    val content = timelineFile.readText(StandardCharsets.UTF_8)
+                    if (content.isNotBlank() && content != "[]") {
+                        val array = JSONArray(content)
+                        for (i in 0 until array.length()) {
+                            val entry = jsonToEntry(array.getJSONObject(i))
+                            eventDao.insertEvent(timelineEntryToUnifiedEvent(entry))
+                        }
+                    }
+                    timelineFile.renameTo(backupFile)
+                    Log.d(TAG, "Successfully migrated timeline.json to SQLite unified events")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error migrating timeline.json", e)
+                }
             }
         }
     }
 
-    /**
-     * Synchronous version for use from BroadcastReceivers.
-     * Uses synchronized block for thread safety without coroutines.
-     */
-    fun appendTimelineEntrySync(entry: TimelineEntry) {
-        synchronized(globalWriteLock) {
+    fun getPhotosDirectory(): File = photosDir
+
+    fun appendTimelineEntry(entry: TimelineEntry) {
+        scope.launch {
             appendEntrySyncInternal(entry)
         }
     }
 
-    private fun appendEntrySync(entry: TimelineEntry) {
-        synchronized(globalWriteLock) {
-            appendEntrySyncInternal(entry)
-        }
+    fun appendTimelineEntrySync(entry: TimelineEntry) {
+        appendEntrySyncInternal(entry)
     }
 
     private fun appendEntrySyncInternal(entry: TimelineEntry) {
         try {
-            Log.d(TAG, "appendEntrySyncInternal called for ${entry.eventType}")
-            val entryJson = entry.toJsonObject()
-            Log.d(TAG, "Entry JSON created: ${entryJson.toString().take(100)}")
-
-            if (!timelineFile.exists()) {
-                // Create new file with array structure
-                timelineFile.createNewFile()
-                FileOutputStream(timelineFile).use { fos ->
-                    fos.write("[\n  $entryJson\n]".toByteArray(StandardCharsets.UTF_8))
-                }
-                Log.d(TAG, "Created new timeline file with first entry")
-                return
-            }
-
-            // Read existing content
-            val content = timelineFile.readText(StandardCharsets.UTF_8).trim()
-            Log.d(TAG, "Existing file content length: ${content.length}")
-
-            // Check if file is empty or invalid
-            if (content.isEmpty() || content == "[]") {
-                FileOutputStream(timelineFile).use { fos ->
-                    fos.write("[\n  $entryJson\n]".toByteArray(StandardCharsets.UTF_8))
-                }
-                Log.d(TAG, "Wrote to empty file")
-                return
-            }
-
-            // Remove the closing bracket, append new entry, close array
-            val jsonArray = JSONArray(content)
-            jsonArray.put(entryJson)
-
-            // Trim to max entries (keeping the newest entries)
-            val trimmedArray = if (jsonArray.length() > MAX_ENTRIES) {
-                val newArray = JSONArray()
-                val startIndex = jsonArray.length() - MAX_ENTRIES
-                for (i in startIndex until jsonArray.length()) {
-                    newArray.put(jsonArray.getJSONObject(i))
-                }
-                newArray
-            } else {
-                jsonArray
-            }
-
-            // Write back with pretty printing
-            FileOutputStream(timelineFile).use { fos ->
-                fos.write(trimmedArray.toString(2).toByteArray(StandardCharsets.UTF_8))
-            }
-
-            Log.d(TAG, "Timeline entry appended. Total entries: ${trimmedArray.length()}")
-
+            Log.d(TAG, "appendEntrySyncInternal called for ${entry.eventType} inserting to SQLite")
+            eventDao.insertEvent(timelineEntryToUnifiedEvent(entry))
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to append timeline entry", e)
-            // Fallback: try to recreate file
-            try {
-                timelineFile.delete()
-            } catch (ignored: Exception) {}
+            Log.e(TAG, "Failed to insert unified event", e)
         }
     }
 
-    /**
-     * Legacy method for backwards compatibility
-     */
     fun saveTimelineEntry(entry: TimelineEntry) {
         appendTimelineEntry(entry)
     }
 
     fun getTimeline(): List<TimelineEntry> {
-        if (!timelineFile.exists()) return emptyList()
-
-        return synchronized(globalWriteLock) {
-            try {
-                val content = timelineFile.readText(StandardCharsets.UTF_8)
-                if (content.isBlank()) return@synchronized emptyList()
-
-                val array = JSONArray(content)
-                val list = mutableListOf<TimelineEntry>()
-                for (i in 0 until array.length()) {
-                    list.add(jsonToEntry(array.getJSONObject(i)))
-                }
-                list
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read timeline", e)
-                emptyList()
-            }
-        }
+        val unifiedEvents = eventDao.getAllEvents()
+        return unifiedEvents.map { unifiedEventToTimelineEntry(it) }
     }
 
     fun getTimelineByEventType(eventType: String): List<TimelineEntry> {
@@ -159,15 +87,55 @@ class TimelineStorage(private val context: Context) {
     }
 
     fun clearAllTimeline() {
-        synchronized(globalWriteLock) {
-            if (timelineFile.exists()) {
-                timelineFile.delete()
-            }
-            
-            val photosDir = getPhotosDirectory()
-            if (photosDir.exists()) {
-                photosDir.deleteRecursively()
-            }
+        eventDao.clearAllEvents()
+        if (backupFile.exists()) backupFile.delete()
+        if (timelineFile.exists()) timelineFile.delete()
+        val photosDir = getPhotosDirectory()
+        if (photosDir.exists()) {
+            photosDir.deleteRecursively()
+        }
+    }
+
+    private fun timelineEntryToUnifiedEvent(entry: TimelineEntry): UnifiedEvent {
+        val time = parseISO8601(entry.timestamp)
+        return UnifiedEvent(
+            eventType = entry.eventType,
+            eventTime = time,
+            latitude = entry.location.latitude,
+            longitude = entry.location.longitude,
+            accuracy = entry.location.accuracyMeters,
+            address = entry.location.detailedAddress,
+            insideGeofence = entry.geofenceStatus.insideFence,
+            geofenceId = entry.geofenceStatus.fenceId,
+            referenceId = entry.id,
+            jsonData = JSONObject(entry.metadata).toString(),
+            syncStatus = "PENDING"
+        )
+    }
+
+    private fun unifiedEventToTimelineEntry(event: UnifiedEvent): TimelineEntry {
+        return TimelineEntry.fromTimestamp(
+            id = event.referenceId ?: event.id.toString(),
+            timestamp = ISO8601_DATE_FORMAT.format(Date(event.eventTime)),
+            eventType = event.eventType,
+            status = event.syncStatus, // using status field for sync status or fallback
+            latitude = event.latitude,
+            longitude = event.longitude,
+            accuracyMeters = event.accuracy,
+            detailedAddress = event.address,
+            insideFence = event.insideGeofence,
+            fenceId = event.geofenceId,
+            metadata = try {
+                if (event.jsonData != null) jsonToMetadataMap(JSONObject(event.jsonData)) else emptyMap()
+            } catch (e: Exception) { emptyMap() }
+        )
+    }
+
+    private fun parseISO8601(dateStr: String): Long {
+        return try {
+            ISO8601_DATE_FORMAT.parse(dateStr)?.time ?: System.currentTimeMillis()
+        } catch (e: Exception) {
+            System.currentTimeMillis()
         }
     }
 
@@ -202,7 +170,9 @@ class TimelineStorage(private val context: Context) {
     companion object {
         private const val TAG = "TimelineStorage"
         private const val TIMELINE_FILE = "timeline.json"
-        private const val MAX_ENTRIES = 1000
-        private val globalWriteLock = Any()
+        
+        private val ISO8601_DATE_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }
     }
 }
