@@ -575,10 +575,12 @@ class MrpMonitorService : Service() {
                 if (prevMobile != null && prevMobile != isDataOn) {
                     Log.d(TAG, "evaluateAllToggles: Mobile Data changed to $isDataOn")
                     if (settings.captureOnMobileData) {
+                        val eventName = if (isDataOn) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED"
                         eventLogger.logEvent(
-                            if (isDataOn) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED",
+                            eventName,
                             if (isDataOn) StatusValues.ENABLED else StatusValues.DISABLED
                         )
+                        requestPhoto(this, eventName)
                     }
                 }
             } catch (e: Exception) {
@@ -599,10 +601,12 @@ class MrpMonitorService : Service() {
                 if (prevAirplane != null && prevAirplane != isAirplaneMode) {
                     Log.d(TAG, "evaluateAllToggles: Airplane Mode changed to $isAirplaneMode")
                     if (settings.captureOnAirplaneMode) {
+                        val eventName = if (isAirplaneMode) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED"
                         eventLogger.logEvent(
-                            if (isAirplaneMode) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED",
+                            eventName,
                             if (isAirplaneMode) StatusValues.ENABLED else StatusValues.DISABLED
                         )
+                        requestPhoto(this, eventName)
                     }
                 }
             } catch (e: Exception) {
@@ -613,7 +617,8 @@ class MrpMonitorService : Service() {
         // 4. Bluetooth
         if (settings.captureOnBluetooth) {
             try {
-                val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+                val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
+                val bluetoothAdapter = bluetoothManager?.adapter
                 if (bluetoothAdapter != null) {
                     val isBluetoothOn = bluetoothAdapter.isEnabled
                     val prevBluetooth = lastBluetoothState
@@ -621,10 +626,12 @@ class MrpMonitorService : Service() {
                     if (prevBluetooth != null && prevBluetooth != isBluetoothOn) {
                         Log.d(TAG, "evaluateAllToggles: Bluetooth changed to $isBluetoothOn")
                         if (settings.captureOnBluetooth) {
+                            val eventName = if (isBluetoothOn) "BLUETOOTH_ENABLED" else "BLUETOOTH_DISABLED"
                             eventLogger.logEvent(
-                                if (isBluetoothOn) "BLUETOOTH_ENABLED" else "BLUETOOTH_DISABLED",
+                                eventName,
                                 if (isBluetoothOn) StatusValues.ENABLED else StatusValues.DISABLED
                             )
+                            requestPhoto(this, eventName)
                         }
                     }
                 }
@@ -651,10 +658,12 @@ class MrpMonitorService : Service() {
         }
 
         Log.d(TAG, "Hotspot state changed explicit: $isOn")
+        val eventName = if (isOn) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED"
         eventLogger.logEvent(
-            if (isOn) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED",
+            eventName,
             if (isOn) StatusValues.ENABLED else StatusValues.DISABLED
         )
+        requestPhoto(this, eventName)
     }
 
     private fun handleHotspotChange(state: Int) {
@@ -761,10 +770,12 @@ class MrpMonitorService : Service() {
 
         if (prev == null || prev != isBluetoothOn) {
             Log.d(TAG, "Logging Bluetooth change: isBluetoothOn=$isBluetoothOn")
+            val eventName = if (isBluetoothOn) "BLUETOOTH_ENABLED" else "BLUETOOTH_DISABLED"
             eventLogger.logEvent(
-                if (isBluetoothOn) "BLUETOOTH_ENABLED" else "BLUETOOTH_DISABLED",
+                eventName,
                 if (isBluetoothOn) StatusValues.ENABLED else StatusValues.DISABLED
             )
+            requestPhoto(this, eventName)
         }
     }
 

@@ -30,6 +30,10 @@ interface TimelineEntry {
     accuracy_meters: number;
     detailed_address: string;
   };
+  geofence_status?: {
+    inside_fence: boolean;
+    fence_id: string | null;
+  };
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -332,7 +336,7 @@ export function PhotoGallery() {
                       </Text>
                     </View>
 
-                    {matchedEvent.location ? (
+                    {matchedEvent.location && matchedEvent.location.latitude !== 0 ? (
                       <>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>📍 Address:</Text>
@@ -353,6 +357,13 @@ export function PhotoGallery() {
                         <Text style={styles.detailValue}>No Location Data</Text>
                       </View>
                     )}
+
+                    <View style={styles.detailRow}>
+                      <Text style={styles.detailLabel}>🏠 Geofence:</Text>
+                      <Text style={styles.detailValue}>
+                        {matchedEvent.geofence_status?.inside_fence ? 'Inside fence' : 'Outside fence'}
+                      </Text>
+                    </View>
                   </>
                 ) : (
                   <View style={styles.detailRow}>
