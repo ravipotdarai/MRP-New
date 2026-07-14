@@ -18,6 +18,7 @@ export interface MrpNativeInterface {
   deletePhoto(path: string): Promise<boolean>;
   deleteAllPhotos(): Promise<boolean>;
   takePhoto(): Promise<boolean>;
+  testPhotoCapture(eventName: string): Promise<boolean>;
   getServiceRunning(): Promise<boolean>;
   openAppSettings(): Promise<boolean>;
   getSettings(): Promise<any>;

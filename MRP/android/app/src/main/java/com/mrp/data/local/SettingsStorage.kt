@@ -19,7 +19,7 @@ class SettingsStorage(context: Context) {
             captureOnBluetooth = prefs.getBoolean(KEY_BLUETOOTH, true),
             captureOnSimChange = prefs.getBoolean(KEY_SIM_CHANGE, true),
             captureOnFactoryReset = prefs.getBoolean(KEY_FACTORY_RESET, true),
-            captureOnUsb = prefs.getBoolean(KEY_USB, false),
+            captureOnUsb = prefs.getBoolean(KEY_USB, true),
             maxFailedAttempts = prefs.getInt(KEY_MAX_FAILED, 3),
             lockAfterFailedAttempts = prefs.getBoolean(KEY_LOCK_AFTER_FAIL, true),
             autoDeleteAfterDays = prefs.getInt(KEY_AUTO_DELETE, 30)

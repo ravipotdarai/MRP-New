@@ -35,19 +35,20 @@ class CameraCaptureActivity : Activity() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "CameraCaptureActivity created")
 
-        // Show on top of lock screen
+        // Show on top of lock screen reliably across all Android OS versions
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(
-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-            )
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            km?.requestDismissKeyguard(this, null)
         }
+        @Suppress("DEPRECATION")
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
 
         // Set window to transparent and minimize size to avoid blank screen flash on lockscreen
         window.setBackgroundDrawableResource(android.R.color.transparent)
@@ -58,9 +59,17 @@ class CameraCaptureActivity : Activity() {
         params.height = 1
         window.attributes = params
 
-        eventName = intent.getStringExtra("eventName") ?: "unknown"
+        eventName = intent?.getStringExtra("eventName") ?: "unknown"
 
         startBackgroundThread()
+        takeSelfie()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        eventName = intent?.getStringExtra("eventName") ?: eventName
+        Log.d(TAG, "onNewIntent received for event: $eventName")
         takeSelfie()
     }
 
@@ -68,13 +77,13 @@ class CameraCaptureActivity : Activity() {
         backgroundThread = HandlerThread("CameraCaptureBgThread").also { it.start() }
         backgroundHandler = Handler(backgroundThread!!.looper)
         
-        // Failsafe: Force close the activity after 3 seconds if the image never arrives
+        // Failsafe: Force close the activity after 5 seconds if the image never arrives
         backgroundHandler?.postDelayed({
             if (!isFinishing && !isDestroyed) {
-                Log.w(TAG, "Camera capture timed out. Force finishing to prevent blank screen.")
+                Log.w(TAG, "Camera capture timed out after 5s. Force finishing.")
                 cleanupAndFinish()
             }
-        }, 3000)
+        }, 5000)
     }
 
     private fun stopBackgroundThread() {
@@ -89,6 +98,8 @@ class CameraCaptureActivity : Activity() {
             Log.e(TAG, "Interrupted stopping background thread", e)
         }
     }
+
+    private var cameraRetryCount = 0
 
     private fun takeSelfie() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -108,26 +119,43 @@ class CameraCaptureActivity : Activity() {
 
             cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    cameraRetryCount = 0
                     cameraDevice = camera
                     createCaptureSession()
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
+                    Log.w(TAG, "Camera disconnected during open (retry=$cameraRetryCount)")
                     camera.close()
                     cameraDevice = null
-                    finish()
+                    if (cameraRetryCount < 3) {
+                        cameraRetryCount++
+                        backgroundHandler?.postDelayed({ takeSelfie() }, 400)
+                    } else {
+                        finish()
+                    }
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
-                    Log.e(TAG, "Camera error: $error")
+                    Log.e(TAG, "Camera open error: $error (retry=$cameraRetryCount)")
                     camera.close()
                     cameraDevice = null
-                    finish()
+                    if (cameraRetryCount < 3) {
+                        cameraRetryCount++
+                        backgroundHandler?.postDelayed({ takeSelfie() }, 400)
+                    } else {
+                        finish()
+                    }
                 }
             }, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Error opening camera", e)
-            finish()
+            if (cameraRetryCount < 3) {
+                cameraRetryCount++
+                backgroundHandler?.postDelayed({ takeSelfie() }, 400)
+            } else {
+                finish()
+            }
         }
     }
 
@@ -145,7 +173,16 @@ class CameraCaptureActivity : Activity() {
     private fun createCaptureSession() {
         val camera = cameraDevice ?: return
         try {
-            imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2).apply {
+            val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val chars = cameraManager.getCameraCharacteristics(camera.id)
+            val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val sizes = map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
+            // Pick a moderate supported size around 1024x768 or lowest available above 600x400
+            val chosenSize = sizes.filter { it.width >= 600 && it.height >= 400 }.minByOrNull { it.width * it.height }
+                ?: sizes.firstOrNull()
+                ?: android.util.Size(640, 480)
+
+            imageReader = ImageReader.newInstance(chosenSize.width, chosenSize.height, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
                     val image = reader.acquireLatestImage()
                     if (image != null) {
@@ -168,16 +205,7 @@ class CameraCaptureActivity : Activity() {
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         captureSession = session
-                        try {
-                            session.capture(captureRequestBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
-                                override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-                                    Log.d(TAG, "Selfie capture completed")
-                                }
-                            }, backgroundHandler)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Failed to capture photo in session", e)
-                            cleanupAndFinish()
-                        }
+                        attemptCapture(session, captureRequestBuilder, 0)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -193,6 +221,26 @@ class CameraCaptureActivity : Activity() {
         }
     }
 
+    private fun attemptCapture(session: CameraCaptureSession, builder: CaptureRequest.Builder, retryCount: Int) {
+        try {
+            session.capture(builder.build(), object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+                    Log.d(TAG, "Selfie capture completed successfully")
+                }
+            }, backgroundHandler)
+        } catch (e: Exception) {
+            Log.w(TAG, "Exception during session.capture attempt $retryCount: ${e.message}")
+            if (retryCount < 4 && !isFinishing && !isDestroyed) {
+                backgroundHandler?.postDelayed({
+                    attemptCapture(session, builder, retryCount + 1)
+                }, 200)
+            } else {
+                Log.e(TAG, "All capture retry attempts exhausted", e)
+                cleanupAndFinish()
+            }
+        }
+    }
+
     private fun savePhoto(image: Image) {
         val storage = TimelineStorage(this)
         val photosDir = storage.getPhotosDirectory()
@@ -202,16 +250,28 @@ class CameraCaptureActivity : Activity() {
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9_]"), "_").uppercase(Locale.getDefault())
-        val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 
         try {
             val buffer = image.planes[0].buffer
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
-            FileOutputStream(photoFile).use { fos ->
-                fos.write(bytes)
+
+            val filenames = if (safeEventName.contains("WRONG") || safeEventName.contains("PASSWORD") || safeEventName.contains("UNLOCK")) {
+                listOf("WRONG_UNLOCK_ATTEMPT_$timestamp.jpg", "WRONG_PASSWORD_$timestamp.jpg")
+            } else {
+                listOf("${safeEventName}_$timestamp.jpg")
             }
-            Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
+
+            for (filename in filenames) {
+                val photoFile = File(photosDir, filename)
+                FileOutputStream(photoFile).use { fos ->
+                    fos.write(bytes)
+                }
+                Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
+            }
+            try {
+                sendBroadcast(Intent("com.mrp.ACTION_PHOTO_CAPTURED"))
+            } catch (ignored: Exception) {}
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
         }

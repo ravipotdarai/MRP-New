@@ -65,8 +65,15 @@ interface TimelineEntry {
   metadata: Record<string, any>;
 }
 
+interface PhotoItem {
+  path: string;
+  timestamp: number;
+  name?: string;
+}
+
 export function TimelineScreen() {
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<TimelineEntry | null>(null);
@@ -74,8 +81,12 @@ export function TimelineScreen() {
 
   const loadTimeline = useCallback(async () => {
     try {
-      const result = await mrpmModule.getTimeline();
-      setEntries(result || []);
+      const [result, photoList] = await Promise.all([
+        mrpmModule.getTimeline().catch(() => []),
+        mrpmModule.getPhotos().catch(() => []),
+      ]);
+      setEntries(Array.isArray(result) ? result : []);
+      setPhotos(Array.isArray(photoList) ? photoList : []);
     } catch (e) {
       console.error('Failed to load timeline:', e);
       setEntries([]);
@@ -87,9 +98,25 @@ export function TimelineScreen() {
 
   useEffect(() => {
     loadTimeline();
-    const interval = setInterval(loadTimeline, 5000);
+    const interval = setInterval(loadTimeline, 2500);
     return () => clearInterval(interval);
   }, [loadTimeline]);
+
+  const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
+    if (!photos.length) return null;
+    let evtTime = Date.parse(entry.timestamp);
+    if (isNaN(evtTime)) evtTime = Number(entry.timestamp) || 0;
+    let closest: PhotoItem | null = null;
+    let minDiff = 180000; // 3 minutes delta
+    for (const p of photos) {
+      const diff = Math.abs(p.timestamp - evtTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = p;
+      }
+    }
+    return closest;
+  };
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -164,55 +191,83 @@ export function TimelineScreen() {
     );
   };
 
-  const renderEntry = ({item}: {item: TimelineEntry}) => (
-    <TouchableOpacity
-      style={styles.entryItem}
-      onPress={() => {
-        setSelectedEntry(item);
-        setDetailModalVisible(true);
-      }}>
-      <View style={styles.entryIcon}>
-        <Text style={styles.iconText}>{EVENT_ICONS[item.event_type] || '📋'}</Text>
-      </View>
-
-      <View style={styles.entryContent}>
-        <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
-        <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
-        {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
-          <Text style={styles.location} numberOfLines={1}>
-            📍 {item.location.detailed_address}
-          </Text>
-        )}
-        <Text style={styles.description}>Status: {item.status || 'N/A'}</Text>
-      </View>
-
-      <View style={styles.entryRight}>
-        <View style={[styles.geofenceBadge, {backgroundColor: item.geofence_status?.inside_fence ? '#4CAF50' : '#9E9E9E'}]}>
-          <Text style={styles.geofenceText}>
-            {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
-          </Text>
+  const renderEntry = ({item}: {item: TimelineEntry}) => {
+    const matchedPhoto = findMatchingPhoto(item);
+    return (
+      <TouchableOpacity
+        style={styles.entryItem}
+        onPress={() => {
+          setSelectedEntry(item);
+          setDetailModalVisible(true);
+        }}>
+        <View style={styles.entryIcon}>
+          <Text style={styles.iconText}>{EVENT_ICONS[item.event_type] || '📋'}</Text>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
 
-  const renderDetailModal = () => (
-    <Modal
-      visible={detailModalVisible}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setDetailModalVisible(false)}>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {selectedEntry && (
-              <>
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Event</Text>
-                  <Text style={styles.detailValue}>
-                    {EVENT_ICONS[selectedEntry.event_type]} {formatEventType(selectedEntry.event_type)}
-                  </Text>
-                </View>
+        <View style={styles.entryContent}>
+          <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
+          <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
+          {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
+            <Text style={styles.location} numberOfLines={1}>
+              📍 {item.location.detailed_address}
+            </Text>
+          )}
+          <Text style={styles.description}>Status: {item.status || 'N/A'}</Text>
+          {matchedPhoto && (
+            <View style={styles.selfieBadgeRow}>
+              <Text style={styles.selfieBadgeText}>📸 Selfie Captured</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.entryRight}>
+          {matchedPhoto ? (
+            <Image
+              source={{uri: `file://${matchedPhoto.path}`}}
+              style={styles.rowSelfieThumb}
+            />
+          ) : (
+            <View style={[styles.geofenceBadge, {backgroundColor: item.geofence_status?.inside_fence ? '#4CAF50' : '#9E9E9E'}]}>
+              <Text style={styles.geofenceText}>
+                {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
+              </Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderDetailModal = () => {
+    const matchedPhoto = selectedEntry ? findMatchingPhoto(selectedEntry) : null;
+    return (
+      <Modal
+        visible={detailModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setDetailModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedEntry && (
+                <>
+                  {matchedPhoto && (
+                    <View style={styles.selfieEvidenceCard}>
+                      <Text style={styles.selfieEvidenceTitle}>📸 SURVEILLANCE SELFIE EVIDENCE</Text>
+                      <Image
+                        source={{uri: `file://${matchedPhoto.path}`}}
+                        style={styles.modalSelfieImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Event</Text>
+                    <Text style={styles.detailValue}>
+                      {EVENT_ICONS[selectedEntry.event_type]} {formatEventType(selectedEntry.event_type)}
+                    </Text>
+                  </View>
 
                 <View style={styles.detailSection}>
                   <Text style={styles.detailLabel}>Status</Text>
@@ -292,6 +347,7 @@ export function TimelineScreen() {
       </View>
     </Modal>
   );
+  };
 
   return (
     <View style={styles.container}>
@@ -343,35 +399,35 @@ export function TimelineScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#0f172a',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: '#FFF',
+    backgroundColor: '#1e293b',
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#212121',
+    color: '#f8fafc',
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#757575',
+    color: '#94a3b8',
     marginTop: 2,
   },
   clearAllButton: {
-    backgroundColor: '#FFEBEE',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   clearAllText: {
-    color: '#F44336',
+    color: '#ef4444',
     fontWeight: '600',
     fontSize: 12,
   },
@@ -382,7 +438,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#757575',
+    color: '#94a3b8',
     marginTop: 12,
   },
   emptyContainer: {
@@ -398,12 +454,12 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#757575',
+    color: '#f8fafc',
     textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#9E9E9E',
+    color: '#94a3b8',
     textAlign: 'center',
     marginTop: 8,
   },
@@ -412,49 +468,46 @@ const styles = StyleSheet.create({
   },
   entryItem: {
     flexDirection: 'row',
-    backgroundColor: '#FFF',
+    backgroundColor: '#1e293b',
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   entryIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#E3F2FD',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
   iconText: {
-    fontSize: 24,
+    fontSize: 22,
   },
   entryContent: {
     flex: 1,
   },
   eventType: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#212121',
+    color: '#f8fafc',
   },
   timestamp: {
     fontSize: 12,
-    color: '#9E9E9E',
+    color: '#94a3b8',
     marginTop: 2,
   },
   location: {
     fontSize: 12,
-    color: '#4CAF50',
+    color: '#10b981',
     marginTop: 4,
   },
   description: {
     fontSize: 12,
-    color: '#757575',
+    color: '#cbd5e1',
     marginTop: 4,
   },
   entryRight: {
@@ -472,37 +525,39 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#FFF',
+    backgroundColor: '#1e293b',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '85%',
     padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   detailSection: {
     marginBottom: 20,
   },
   detailLabel: {
     fontSize: 12,
-    color: '#9E9E9E',
+    color: '#94a3b8',
     marginBottom: 4,
     textTransform: 'uppercase',
   },
   detailValue: {
     fontSize: 16,
-    color: '#212121',
+    color: '#f8fafc',
     fontWeight: '500',
   },
   detailSubvalue: {
     fontSize: 13,
-    color: '#757575',
+    color: '#94a3b8',
     marginTop: 2,
   },
   mapButton: {
-    backgroundColor: '#E3F2FD',
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
@@ -510,7 +565,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   mapButtonText: {
-    color: '#1976D2',
+    color: '#38bdf8',
     fontSize: 14,
     fontWeight: '500',
   },
@@ -520,11 +575,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#E0E0E0',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   closeButton: {
     flex: 1,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#334155',
     paddingVertical: 14,
     borderRadius: 8,
     marginRight: 8,
@@ -533,11 +588,11 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#757575',
+    color: '#f8fafc',
   },
   deleteButton: {
     flex: 1,
-    backgroundColor: '#FFEBEE',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
     paddingVertical: 14,
     borderRadius: 8,
     marginLeft: 8,
@@ -546,6 +601,48 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#F44336',
+    color: '#ef4444',
+  },
+  selfieBadgeRow: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(56, 189, 248, 0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  selfieBadgeText: {
+    fontSize: 11,
+    color: '#38bdf8',
+    fontWeight: '700',
+  },
+  rowSelfieThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+  },
+  selfieEvidenceCard: {
+    backgroundColor: '#0f172a',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+    alignItems: 'center',
+  },
+  selfieEvidenceTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#38bdf8',
+    marginBottom: 8,
+    letterSpacing: 0.5,
+  },
+  modalSelfieImage: {
+    width: '100%',
+    height: 260,
+    borderRadius: 10,
+    backgroundColor: '#1e293b',
   },
 });

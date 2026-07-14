@@ -122,7 +122,7 @@ export function PinLockScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1a1a2e',
+    backgroundColor: '#0f172a',
   },
   content: {
     flex: 1,
@@ -133,12 +133,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#fff',
+    color: '#f8fafc',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 14,
-    color: '#888',
+    color: '#94a3b8',
     marginBottom: 40,
     textAlign: 'center',
   },
@@ -149,24 +149,26 @@ const styles = StyleSheet.create({
   pinInput: {
     width: '80%',
     height: 56,
-    backgroundColor: '#2d2d44',
+    backgroundColor: '#1e293b',
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 16,
     fontSize: 24,
-    color: '#fff',
+    color: '#f8fafc',
     textAlign: 'center',
     letterSpacing: 8,
     marginBottom: 16,
   },
   errorText: {
-    color: '#ff6b6b',
+    color: '#ef4444',
     marginBottom: 16,
     fontSize: 14,
   },
   button: {
     width: '80%',
     height: 56,
-    backgroundColor: '#4a90d9',
+    backgroundColor: '#0284c7',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -176,7 +178,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
+    color: '#f8fafc',
     fontSize: 18,
     fontWeight: '600',
   },

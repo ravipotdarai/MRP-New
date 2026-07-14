@@ -52,10 +52,6 @@ class MrpDeviceAdminReceiver : DeviceAdminReceiver() {
                         "source" to "DeviceAdminReceiver"
                     )
                 )
-                com.mrp.service.MrpMonitorService.requestPhoto(context, EventTypes.WRONG_PASSWORD)
-
-                Thread.sleep(800) // Slight delay so camera session closes cleanly before second capture
-
                 eventLogger.logEvent(
                     eventType = EventTypes.WRONG_UNLOCK_ATTEMPT,
                     status = StatusValues.FAILED,

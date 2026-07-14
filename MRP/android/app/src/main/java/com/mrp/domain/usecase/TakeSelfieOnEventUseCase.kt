@@ -25,11 +25,13 @@ class TakeSelfieOnEventUseCase(private val context: Context) {
 
         // Check settings before proceeding - only create entry if event type is enabled
         val settings = SettingsStorage(context).getSettings()
-        if (!settings.isMonitoringEnabled || !isEventCaptureEnabled(type, settings)) {
+        if (settings.isMonitoringEnabled && isEventCaptureEnabled(type, settings)) {
+            Log.d(TAG, "Triggering selfie capture for event type: ${type.name}")
+            com.mrp.service.MrpMonitorService.requestPhoto(context, type.name)
+        } else {
             Log.d(TAG, "Event capture disabled for event type: ${type.name}")
         }
 
-        // Note: Selfies are disabled - only creating timeline entry with location
         return event
     }
 

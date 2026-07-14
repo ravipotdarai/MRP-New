@@ -185,8 +185,14 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, MrpDeviceAdminReceiver.getComponentName(reactContext))
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "MRP needs device admin to monitor security events like wrong password attempts.")
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            reactContext.startActivity(intent)
+            
+            val activity = currentActivity
+            if (activity != null) {
+                activity.startActivity(intent)
+            } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactContext.startActivity(intent)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to enable device admin", e)
@@ -211,6 +217,34 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("ADMIN_ERROR", "Failed to disable device admin", e)
+        }
+    }
+
+    @ReactMethod
+    fun checkOverlayPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            promise.resolve(Settings.canDrawOverlays(reactContext))
+        } else {
+            promise.resolve(true)
+        }
+    }
+
+    @ReactMethod
+    fun requestOverlayPermission(promise: Promise) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(reactContext)) {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + reactContext.packageName)
+                )
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactContext.startActivity(intent)
+                promise.resolve(true)
+            } else {
+                promise.resolve(false)
+            }
+        } else {
+            promise.resolve(false)
         }
     }
 

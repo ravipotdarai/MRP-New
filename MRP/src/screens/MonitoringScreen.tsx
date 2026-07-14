@@ -102,11 +102,8 @@ export function MonitoringScreen({onLogout}: Props) {
   };
 
   const handleTakePhoto = () => {
-    if (!isMonitoring) {
-      Alert.alert('Start Monitoring', 'Please start monitoring first to capture photos.');
-      return;
-    }
     takePhoto();
+    Alert.alert('Capture Triggered', 'Front camera selfie capture has been triggered.');
   };
 
   useEffect(() => {

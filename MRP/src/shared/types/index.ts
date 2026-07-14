@@ -55,8 +55,10 @@ export interface MonitoringSettings {
 
 export interface Photo {
   id: string;
+  name: string;
   path: string;
   timestamp: number;
+  eventType?: string;
 }
 
 export interface MonitoringEvent {

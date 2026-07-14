@@ -2,7 +2,7 @@ import {useState, useEffect, useCallback, useRef} from 'react';
 import mrpmModule, {MonitoringSettings} from './useNativeBridge';
 
 const defaultSettings: MonitoringSettings = {
-  isMonitoringEnabled: false,
+  isMonitoringEnabled: true,
   captureOnWrongUnlock: true,
   captureOnAirplaneMode: true,
   captureOnWifiToggle: true,
@@ -10,7 +10,7 @@ const defaultSettings: MonitoringSettings = {
   captureOnHotspot: true,
   captureOnSimChange: true,
   captureOnFactoryReset: true,
-  captureOnUsb: false,
+  captureOnUsb: true,
   maxFailedAttempts: 3,
   lockAfterFailedAttempts: true,
   autoDeleteAfterDays: 30,
