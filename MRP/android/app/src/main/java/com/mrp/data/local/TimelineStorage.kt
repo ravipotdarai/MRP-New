@@ -109,7 +109,7 @@ class TimelineStorage(private val context: Context) {
             geofenceId = entry.geofenceStatus.fenceId,
             referenceId = entry.id,
             jsonData = JSONObject(entry.metadata).toString(),
-            syncStatus = "PENDING"
+            syncStatus = entry.status // Use actual event status instead of "PENDING"
         )
     }
 

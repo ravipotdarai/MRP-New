@@ -93,6 +93,10 @@ class MrpMonitorService : Service() {
                 intent.getBooleanExtra("state", true)
             } else true
 
+            val testMobileDataState = if (action == "com.mrp.TEST_MOBILE_DATA_TOGGLE") {
+                intent.getBooleanExtra("state", true)
+            } else true
+
             val bluetoothState = if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
             } else BluetoothAdapter.ERROR
@@ -231,8 +235,30 @@ class MrpMonitorService : Service() {
                     "com.mrp.TEST_USB_CONNECTED" -> {
                         handleUsbChangeExplicit(true)
                     }
+                    "com.mrp.TEST_MOBILE_DATA_TOGGLE" -> {
+                        handleMobileDataChange(testMobileDataState)
+                    }
                 }
             }
+        }
+    }
+
+    private fun handleMobileDataChange(isDataOn: Boolean) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnMobileData) return
+
+        val prev = lastMobileDataState
+        lastMobileDataState = isDataOn
+
+        if (prev == null || prev != isDataOn) {
+            Log.d(TAG, "Logging Mobile Data change: isDataOn=$isDataOn")
+            val eventName = if (isDataOn) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED"
+            eventLogger.logEvent(
+                eventName,
+                if (isDataOn) StatusValues.ENABLED else StatusValues.DISABLED
+            )
+            requestPhoto(this, eventName)
         }
     }
 
@@ -411,6 +437,7 @@ class MrpMonitorService : Service() {
                 addAction("android.hardware.usb.action.USB_STATE")
                 addAction(Intent.ACTION_POWER_CONNECTED)
                 addAction("com.mrp.TEST_USB_CONNECTED")
+                addAction("com.mrp.TEST_MOBILE_DATA_TOGGLE")
             }
 
             val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -529,6 +556,12 @@ class MrpMonitorService : Service() {
             val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             lastWifiState = if (wifiManager.isWifiEnabled) 1 else 0
             lastHotspotState = isHotspotEnabled(wifiManager)
+            lastWifiBssid = try {
+                val info = wifiManager.connectionInfo
+                info?.bssid ?: "N/A"
+            } catch (e: Exception) {
+                "N/A"
+            }
         } catch (e: Exception) { Log.w(TAG, "Init wifi/hotspot state error", e) }
 
         try {
