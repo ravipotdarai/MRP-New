@@ -13,40 +13,43 @@ import {
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 
-const requestCameraPermission = async (): Promise<boolean> => {
-  if (Platform.OS !== 'android') return true;
+// Helper functions for permission requests
+const requestCameraPermissionNative = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
   try {
+    console.log('[Permission] Requesting camera permission...');
+    // Request permission - this should show the native dialog
     const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.CAMERA,
-      {
-        title: 'Camera Permission Required',
-        message: 'MRP needs camera access to capture front-facing photos during unauthorized unlock attempts.',
-        buttonNeutral: 'Ask Later',
-        buttonNegative: 'Cancel',
-        buttonPositive: 'Allow',
-      },
+      PermissionsAndroid.PERMISSIONS.CAMERA
     );
+
+    console.log('[Permission] Camera permission result:', granted);
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
+    console.error('[Permission] Camera permission request error:', err);
     return false;
   }
 };
 
-const requestLocationPermission = async (): Promise<boolean> => {
-  if (Platform.OS !== 'android') return true;
+const requestLocationPermissionNative = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
   try {
+    console.log('[Permission] Requesting location permission...');
+    // Request permission - this should show the native dialog
     const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: 'Location Permission Required',
-        message: 'MRP needs GPS location access to record accurate coordinates and addresses for security alerts.',
-        buttonNeutral: 'Ask Later',
-        buttonNegative: 'Cancel',
-        buttonPositive: 'Allow',
-      },
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
     );
+
+    console.log('[Permission] Location permission result:', granted);
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch (err) {
+    console.error('[Permission] Location permission request error:', err);
     return false;
   }
 };
@@ -68,6 +71,17 @@ function SettingItem({
   onValueChange,
   isLast = false,
 }: SettingItemProps) {
+  const handleValueChange = async (val: boolean) => {
+    if (onValueChange) {
+      try {
+        await onValueChange(val);
+      } catch (err) {
+        console.error('[SettingItem] Error in onValueChange:', err);
+        Alert.alert('Error', 'Toggle click failed: ' + String(err));
+      }
+    }
+  };
+
   return (
     <View style={[styles.itemContainer, !isLast && styles.itemBorder]}>
       <View style={styles.iconBox}>
@@ -79,7 +93,7 @@ function SettingItem({
       </View>
       <Switch
         value={value}
-        onValueChange={onValueChange}
+        onValueChange={handleValueChange}
         trackColor={{false: '#334155', true: '#059669'}}
         thumbColor={value ? '#10b981' : '#94a3b8'}
       />
@@ -96,24 +110,25 @@ export function MonitoringScreen() {
 
   const checkPermissions = async () => {
     try {
-      const [admin, camGranted, locGranted, overlayGranted] = await Promise.all([
-        mrpmModule.isDeviceAdminEnabled(),
-        Platform.OS === 'android'
-          ? PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA)
-          : Promise.resolve(true),
-        Platform.OS === 'android'
-          ? PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION)
-          : Promise.resolve(true),
-        Platform.OS === 'android'
-          ? mrpmModule.checkOverlayPermission()
-          : Promise.resolve(true),
-      ]);
+      console.log('[checkPermissions] Starting permission check...');
+      const camCheck = await mrpmModule.checkCameraPermission();
+      const locCheck = await mrpmModule.checkLocationPermission();
+      const admin = await mrpmModule.isDeviceAdminEnabled();
+      const overlayCheck = await mrpmModule.checkOverlayPermission();
+
+      console.log('[checkPermissions] Permission results:', {
+        admin,
+        camGranted: camCheck,
+        locGranted: locCheck,
+        overlayGranted: overlayCheck
+      });
       setIsDeviceAdminEnabled(admin);
-      setHasCameraPerm(camGranted);
-      setHasLocationPerm(locGranted);
-      setHasOverlayPerm(overlayGranted);
+      setHasCameraPerm(camCheck);
+      setHasLocationPerm(locCheck);
+      setHasOverlayPerm(overlayCheck);
+      console.log('[checkPermissions] Permission states updated');
     } catch (e) {
-      console.warn('Failed to check permissions:', e);
+      console.error('[checkPermissions] Failed to check permissions:', e);
     }
   };
 
@@ -165,11 +180,11 @@ export function MonitoringScreen() {
             style={styles.grantAllButton}
             onPress={async () => {
               if (!hasCameraPerm) {
-                const cam = await requestCameraPermission();
+                const cam = await requestCameraPermissionNative();
                 setHasCameraPerm(cam);
               }
               if (!hasLocationPerm) {
-                const loc = await requestLocationPermission();
+                const loc = await requestLocationPermissionNative();
                 setHasLocationPerm(loc);
               }
               if (!hasOverlayPerm) {
@@ -185,49 +200,110 @@ export function MonitoringScreen() {
           </TouchableOpacity>
         )}
 
-        <SettingItem
-          icon="📷"
-          title="Camera Access"
-          subtitle="Capture intruder selfie on security event"
-          value={hasCameraPerm}
-          onValueChange={async val => {
-            if (val) {
-              const granted = await requestCameraPermission();
-              setHasCameraPerm(granted);
-            } else {
-              Alert.alert(
-                'Manage Camera',
-                'Disable Camera permission in Android App Settings.',
-                [
-                  {text: 'Cancel', style: 'cancel'},
-                  {text: 'Open Settings', onPress: () => mrpmModule.openAppSettings()},
-                ],
-              );
-            }
-          }}
-        />
+        <View style={[styles.itemContainer, styles.itemBorder]}>
+          <View style={styles.iconBox}>
+            <Text style={styles.iconText}>📷</Text>
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.itemTitle}>Camera Access</Text>
+            <Text style={styles.itemSubtitle}>Capture intruder selfie on security event</Text>
+          </View>
+          <Switch
+            value={hasCameraPerm}
+            onValueChange={async (val) => {
+              console.log('[Toggle] Camera toggle clicked:', val);
 
-        <SettingItem
-          icon="📍"
-          title="Location Access"
-          subtitle="Record GPS coordinates & exact address"
-          value={hasLocationPerm}
-          onValueChange={async val => {
-            if (val) {
-              const granted = await requestLocationPermission();
-              setHasLocationPerm(granted);
-            } else {
-              Alert.alert(
-                'Manage Location',
-                'Disable Location permission in Android App Settings.',
-                [
-                  {text: 'Cancel', style: 'cancel'},
-                  {text: 'Open Settings', onPress: () => mrpmModule.openAppSettings()},
-                ],
-              );
-            }
-          }}
-        />
+              if (val) {
+                // User wants to turn ON - ALWAYS request permission dialog
+                console.log('[Toggle] Requesting camera permission via native Android dialog...');
+                try {
+                  console.log('[Toggle] Calling native module requestCameraPermission...');
+                  const result = await mrpmModule.requestCameraPermission();
+                  console.log('[Toggle] Native module result:', result);
+                  setHasCameraPerm(result === true);
+                } catch (err) {
+                  console.error('[Toggle] Error requesting camera permission:', err);
+                  Alert.alert(
+                    'Error',
+                    'Failed to request camera permission: ' + String(err)
+                  );
+                }
+              } else {
+                // User wants to turn OFF - ask for confirmation
+                console.log('[Toggle] Toggle turning OFF, asking confirmation...');
+                Alert.alert(
+                  'Disable Camera Access',
+                  'Camera access will be disabled. Would you like to confirm?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Disable',
+                      style: 'destructive',
+                      onPress: () => {
+                        console.log('[Toggle] User confirmed disabling camera');
+                        setHasCameraPerm(false);
+                      }
+                    }
+                  ]
+                );
+              }
+            }}
+            trackColor={{false: '#334155', true: '#059669'}}
+            thumbColor={hasCameraPerm ? '#10b981' : '#94a3b8'}
+          />
+        </View>
+
+        <View style={[styles.itemContainer, styles.itemBorder]}>
+          <View style={styles.iconBox}>
+            <Text style={styles.iconText}>📍</Text>
+          </View>
+          <View style={styles.textContainer}>
+            <Text style={styles.itemTitle}>Location Access</Text>
+            <Text style={styles.itemSubtitle}>Record GPS coordinates & exact address</Text>
+          </View>
+          <Switch
+            value={hasLocationPerm}
+            onValueChange={async (val) => {
+              console.log('[Toggle] Location toggle clicked:', val);
+
+              if (val) {
+                // User wants to turn ON - ALWAYS request permission dialog
+                console.log('[Toggle] Requesting location permission via native Android dialog...');
+                try {
+                  const granted = await requestLocationPermissionNative();
+                  console.log('[Toggle] Native location permission result:', granted);
+                  setHasLocationPerm(granted);
+                } catch (err) {
+                  console.error('[Toggle] Error requesting location permission:', err);
+                  Alert.alert(
+                    'Error',
+                    'Failed to request location permission: ' + String(err)
+                  );
+                }
+              } else {
+                // User wants to turn OFF - ask for confirmation
+                console.log('[Toggle] Toggle turning OFF, asking confirmation...');
+                Alert.alert(
+                  'Disable Location Access',
+                  'Location access will be disabled. Would you like to confirm?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Disable',
+                      style: 'destructive',
+                      onPress: () => {
+                        console.log('[Toggle] User confirmed disabling location');
+                        setHasLocationPerm(false);
+                      }
+                    }
+                  ]
+                );
+              }
+            }}
+            trackColor={{false: '#334155', true: '#059669'}}
+            thumbColor={hasLocationPerm ? '#10b981' : '#94a3b8'}
+          />
+        </View>
 
         <SettingItem
           icon="🖥️"
@@ -243,7 +319,10 @@ export function MonitoringScreen() {
                 'Disable Display Over Other Apps in Android Settings.',
                 [
                   {text: 'Cancel', style: 'cancel'},
-                  {text: 'Open Settings', onPress: () => mrpmModule.openAppSettings()},
+                  {text: 'Open Settings', onPress: async () => {
+                    await mrpmModule.openAppSettings();
+                    setTimeout(checkPermissions, 1000);
+                  }},
                 ],
               );
             }

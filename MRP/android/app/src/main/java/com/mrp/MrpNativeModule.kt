@@ -4,11 +4,15 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.annotation.NonNull
+import androidx.core.app.ActivityCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.mrp.data.local.EventStorage
@@ -232,6 +236,42 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun checkCameraPermission(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val granted = ActivityCompat.checkSelfPermission(reactContext, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                Log.d(TAG, "Camera permission check: $granted")
+                Log.d(TAG, "Camera permission check result: $granted")
+                promise.resolve(granted)
+            } else {
+                Log.d(TAG, "Camera permission check: SDK < M, returning true")
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check camera permission", e)
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun checkLocationPermission(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val granted = ActivityCompat.checkSelfPermission(reactContext, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                Log.d(TAG, "Location permission check: $granted")
+                Log.d(TAG, "Location permission check result: $granted")
+                promise.resolve(granted)
+            } else {
+                Log.d(TAG, "Location permission check: SDK < M, returning true")
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check location permission", e)
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
     fun requestOverlayPermission(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             if (!Settings.canDrawOverlays(reactContext)) {
@@ -246,6 +286,71 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 promise.resolve(false)
             }
         } else {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun requestCameraPermission(promise: Promise) {
+        Log.d(TAG, "=== requestCameraPermission CALLED ===")
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Log.d(TAG, "Requesting camera permission (always show dialog)")
+
+                val activity = currentActivity
+                Log.d(TAG, "Current activity: $activity")
+
+                if (activity != null) {
+                    // Request permission and immediately return - the system will show the dialog
+                    Log.d(TAG, "Calling ActivityCompat.requestPermissions on main thread")
+                    androidx.core.app.ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(android.Manifest.permission.CAMERA),
+                        100
+                    )
+
+                    Log.d(TAG, "Camera permission request initiated - waiting for user response...")
+                    promise.resolve(true)  // Return true to indicate request was sent
+                } else {
+                    Log.e(TAG, "Activity is null, cannot request permission")
+                    promise.resolve(false)
+                }
+            } else {
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request camera permission", e)
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun requestLocationPermission(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Log.d(TAG, "Requesting location permission (always show dialog)")
+
+                val activity = currentActivity
+                if (activity != null) {
+                    // Always call requestPermissions - this will show the dialog
+                    androidx.core.app.ActivityCompat.requestPermissions(
+                        activity,
+                        arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                        101
+                    )
+
+                    Log.d(TAG, "Location permission request initiated")
+                    // Return true immediately - the dialog will show and the callback will be called when user responds
+                    promise.resolve(true)
+                } else {
+                    Log.e(TAG, "Activity is null, cannot request permission")
+                    promise.resolve(false)
+                }
+            } else {
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request location permission", e)
             promise.resolve(false)
         }
     }

@@ -12,6 +12,10 @@ export interface MrpNativeInterface {
   isDeviceAdminEnabled(): Promise<boolean>;
   checkOverlayPermission(): Promise<boolean>;
   requestOverlayPermission(): Promise<boolean>;
+  requestCameraPermission(): Promise<boolean>;
+  checkCameraPermission(): Promise<boolean>;
+  requestLocationPermission(): Promise<boolean>;
+  checkLocationPermission(): Promise<boolean>;
   getEvents(): Promise<any[]>;
   getEventById(id: string): Promise<any | null>;
   deleteEvent(id: string): Promise<boolean>;
