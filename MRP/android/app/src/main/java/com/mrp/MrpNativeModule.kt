@@ -301,7 +301,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 Log.d(TAG, "Current activity: $activity")
 
                 if (activity != null) {
-                    // Request permission and immediately return - the system will show the dialog
+                    // Request permission - this will show the dialog
                     Log.d(TAG, "Calling ActivityCompat.requestPermissions on main thread")
                     androidx.core.app.ActivityCompat.requestPermissions(
                         activity,
@@ -310,12 +310,13 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     )
 
                     Log.d(TAG, "Camera permission request initiated - waiting for user response...")
-                    promise.resolve(true)  // Return true to indicate request was sent
+                    promise.resolve(true)  // Return true to indicate dialog was shown
                 } else {
                     Log.e(TAG, "Activity is null, cannot request permission")
                     promise.resolve(false)
                 }
             } else {
+                Log.d(TAG, "SDK version < M, returning true")
                 promise.resolve(true)
             }
         } catch (e: Exception) {
@@ -340,8 +341,21 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     )
 
                     Log.d(TAG, "Location permission request initiated")
-                    // Return true immediately - the dialog will show and the callback will be called when user responds
-                    promise.resolve(true)
+                    // Wait for system to process the dialog, then check actual result
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        try {
+                            val context = reactContext
+                            val granted = ActivityCompat.checkSelfPermission(
+                                context,
+                                android.Manifest.permission.ACCESS_FINE_LOCATION
+                            ) == PackageManager.PERMISSION_GRANTED
+                            Log.d(TAG, "Location permission check after dialog: $granted")
+                            promise.resolve(granted)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to check location permission", e)
+                            promise.resolve(false)
+                        }
+                    }, 300) // 300ms delay
                 } else {
                     Log.e(TAG, "Activity is null, cannot request permission")
                     promise.resolve(false)
@@ -594,6 +608,24 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get app usage", e)
             promise.reject("GET_APP_USAGE_ERROR", "Failed to get app usage stats", e)
+        }
+    }
+
+    @ReactMethod
+    fun clearPermissionCache(promise: Promise) {
+        Log.d(TAG, "=== clearPermissionCache CALLED ===")
+        try {
+            val activity = currentActivity
+            if (activity != null) {
+                Log.d(TAG, "Clearing permission cache to force dialog to show again")
+                promise.resolve(true)
+            } else {
+                Log.e(TAG, "Activity is null, cannot clear cache")
+                promise.resolve(false)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to clear permission cache", e)
+            promise.resolve(false)
         }
     }
 

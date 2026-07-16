@@ -20,10 +20,16 @@ const requestCameraPermissionNative = async (): Promise<boolean> => {
   }
 
   try {
-    console.log('[Permission] Requesting camera permission...');
-    // Request permission - this should show the native dialog
+    console.log('[Permission] Requesting camera permission (always show dialog)...');
+    // Request permission - this will ALWAYS show the native dialog in Bridgeless mode
     const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.CAMERA
+      PermissionsAndroid.PERMISSIONS.CAMERA,
+      {
+        title: 'Camera Access Required',
+        message: 'MRP requires camera access to capture intruder selfies during security events.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      }
     );
 
     console.log('[Permission] Camera permission result:', granted);
@@ -40,10 +46,16 @@ const requestLocationPermissionNative = async (): Promise<boolean> => {
   }
 
   try {
-    console.log('[Permission] Requesting location permission...');
-    // Request permission - this should show the native dialog
+    console.log('[Permission] Requesting location permission (always show dialog)...');
+    // Request permission - this will ALWAYS show the native dialog in Bridgeless mode
     const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Location Access Required',
+        message: 'MRP requires location access to log GPS coordinates and addresses for security events.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      }
     );
 
     console.log('[Permission] Location permission result:', granted);
@@ -175,6 +187,18 @@ export function MonitoringScreen() {
           <Text style={styles.sectionTitle}>SYSTEM ACCESS & PERMISSIONS</Text>
         </View>
 
+        {/* Navigate to full permissions screen */}
+        <TouchableOpacity
+          style={styles.managePermissionsButton}
+          onPress={async () => {
+            await mrpmModule.openAppSettings();
+          }}>
+          <Text style={styles.managePermissionsButtonText}>🔒 Manage All Permissions</Text>
+          <Text style={styles.managePermissionsButtonSubtitle}>
+            View full permissions details, app purpose, and grant instructions
+          </Text>
+        </TouchableOpacity>
+
         {!allPermsGranted && (
           <TouchableOpacity
             style={styles.grantAllButton}
@@ -215,18 +239,52 @@ export function MonitoringScreen() {
 
               if (val) {
                 // User wants to turn ON - ALWAYS request permission dialog
-                console.log('[Toggle] Requesting camera permission via native Android dialog...');
+                console.log('[Toggle] Requesting camera permission via PermissionsAndroid...');
+
                 try {
-                  console.log('[Toggle] Calling native module requestCameraPermission...');
-                  const result = await mrpmModule.requestCameraPermission();
-                  console.log('[Toggle] Native module result:', result);
-                  setHasCameraPerm(result === true);
+                  console.log('[Toggle] Calling PermissionsAndroid.request...');
+                  const granted = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.CAMERA,
+                    {
+                      title: 'Camera Access Required',
+                      message: 'MRP requires camera access to capture intruder selfies during security events.',
+                      buttonPositive: 'Allow',
+                      buttonNegative: 'Deny',
+                    }
+                  );
+                  console.log('[Toggle] Camera permission result:', granted);
+
+                  // Check if permission was granted or denied
+                  const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+                  console.log('[Toggle] Setting hasCameraPerm to:', isGranted);
+                  setHasCameraPerm(isGranted);
+
+                  if (!isGranted) {
+                    console.log('[Toggle] Permission denied, showing alert with manual steps');
+                    Alert.alert(
+                      'Permission Denied - How to Enable',
+                      `Camera permission is required to enable this feature.\n\nTo grant this permission:\n\n1. Go to: Settings → Apps → MRP\n2. Tap on "Permissions"\n3. Enable "Camera"\n\nOr click "Open Settings" below to go directly.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Open Settings',
+                          onPress: async () => {
+                            await mrpmModule.openAppSettings();
+                          }
+                        }
+                      ]
+                    );
+                  } else {
+                    console.log('[Toggle] Permission granted');
+                  }
                 } catch (err) {
                   console.error('[Toggle] Error requesting camera permission:', err);
                   Alert.alert(
                     'Error',
                     'Failed to request camera permission: ' + String(err)
                   );
+                  // Set to false on error
+                  setHasCameraPerm(false);
                 }
               } else {
                 // User wants to turn OFF - ask for confirmation
@@ -268,17 +326,52 @@ export function MonitoringScreen() {
 
               if (val) {
                 // User wants to turn ON - ALWAYS request permission dialog
-                console.log('[Toggle] Requesting location permission via native Android dialog...');
+                console.log('[Toggle] Requesting location permission via PermissionsAndroid...');
+
                 try {
-                  const granted = await requestLocationPermissionNative();
-                  console.log('[Toggle] Native location permission result:', granted);
-                  setHasLocationPerm(granted);
+                  console.log('[Toggle] Calling PermissionsAndroid.request...');
+                  const granted = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                    {
+                      title: 'Location Access Required',
+                      message: 'MRP requires location access to log GPS coordinates and addresses for security events.',
+                      buttonPositive: 'Allow',
+                      buttonNegative: 'Deny',
+                    }
+                  );
+                  console.log('[Toggle] Location permission result:', granted);
+
+                  // Check if permission was granted or denied
+                  const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+                  console.log('[Toggle] Setting hasLocationPerm to:', isGranted);
+                  setHasLocationPerm(isGranted);
+
+                  if (!isGranted) {
+                    console.log('[Toggle] Permission denied, showing alert with manual steps');
+                    Alert.alert(
+                      'Permission Denied - How to Enable',
+                      `Location permission is required to enable this feature.\n\nTo grant this permission:\n\n1. Go to: Settings → Apps → MRP\n2. Tap on "Permissions"\n3. Enable "Location"\n4. Select "Allow all the time"\n\nOr click "Open Settings" below to go directly.`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Open Settings',
+                          onPress: async () => {
+                            await mrpmModule.openAppSettings();
+                          }
+                        }
+                      ]
+                    );
+                  } else {
+                    console.log('[Toggle] Permission granted');
+                  }
                 } catch (err) {
                   console.error('[Toggle] Error requesting location permission:', err);
                   Alert.alert(
                     'Error',
                     'Failed to request location permission: ' + String(err)
                   );
+                  // Set to false on error
+                  setHasLocationPerm(false);
                 }
               } else {
                 // User wants to turn OFF - ask for confirmation
@@ -508,6 +601,26 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: '700',
+  },
+  managePermissionsButton: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+  },
+  managePermissionsButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  managePermissionsButtonSubtitle: {
+    color: '#93c5fd',
+    fontSize: 11,
+    textAlign: 'center',
   },
   itemContainer: {
     flexDirection: 'row',

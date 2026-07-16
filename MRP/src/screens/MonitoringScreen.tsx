@@ -45,17 +45,38 @@ export function MonitoringScreen({onLogout}: Props) {
   const requestCameraPermission = async () => {
     if (Platform.OS === 'android') {
       try {
+        // Use PermissionsAndroid.request() to show the dialog
+        console.log('[PIN Screen] Requesting camera permission...');
         const granted = await PermissionsAndroid.request(
           PermissionsAndroid.PERMISSIONS.CAMERA,
           {
-            title: 'Camera Permission',
-            message: 'MRP needs camera access to capture photos.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'OK',
-          },
+            title: 'Camera Access Required',
+            message: 'MRP requires camera access to capture intruder selfies during security events.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Deny',
+          }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        console.log('[PIN Screen] Camera permission result:', granted);
+        const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
+        console.log('[PIN Screen] Permission granted:', isGranted);
+        return isGranted;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const requestLocationPermission = async () => {
+    if (Platform.OS === 'android') {
+      try {
+        // Use native module to show the dialog (this works in Bridgeless mode)
+        console.log('[PIN Screen] Requesting location permission...');
+        await MrpNative.requestLocationPermission();
+        console.log('[PIN Screen] Location permission request initiated');
+        // Return true as permission dialog was shown
+        return true;
       } catch (err) {
         console.warn(err);
         return false;
@@ -78,11 +99,29 @@ export function MonitoringScreen({onLogout}: Props) {
 
   const handleStartMonitoring = async () => {
     // Note: Accessibility is not required - MrpMonitorService uses BroadcastReceivers
-    const hasPermission = await requestCameraPermission();
-    if (!hasPermission) {
-      Alert.alert('Permission Required', 'Camera permission is required for monitoring.');
+    console.log('[PIN Screen] Requesting both camera and location permissions...');
+    const hasCameraPermission = await requestCameraPermission();
+    const hasLocationPermission = await requestLocationPermission();
+
+    if (!hasCameraPermission || !hasLocationPermission) {
+      Alert.alert(
+        'Permission Denied',
+        'Camera and/or location permissions were denied.\n\n' +
+        'Please go to Settings > Apps > MRP > Permissions and grant both permissions, ' +
+        'then try starting monitoring again.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Let user navigate to settings
+            }
+          }
+        ]
+      );
       return;
     }
+
+    console.log('[PIN Screen] Starting monitoring with both permissions granted...');
     await startMonitoring();
   };
 

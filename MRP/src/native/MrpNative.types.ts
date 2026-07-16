@@ -16,6 +16,11 @@ interface MrpNativeInterface {
   takePhoto(): Promise<boolean>;
   getServiceRunning(): Promise<boolean>;
   openAppSettings(): Promise<boolean>;
+  requestCameraPermission(): Promise<boolean>;
+  requestLocationPermission(): Promise<boolean>;
+  checkCameraPermission(): Promise<boolean>;
+  checkLocationPermission(): Promise<boolean>;
+  clearPermissionCache(): Promise<boolean>;
 }
 
 const {MrpNative} = NativeModules;
