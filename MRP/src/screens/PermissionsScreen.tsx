@@ -140,66 +140,17 @@ export function PermissionsScreen() {
     },
   ];
 
-  const formatAppPurpose = () => (
-    <Text style={styles.appPurpose}>
-      <Text style={styles.appPurposeTitle}>What is MRP?</Text>
-      {'\n\n'}
-      MRP (Mobile Relocation Provider) is an advanced security app designed to protect your phone from intruders and unauthorized access.
-      {'\n\n'}
-      <Text style={styles.highlight}>
-        Why does MRP need these permissions?
-      </Text>
-      {'\n\n'}
-      Each permission serves a specific security purpose:
-      {'\n\n'}
-      • <Text style={styles.bullet}>📷 Camera</Text> - Capture intruder selfies when suspicious activity is detected
-      {'\n'}
-      • <Text style={styles.bullet}>📍 Location</Text> - Record GPS coordinates for security event evidence
-      {'\n'}
-      • <Text style={styles.bullet}>🖥️ Display Overlay</Text> - Show camera preview on locked screen
-      {'\n'}
-      • <Text style={styles.bullet}>🔐 Device Admin</Text> - Detect wrong password attempts and unlock events
-      {'\n'}
-      • <Text style={styles.bullet}>♿ Accessibility</Text> - Monitor screen state and background activity
-      {'\n'}
-      • <Text style={styles.bullet}>📊 Usage Stats</Text> - Track app usage during security events
-    </Text>
-  );
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>App Privacy & Permissions</Text>
-        <Text style={styles.headerSubtitle}>MRP Security System</Text>
-      </View>
-
-      {/* App Purpose */}
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>About MRP</Text>
-        {formatAppPurpose()}
-      </View>
-
-      {/* Privacy Assurance */}
-      <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Your Privacy is Protected</Text>
-        <Text style={styles.privacyText}>
-          MRP takes your privacy seriously:
-        </Text>
-        <View style={styles.privacyPoints}>
-          <Text style={styles.privacyPoint}>✓ No data is sent to any cloud servers</Text>
-          <Text style={styles.privacyPoint}>✓ All data is stored locally on your device</Text>
-          <Text style={styles.privacyPoint}>✓ No third-party tracking or analytics</Text>
-          <Text style={styles.privacyPoint}>✓ Data is never shared with advertisers</Text>
-        </View>
-        <Text style={styles.futureSync}>
-          📁 Future: Your secure data will be automatically synced to your logged-in Google Drive account (when feature is enabled)
-        </Text>
+        <Text style={styles.headerTitle}>Required Permissions</Text>
+        <Text style={styles.headerSubtitle}>MRP Stay Sync.. Stay Connected</Text>
       </View>
 
       {/* Permissions List */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Required Permissions</Text>
+        <Text style={styles.sectionTitle}>All Permissions</Text>
 
         {permissions.map((perm, index) => (
           <View key={index} style={styles.permissionItem}>
@@ -276,9 +227,9 @@ export function PermissionsScreen() {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>MRP Security System</Text>
+        <Text style={styles.footerText}>MRP Stay Sync.. Stay Connected</Text>
         <Text style={styles.footerSubtext}>
-          Your phone, your security, your privacy
+          Your phone, your security, your peace of mind
         </Text>
       </View>
     </ScrollView>
@@ -322,45 +273,6 @@ const styles = StyleSheet.create({
     color: '#64748b',
     letterSpacing: 1,
     marginBottom: 12,
-  },
-  appPurpose: {
-    fontSize: 14,
-    color: '#e2e8f0',
-    lineHeight: 22,
-  },
-  appPurposeTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#10b981',
-    marginBottom: 8,
-  },
-  highlight: {
-    color: '#f59e0b',
-    fontWeight: '600',
-  },
-  privacyText: {
-    fontSize: 14,
-    color: '#e2e8f0',
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  privacyPoints: {
-    gap: 8,
-  },
-  privacyPoint: {
-    fontSize: 13,
-    color: '#cbd5e1',
-    lineHeight: 20,
-  },
-  futureSync: {
-    fontSize: 12,
-    color: '#64748b',
-    lineHeight: 18,
-    fontStyle: 'italic',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#334155',
   },
   permissionItem: {
     flexDirection: 'row',

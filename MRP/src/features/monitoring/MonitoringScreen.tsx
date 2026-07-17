@@ -444,7 +444,7 @@ export function MonitoringScreen() {
       {/* Security Surveillance Rules */}
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>SURVEILLANCE & EVENT TRIGGERS</Text>
+          <Text style={styles.sectionTitle}>SECURITY FEATURES & TRIGGERS</Text>
         </View>
 
         <SettingItem

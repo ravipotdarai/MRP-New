@@ -612,6 +612,44 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun getMrpBatteryUsage(promise: Promise) {
+        Log.d(TAG, "=== getMrpBatteryUsage CALLED ===")
+        try {
+            val usageStatsManager = reactContext.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val now = System.currentTimeMillis()
+            val oneHourAgo = now - (60 * 60 * 1000) // Last hour
+            val oneDayAgo = now - (24 * 60 * 60 * 1000) // Last 24 hours
+
+            val todayUsage = usageStatsManager.queryUsageStats(
+                android.app.usage.UsageStatsManager.INTERVAL_DAILY,
+                oneDayAgo,
+                now
+            )
+
+            val totalMs = todayUsage
+                .filter { it.packageName == reactContext.packageName }
+                .map { it.totalTimeInForeground }
+                .sum()
+
+            val hours = (totalMs / (60 * 60 * 1000)).toInt()
+            val minutes = ((totalMs % (60 * 60 * 1000)) / (60 * 1000)).toInt()
+
+            val map = Arguments.createMap().apply {
+                putString("appName", "MRP Stay Sync")
+                putInt("batteryUsageMinutes", hours * 60 + minutes)
+                putString("batteryUsageText", if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m")
+                putLong("batteryUsageMs", totalMs)
+            }
+
+            Log.d(TAG, "MRP battery usage: ${hours}h ${minutes}m = $totalMs ms")
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get MRP battery usage", e)
+            promise.reject("GET_MRP_BATTERY_ERROR", "Failed to get MRP battery usage", e)
+        }
+    }
+
+    @ReactMethod
     fun clearPermissionCache(promise: Promise) {
         Log.d(TAG, "=== clearPermissionCache CALLED ===")
         try {

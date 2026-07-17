@@ -16,6 +16,7 @@ interface MrpNativeInterface {
   takePhoto(): Promise<boolean>;
   getServiceRunning(): Promise<boolean>;
   openAppSettings(): Promise<boolean>;
+  getMrpBatteryUsage(): Promise<any>;
   requestCameraPermission(): Promise<boolean>;
   requestLocationPermission(): Promise<boolean>;
   checkCameraPermission(): Promise<boolean>;

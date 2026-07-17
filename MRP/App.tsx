@@ -10,6 +10,7 @@ import {TimelineScreen} from './src/features/graph/TimelineScreen';
 import {PhotoGallery} from './src/features/photos/PhotoGallery';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
 import {PermissionsScreen} from './src/screens/PermissionsScreen';
+import {AboutScreen} from './src/screens/AboutScreen';
 import {Text} from 'react-native';
 
 const Tab = createBottomTabNavigator();
@@ -73,6 +74,15 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
         options={{
           tabBarIcon: ({color}) => (
             <Text style={{fontSize: 20}}>🔒</Text>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="About"
+        component={AboutScreen}
+        options={{
+          tabBarIcon: ({color}) => (
+            <Text style={{fontSize: 20}}>ℹ️</Text>
           ),
         }}
       />

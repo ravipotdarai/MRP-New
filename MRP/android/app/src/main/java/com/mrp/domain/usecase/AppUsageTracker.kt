@@ -32,12 +32,19 @@ class AppUsageTracker(private val context: Context) {
                 val currentTime = System.currentTimeMillis()
                 val events = usageStatsManager.queryEvents(lastQueryTime, currentTime)
                 val event = UsageEvents.Event()
+                val myPackageName = context.packageName
 
                 while (events.hasNextEvent()) {
                     events.getNextEvent(event)
-                    
+
                     val packageName = event.packageName
                     if (packageName == null) continue
+
+                    // Track MRP's own usage
+                    if (packageName == myPackageName) {
+                        trackMyAppUsage(event)
+                        continue
+                    }
 
                     when (event.eventType) {
                         UsageEvents.Event.ACTIVITY_RESUMED -> {
@@ -63,6 +70,37 @@ class AppUsageTracker(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to track app usage", e)
             }
+        }
+    }
+
+    private fun trackMyAppUsage(event: UsageEvents.Event) {
+        try {
+            val myPackageName = context.packageName
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    // MRP came to foreground
+                    openApps[myPackageName] = event.timeStamp
+                }
+                UsageEvents.Event.ACTIVITY_PAUSED,
+                UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    val startTime = openApps.remove(myPackageName)
+                    if (startTime != null) {
+                        val durationMs = event.timeStamp - startTime
+                        if (durationMs > 500) { // Short sessions still worth tracking
+                            val session = createAppUsageSession(
+                                myPackageName,
+                                startTime,
+                                event.timeStamp,
+                                durationMs
+                            )
+                            appUsageDao.insertSession(session)
+                            Log.d(TAG, "Recorded MRP session: \${durationMs / 1000}s")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to track MRP usage", e)
         }
     }
 

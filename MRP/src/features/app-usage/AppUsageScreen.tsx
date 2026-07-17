@@ -30,6 +30,7 @@ export function AppUsageScreen() {
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TIMELINE' | 'REPORTS'>('DASHBOARD');
   const [sessions, setSessions] = useState<AppUsageSession[]>([]);
   const [events, setEvents] = useState<UnifiedEvent[]>([]);
+  const [mrpBattery, setMrpBattery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
 
@@ -39,14 +40,15 @@ export function AppUsageScreen() {
 
   const checkPermissionAndLoad = async () => {
     try {
-      setLoading(true);
+      console.log('[AppUsageScreen] Checking permissions...');
       const perm = await mrpmModule.hasUsageStatsPermission();
+      console.log('[AppUsageScreen] Has permission:', perm);
       setHasPermission(perm);
       if (perm) {
         await fetchData();
       }
     } catch (e) {
-      console.error('Failed to check permission', e);
+      console.error('[AppUsageScreen] Failed to check permission', e);
     } finally {
       setLoading(false);
     }
@@ -54,22 +56,35 @@ export function AppUsageScreen() {
 
   const fetchData = async () => {
     try {
-      const [usageData, eventsData] = await Promise.all([
+      console.log('[AppUsageScreen] Fetching data...');
+      const [usageData, eventsData, mrpBatteryData] = await Promise.all([
         mrpmModule.getAppUsage(),
-        mrpmModule.getEvents()
+        mrpmModule.getEvents(),
+        mrpmModule.getMrpBatteryUsage()
       ]);
-      setSessions(usageData);
-      setEvents(eventsData);
+      console.log('[AppUsageScreen] Usage data:', usageData);
+      console.log('[AppUsageScreen] Events data:', eventsData);
+      console.log('[AppUsageScreen] MRP battery data:', mrpBatteryData);
+      console.log('[AppUsageScreen] Usage data type:', typeof usageData);
+      console.log('[AppUsageScreen] Events data type:', typeof eventsData);
+      console.log('[AppUsageScreen] Usage data length:', Array.isArray(usageData) ? usageData.length : 'N/A');
+      console.log('[AppUsageScreen] Events data length:', Array.isArray(eventsData) ? eventsData.length : 'N/A');
+
+      setSessions(Array.isArray(usageData) ? usageData : []);
+      setEvents(Array.isArray(eventsData) ? eventsData : []);
+      setMrpBattery(mrpBatteryData);
     } catch (e) {
-      console.error('Failed to fetch data', e);
+      console.error('[AppUsageScreen] Failed to fetch data:', e);
+      Alert.alert('Error', 'Failed to fetch data: ' + String(e));
     }
   };
 
   const handleRequestPermission = async () => {
     try {
+      console.log('[AppUsageScreen] Requesting permission...');
       await mrpmModule.requestUsageStatsPermission();
     } catch (e) {
-      console.error(e);
+      console.error('[AppUsageScreen] Error requesting permission', e);
     }
   };
 
@@ -77,6 +92,7 @@ export function AppUsageScreen() {
     return (
       <View style={styles.centerContainer}>
         <ActivityIndicator size="large" color="#38bdf8" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -101,20 +117,20 @@ export function AppUsageScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.tabBar}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'DASHBOARD' && styles.activeTab]} 
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'DASHBOARD' && styles.activeTab]}
           onPress={() => setActiveTab('DASHBOARD')}
         >
           <Text style={[styles.tabText, activeTab === 'DASHBOARD' && styles.activeTabText]}>Dashboard</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'TIMELINE' && styles.activeTab]} 
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'TIMELINE' && styles.activeTab]}
           onPress={() => setActiveTab('TIMELINE')}
         >
           <Text style={[styles.tabText, activeTab === 'TIMELINE' && styles.activeTabText]}>Timeline</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'REPORTS' && styles.activeTab]} 
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'REPORTS' && styles.activeTab]}
           onPress={() => setActiveTab('REPORTS')}
         >
           <Text style={[styles.tabText, activeTab === 'REPORTS' && styles.activeTabText]}>Reports</Text>
@@ -122,7 +138,7 @@ export function AppUsageScreen() {
       </View>
 
       <View style={styles.content}>
-        {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} onRefresh={fetchData} />}
+        {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} mrpBattery={mrpBattery} onRefresh={fetchData} />}
         {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
         {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
       </View>
@@ -140,34 +156,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
   },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    paddingTop: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: '#38bdf8',
-  },
-  tabText: {
+  loadingText: {
     color: '#94a3b8',
     fontSize: 14,
-    fontWeight: '600',
-  },
-  activeTabText: {
-    color: '#38bdf8',
-  },
-  content: {
-    flex: 1,
+    marginTop: 16,
   },
   permissionContainer: {
     flex: 1,
@@ -210,5 +204,33 @@ const styles = StyleSheet.create({
     color: '#38bdf8',
     fontSize: 14,
     fontWeight: '600',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    paddingTop: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#38bdf8',
+  },
+  tabText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: '#38bdf8',
+  },
+  content: {
+    flex: 1,
   },
 });
