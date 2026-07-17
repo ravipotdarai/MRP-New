@@ -638,7 +638,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putString("appName", "MRP Stay Sync")
                 putInt("batteryUsageMinutes", hours * 60 + minutes)
                 putString("batteryUsageText", if (hours > 0) "${hours}h ${minutes}m" else "${minutes}m")
-                putLong("batteryUsageMs", totalMs)
+                putDouble("batteryUsageMs", totalMs.toDouble())
             }
 
             Log.d(TAG, "MRP battery usage: ${hours}h ${minutes}m = $totalMs ms")

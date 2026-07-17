@@ -8,7 +8,7 @@ import {
   Linking,
   Alert,
 } from 'react-native';
-import {MrpNative} from '../native/MrpNative.types';
+import mrpmModule from '../shared/hooks/useNativeBridge';
 
 interface PermissionDetail {
   name: string;
@@ -16,6 +16,8 @@ interface PermissionDetail {
   description: string;
   granted: boolean;
   grantSteps: string[];
+  onOpen: () => Promise<void>;
+  buttonLabel: string;
 }
 
 export function PermissionsScreen() {
@@ -23,6 +25,7 @@ export function PermissionsScreen() {
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [overlayPermission, setOverlayPermission] = useState<boolean | null>(null);
   const [deviceAdminPermission, setDeviceAdminPermission] = useState<boolean | null>(null);
+  const [usageStatsPermission, setUsageStatsPermission] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,22 +35,32 @@ export function PermissionsScreen() {
   const checkPermissions = async () => {
     try {
       console.log('[PermissionsScreen] Checking permissions...');
-      const cam = await MrpNative.checkCameraPermission();
-      const loc = await MrpNative.checkLocationPermission();
-      const overlay = await MrpNative.checkOverlayPermission();
-      const admin = await MrpNative.isDeviceAdminEnabled();
+      console.log('[PermissionsScreen] mrpmModule available:', !!mrpmModule);
+      if (!mrpmModule) {
+        console.error('[PermissionsScreen] MrpNative module not available');
+        Alert.alert('Error', 'Native module not available. Please restart the app.');
+        setLoading(false);
+        return;
+      }
+      const cam = await mrpmModule.checkCameraPermission();
+      const loc = await mrpmModule.checkLocationPermission();
+      const overlay = await mrpmModule.checkOverlayPermission();
+      const admin = await mrpmModule.isDeviceAdminEnabled();
+      const usageStats = await mrpmModule.hasUsageStatsPermission();
 
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
         location: loc,
         overlay: overlay,
-        admin: admin
+        admin: admin,
+        usageStats: usageStats
       });
 
       setCameraPermission(cam);
       setLocationPermission(loc);
       setOverlayPermission(overlay);
       setDeviceAdminPermission(admin);
+      setUsageStatsPermission(usageStats);
     } catch (e) {
       console.error('[PermissionsScreen] Failed to check permissions:', e);
       Alert.alert('Error', 'Failed to check permissions: ' + String(e));
@@ -56,17 +69,86 @@ export function PermissionsScreen() {
     }
   };
 
-  const openAppSettings = () => {
-    MrpNative.openAppSettings();
+  const openAppDetails = async () => {
+    try {
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      await mrpmModule.openAppSettings();
+    } catch (e) {
+      console.error('[PermissionsScreen] Error opening app settings:', e);
+      Alert.alert('Error', 'Could not open settings. Please open them manually.');
+    }
+  };
+
+  const openOverlaySettings = async () => {
+    try {
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      await mrpmModule.requestOverlayPermission();
+    } catch (e) {
+      console.error('[PermissionsScreen] Error opening overlay settings:', e);
+      // Fallback to app details
+      await openAppDetails();
+    }
+  };
+
+  const openUsageAccessSettings = async () => {
+    try {
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      await mrpmModule.requestUsageStatsPermission();
+    } catch (e) {
+      console.error('[PermissionsScreen] Error opening usage access settings:', e);
+      await openAppDetails();
+    }
+  };
+
+  const openAccessibilitySettings = async () => {
+    try {
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      await mrpmModule.requestAccessibilityEnable();
+    } catch (e) {
+      console.error('[PermissionsScreen] Error opening accessibility settings:', e);
+      await openAppDetails();
+    }
   };
 
   const requestDeviceAdmin = async () => {
     try {
-      await MrpNative.requestDeviceAdminEnable();
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      const isEnabled = await mrpmModule.isDeviceAdminEnabled();
+      if (!isEnabled) {
+        await mrpmModule.requestDeviceAdminEnable();
+        // Refresh permissions after request
+        setTimeout(checkPermissions, 1500);
+      } else {
+        Alert.alert('Device Admin', 'Device Admin is already enabled.');
+      }
     } catch (e) {
       console.error('[PermissionsScreen] Error requesting device admin:', e);
+      Alert.alert('Error', 'Could not enable Device Admin. Please try from Settings.');
     }
   };
+
+  if (loading) {
+    return (
+      <View style={styles.centerContainer}>
+        <Text style={styles.loadingText}>Loading permissions...</Text>
+      </View>
+    );
+  }
 
   const permissions: PermissionDetail[] = [
     {
@@ -79,6 +161,8 @@ export function PermissionsScreen() {
         'Tap on "Permissions"',
         'Enable "Camera"',
       ],
+      onOpen: openAppDetails,
+      buttonLabel: 'Open App Settings',
     },
     {
       name: 'Location Access',
@@ -91,6 +175,8 @@ export function PermissionsScreen() {
         'Enable "Location"',
         'Select "Allow all the time"',
       ],
+      onOpen: openAppDetails,
+      buttonLabel: 'Open App Settings',
     },
     {
       name: 'Display Over Other Apps',
@@ -103,6 +189,8 @@ export function PermissionsScreen() {
         'Select "Display over other apps"',
         'Toggle ON',
       ],
+      onOpen: openOverlaySettings,
+      buttonLabel: 'Open Overlay Settings',
     },
     {
       name: 'Device Admin Access',
@@ -115,6 +203,8 @@ export function PermissionsScreen() {
         'Select "MRP" from the list',
         'Enable the device admin',
       ],
+      onOpen: requestDeviceAdmin,
+      buttonLabel: 'Enable Device Admin',
     },
     {
       name: 'Accessibility Service',
@@ -126,17 +216,21 @@ export function PermissionsScreen() {
         'Tap on "Manage accessibility services"',
         'Enable "MRP" in the list',
       ],
+      onOpen: openAccessibilitySettings,
+      buttonLabel: 'Open Accessibility Settings',
     },
     {
       name: 'Usage Stats Access',
       icon: '📊',
       description: 'Required to track which apps are open on your phone during security events. This helps identify which apps were in use when suspicious activity occurred.',
-      granted: true, // Always granted in monitoring screen
+      granted: usageStatsPermission === true, // Check actual permission
       grantSteps: [
         'Go to: Settings → Apps → Special access → Usage access',
         'Find "MRP" in the list',
         'Enable "MRP"',
       ],
+      onOpen: openUsageAccessSettings,
+      buttonLabel: 'Open Usage Access Settings',
     },
   ];
 
@@ -145,22 +239,22 @@ export function PermissionsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Required Permissions</Text>
-        <Text style={styles.headerSubtitle}>MRP Stay Sync.. Stay Connected</Text>
+        <Text style={styles.headerSubtitle}>MRP Stay Sync - Stay Connected</Text>
       </View>
 
       {/* Permissions List */}
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>All Permissions</Text>
 
-        {permissions.map((perm, index) => (
-          <View key={index} style={styles.permissionItem}>
+        {permissions.map((perm) => (
+          <View key={perm.name} style={styles.permissionItem}>
             <View style={styles.permissionIconBox}>
               <Text style={styles.permissionIcon}>{perm.icon}</Text>
             </View>
 
             <View style={styles.permissionTextContainer}>
               <Text style={styles.permissionName}>{perm.name}</Text>
-              <Text style={styles.permissionDescription} numberOfLines={3}>
+              <Text style={styles.permissionDescription} numberOfLines={3} ellipsizeMode="tail">
                 {perm.description}
               </Text>
 
@@ -186,8 +280,8 @@ export function PermissionsScreen() {
                   ))}
                   <TouchableOpacity
                     style={styles.openSettingsButton}
-                    onPress={openAppSettings}>
-                    <Text style={styles.openSettingsButtonText}>Open Settings</Text>
+                    onPress={perm.onOpen}>
+                    <Text style={styles.openSettingsButtonText}>{perm.buttonLabel}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -243,7 +337,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 80, // Extra padding for footer
   },
   header: {
     marginBottom: 20,
@@ -353,9 +447,11 @@ const styles = StyleSheet.create({
   openSettingsButton: {
     backgroundColor: '#3b82f6',
     paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
     marginTop: 8,
+    width: '100%',
   },
   openSettingsButtonText: {
     color: '#ffffff',
@@ -416,5 +512,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 4,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#94a3b8',
+    fontSize: 16,
   },
 });

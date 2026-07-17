@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert} from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
@@ -24,6 +24,10 @@ export type UnifiedEvent = {
   timestamp: number;
   description: string;
   syncStatus: string;
+  latitude?: number;
+  longitude?: number;
+  intruderId?: string;
+  photoPath?: string;
 };
 
 export function AppUsageScreen() {
@@ -41,6 +45,12 @@ export function AppUsageScreen() {
   const checkPermissionAndLoad = async () => {
     try {
       console.log('[AppUsageScreen] Checking permissions...');
+      if (!mrpmModule) {
+        console.error('[AppUsageScreen] MrpNative module not available');
+        setHasPermission(false);
+        setLoading(false);
+        return;
+      }
       const perm = await mrpmModule.hasUsageStatsPermission();
       console.log('[AppUsageScreen] Has permission:', perm);
       setHasPermission(perm);
@@ -57,18 +67,27 @@ export function AppUsageScreen() {
   const fetchData = async () => {
     try {
       console.log('[AppUsageScreen] Fetching data...');
-      const [usageData, eventsData, mrpBatteryData] = await Promise.all([
+      if (!mrpmModule) {
+        console.error('[AppUsageScreen] MrpNative module not available');
+        return;
+      }
+      // Use allSettled so one failing/hanging call doesn't block the others.
+      const [usageRes, eventsRes, batteryRes] = await Promise.allSettled([
         mrpmModule.getAppUsage(),
         mrpmModule.getEvents(),
-        mrpmModule.getMrpBatteryUsage()
+        mrpmModule.getMrpBatteryUsage(),
       ]);
-      console.log('[AppUsageScreen] Usage data:', usageData);
-      console.log('[AppUsageScreen] Events data:', eventsData);
-      console.log('[AppUsageScreen] MRP battery data:', mrpBatteryData);
-      console.log('[AppUsageScreen] Usage data type:', typeof usageData);
-      console.log('[AppUsageScreen] Events data type:', typeof eventsData);
-      console.log('[AppUsageScreen] Usage data length:', Array.isArray(usageData) ? usageData.length : 'N/A');
-      console.log('[AppUsageScreen] Events data length:', Array.isArray(eventsData) ? eventsData.length : 'N/A');
+
+      const usageData = usageRes.status === 'fulfilled' ? usageRes.value : [];
+      const eventsData = eventsRes.status === 'fulfilled' ? eventsRes.value : [];
+      const mrpBatteryData = batteryRes.status === 'fulfilled' ? batteryRes.value : null;
+
+      if (usageRes.status === 'rejected') console.error('[AppUsageScreen] getAppUsage failed:', usageRes.reason);
+      if (eventsRes.status === 'rejected') console.error('[AppUsageScreen] getEvents failed:', eventsRes.reason);
+      if (batteryRes.status === 'rejected') console.error('[AppUsageScreen] getMrpBatteryUsage failed:', batteryRes.reason);
+
+      console.log('[AppUsageScreen] Usage length:', Array.isArray(usageData) ? usageData.length : 0);
+      console.log('[AppUsageScreen] Events length:', Array.isArray(eventsData) ? eventsData.length : 0);
 
       setSessions(Array.isArray(usageData) ? usageData : []);
       setEvents(Array.isArray(eventsData) ? eventsData : []);
@@ -82,6 +101,11 @@ export function AppUsageScreen() {
   const handleRequestPermission = async () => {
     try {
       console.log('[AppUsageScreen] Requesting permission...');
+      if (!mrpmModule) {
+        console.error('[AppUsageScreen] MrpNative module not available');
+        Alert.alert('Error', 'Native module not available');
+        return;
+      }
       await mrpmModule.requestUsageStatsPermission();
     } catch (e) {
       console.error('[AppUsageScreen] Error requesting permission', e);

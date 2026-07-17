@@ -1,7 +1,8 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {View, Text, StyleSheet, ScrollView, RefreshControl} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
+import {aggregateAppStats, formatAppName, formatDuration} from './AppUsageUtils';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -11,51 +12,55 @@ interface Props {
 }
 
 export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Props) {
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const mins = Math.floor(seconds / 60);
-    const hrs = Math.floor(mins / 60);
-    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
-    return `${mins}m`;
-  };
-
-  console.log('[AppUsageDashboard] START - Sessions:', sessions.length, 'Events:', events.length, 'MRP Battery:', mrpBattery);
-
   // Get Today's Start Time
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
 
-  console.log('[AppUsageDashboard] Total sessions:', sessions.length);
-  console.log('[AppUsageDashboard] Sessions:', sessions);
+  // Aggregate stats - ALL sessions (not filtered by date). Memoized to avoid
+  // recomputing (and re-logging) on every render.
+  const {totalScreenTime, longestSession, avgBattery, todayDistance} = useMemo(() => {
+    let totalScreenTime = 0;
+    let longestSession = 0;
+    let totalBattery = 0;
 
-  // Aggregate stats - ALL sessions (not filtered by date)
-  let totalScreenTime = 0;
-  let longestSession = 0;
-  const appStats: Record<string, {appName: string; duration: number; battery: number}> = {};
+    sessions.forEach(s => {
+      totalScreenTime += s.durationSeconds;
+      if (s.durationSeconds > longestSession) longestSession = s.durationSeconds;
+      if (s.batteryLevel) totalBattery += s.batteryLevel;
+    });
 
-  sessions.forEach(s => {
-    console.log('[AppUsageDashboard] Session:', s.appName, s.durationSeconds, 'startTime:', s.startTime);
-    totalScreenTime += s.durationSeconds;
-    if (s.durationSeconds > longestSession) longestSession = s.durationSeconds;
+    const avgBattery = sessions.length > 0 ? Math.round(totalBattery / sessions.length) : 0;
 
-    if (!appStats[s.packageName]) {
-      appStats[s.packageName] = {appName: s.appName, duration: 0, battery: 0};
+    // Haversine Distance Calculator
+    const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * (Math.PI / 180);
+      const dLon = (lon2 - lon1) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    };
+
+    const todayEvents = events.filter(e => e.timestamp >= todayStartMs);
+    let todayDistance = 0;
+    const locationEvents = todayEvents
+      .filter(e => e.latitude != null && e.longitude != null)
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    for (let i = 1; i < locationEvents.length; i++) {
+      const prev = locationEvents[i - 1];
+      const curr = locationEvents[i];
+      todayDistance += getDistanceFromLatLonInKm(prev.latitude!, prev.longitude!, curr.latitude!, curr.longitude!);
     }
-    appStats[s.packageName].duration += s.durationSeconds;
-    if (s.batteryLevel) {
-      appStats[s.packageName].battery += s.batteryLevel;
-    }
-  });
 
-  console.log('[AppUsageDashboard] Total screen time:', totalScreenTime, 'Sorted apps:', Object.keys(appStats).length);
+    return {totalScreenTime, longestSession, avgBattery, todayDistance};
+  }, [sessions, events, todayStartMs]);
 
-  const sortedApps = Object.entries(appStats)
-    .map(([pkg, data]) => ({packageName: pkg, ...data}))
-    .sort((a, b) => b.duration - a.duration);
-
-  const mostUsedApp = sortedApps.length > 0 ? sortedApps[0] : null;
-  const currentApp = sessions.length > 0 ? sessions[sessions.length - 1] : null;
+  const {sortedApps, mostUsedApp, currentApp} = useMemo(() => aggregateAppStats(sessions), [sessions]);
 
   // Aggregate Events
   const todayEvents = events.filter(e => e.timestamp >= todayStartMs);
@@ -63,48 +68,7 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
   const photosToday = todayEvents.filter(e => e.type === 'PHOTO_CAPTURED' || e.type === 'INTRUDER_SELFIE').length;
   const pendingSync = events.filter(e => e.syncStatus === 'PENDING').length;
 
-  // Calculate total battery usage from all apps
-  const totalBattery = Object.values(appStats).reduce((sum, app) => sum + app.battery, 0);
-  const avgBattery = totalBattery > 0 ? Math.round(totalBattery / sessions.length) : 0;
-
-  // Haversine Distance Calculator
-  const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  };
-
-  let todayDistance = 0;
-  const locationEvents = todayEvents
-    .filter(e => e.latitude != null && e.longitude != null)
-    .sort((a, b) => a.timestamp - b.timestamp);
-
-  for (let i = 1; i < locationEvents.length; i++) {
-    const prev = locationEvents[i - 1] as any;
-    const curr = locationEvents[i] as any;
-    todayDistance += getDistanceFromLatLonInKm(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
-  }
-
   // Render Widget
-  const formatAppName = (name: string) => {
-    if (!name) return 'Unknown';
-    if (name.includes('.')) {
-      const parts = name.split('.');
-      let lastPart = parts[parts.length - 1];
-      if (lastPart.length < 3 && parts.length > 1) {
-        lastPart = parts[parts.length - 2];
-      }
-      return lastPart.charAt(0).toUpperCase() + lastPart.slice(1);
-    }
-    return name;
-  };
-
   const renderWidget = (title: string, value: string, subtitle?: string) => (
     <View style={styles.widget}>
       <Text style={styles.widgetTitle}>{title}</Text>

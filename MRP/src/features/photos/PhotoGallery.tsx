@@ -12,6 +12,7 @@ import {
   ScrollView,
   SafeAreaView,
   Linking,
+  Platform,
 } from 'react-native';
 import {Card} from '../../shared/components/Card';
 import {Button} from '../../shared/components/Button';
@@ -193,13 +194,25 @@ export function PhotoGallery() {
 
   const renderPhotoItem = ({item}: {item: Photo}) => {
     const eventTitle = formatPhotoEventName(item.name);
+
+    // Convert to content URI for Android 10+ (scoped storage)
+    let imageUri = item.path;
+    const androidVersion = Platform.OS === 'android' ? (Platform.Version as number) : 0;
+    if (androidVersion >= 29) {
+      // Use last segment of path for MediaStore content URI
+      const lastSegment = item.path?.split('/').pop();
+      imageUri = lastSegment ? `content://com.android.externalstorage.documents/document/primary%3AMRP/${lastSegment}` : item.path;
+    } else {
+      imageUri = `file://${item.path}`;
+    }
+
     return (
       <TouchableOpacity
         style={styles.photoContainer}
         activeOpacity={0.8}
         onPress={() => setSelectedPhoto(item)}
         onLongPress={() => deletePhoto(item)}>
-        <Image source={{uri: `file://${item.path}`}} style={styles.photo} />
+        <Image source={{uri: imageUri}} style={styles.photo} resizeMode="cover" />
         <View style={styles.photoOverlay}>
           <Text style={styles.photoTitle} numberOfLines={1}>
             {eventTitle}

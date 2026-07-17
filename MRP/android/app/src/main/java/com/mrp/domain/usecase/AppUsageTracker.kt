@@ -23,13 +23,14 @@ class AppUsageTracker(private val context: Context) {
     // Map to keep track of when an app was opened
     private val openApps = mutableMapOf<String, Long>()
 
-    // Last time we queried UsageStatsManager
-    private var lastQueryTime: Long = System.currentTimeMillis() - 60000 // default to 1 min ago
+    // Last time we queried UsageStatsManager - initialize to start of today
+    private var lastQueryTime: Long = System.currentTimeMillis() - (24 * 60 * 60 * 1000) // 24 hours ago (start of today)
 
     fun trackUsage() {
         scope.launch {
             try {
                 val currentTime = System.currentTimeMillis()
+                // Query all events since last check (not limited to 1 minute)
                 val events = usageStatsManager.queryEvents(lastQueryTime, currentTime)
                 val event = UsageEvents.Event()
                 val myPackageName = context.packageName
@@ -57,15 +58,19 @@ class AppUsageTracker(private val context: Context) {
                             val startTime = openApps.remove(packageName)
                             if (startTime != null) {
                                 val durationMs = event.timeStamp - startTime
-                                if (durationMs > 1000) { // Only log if > 1 second
-                                    val session = createAppUsageSession(packageName, startTime, event.timeStamp, durationMs)
-                                    appUsageDao.insertSession(session)
-                                    Log.d(TAG, "Recorded session for $packageName: \${durationMs / 1000}s")
-                                }
+                                // Log all sessions, not just > 1 second (for accurate data)
+                                val session = createAppUsageSession(packageName, startTime, event.timeStamp, durationMs)
+                                appUsageDao.insertSession(session)
+                                Log.d(TAG, "Recorded session for $packageName: \${durationMs / 1000}s")
                             }
                         }
                     }
                 }
+
+                // Clear the openApps map - start fresh for next query cycle
+                openApps.clear()
+
+                // Update last query time to include events we just processed
                 lastQueryTime = currentTime
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to track app usage", e)

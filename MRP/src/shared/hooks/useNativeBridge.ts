@@ -1,6 +1,6 @@
 import {NativeModules, NativeEventEmitter} from 'react-native';
 
-const {MrpNative} = NativeModules;
+const MrpNative = NativeModules.MrpNative || NativeModules.MrpNativeModule;
 
 export interface MrpNativeInterface {
   startMonitoring(): Promise<boolean>;
@@ -37,6 +37,8 @@ export interface MrpNativeInterface {
   getAppUsage(): Promise<any[]>;
   hasUsageStatsPermission(): Promise<boolean>;
   requestUsageStatsPermission(): Promise<boolean>;
+  getMrpBatteryUsage(): Promise<any>;
+  clearPermissionCache(): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

@@ -1,107 +1,118 @@
-import React from 'react';
-import {View, Text, StyleSheet, ScrollView} from 'react-native';
+import React, {useMemo} from 'react';
+import {View, Text, StyleSheet, FlatList} from 'react-native';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
+import {formatAppName, formatDuration} from './AppUsageUtils';
 
 interface Props {
   sessions: AppUsageSession[];
   events: UnifiedEvent[];
 }
 
-type TimelineItem = 
-  | { type: 'SESSION', data: AppUsageSession, timestamp: number }
-  | { type: 'EVENT', data: UnifiedEvent, timestamp: number };
+type TimelineItem =
+  | {type: 'SESSION'; data: AppUsageSession; timestamp: number}
+  | {type: 'EVENT'; data: UnifiedEvent; timestamp: number};
+
+// Cap the number of items rendered to keep the JS thread responsive.
+const MAX_ITEMS = 200;
 
 export function AppUsageTimeline({sessions, events}: Props) {
-  // Merge and sort
-  const items: TimelineItem[] = [
-    ...sessions.map(s => ({type: 'SESSION' as const, data: s, timestamp: s.startTime})),
-    ...events.map(e => ({type: 'EVENT' as const, data: e, timestamp: e.timestamp}))
-  ].sort((a, b) => b.timestamp - a.timestamp); // newest first
+  // Merge and sort (newest first), capped to MAX_ITEMS
+  const items: TimelineItem[] = useMemo(() => {
+    const merged: TimelineItem[] = [
+      ...sessions.map(s => ({type: 'SESSION' as const, data: s, timestamp: s.startTime})),
+      ...events.map(e => ({type: 'EVENT' as const, data: e, timestamp: e.timestamp})),
+    ].sort((a, b) => b.timestamp - a.timestamp);
+    return merged.slice(0, MAX_ITEMS);
+  }, [sessions, events]);
 
   const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-  };
-
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const mins = Math.floor(seconds / 60);
-    const hrs = Math.floor(mins / 60);
-    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
-    return `${mins}m`;
+    return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
   };
 
   const getEventIcon = (type: string) => {
     switch (type) {
-      case 'DEVICE_UNLOCK': return '🔓';
-      case 'DEVICE_LOCK': return '🔒';
-      case 'PHOTO_CAPTURED': return '📸';
-      case 'WIFI_CONNECTED': return '📶';
-      case 'WIFI_DISCONNECTED': return '📵';
-      default: return '⚡';
+      case 'DEVICE_UNLOCK':
+        return '🔓';
+      case 'DEVICE_LOCK':
+        return '🔒';
+      case 'PHOTO_CAPTURED':
+        return '📸';
+      case 'WIFI_CONNECTED':
+        return '📶';
+      case 'WIFI_DISCONNECTED':
+        return '📵';
+      default:
+        return '⚡';
     }
   };
 
-  const formatAppName = (name: string) => {
-    if (!name) return 'Unknown';
-    if (name.includes('.')) {
-      const parts = name.split('.');
-      let lastPart = parts[parts.length - 1];
-      if (lastPart.length < 3 && parts.length > 1) {
-          lastPart = parts[parts.length - 2];
-      }
-      return lastPart.charAt(0).toUpperCase() + lastPart.slice(1);
+  const renderItem = ({item, index}: {item: TimelineItem; index: number}) => {
+    const isLast = index === items.length - 1;
+    if (item.type === 'SESSION') {
+      const s = item.data;
+      return (
+        <View key={`s_${s.startTime}_${index}`} style={styles.timelineItem}>
+          <View style={styles.timeColumn}>
+            <Text style={styles.timeText}>{formatTime(s.startTime)}</Text>
+          </View>
+          <View style={styles.lineColumn}>
+            <View style={[styles.dot, {backgroundColor: '#3b82f6'}]} />
+            {!isLast && <View style={styles.line} />}
+          </View>
+          <View style={styles.contentColumn}>
+            <View style={styles.sessionCard}>
+              <Text style={styles.sessionName} numberOfLines={1}>📱 {formatAppName(s.appName)}</Text>
+              <Text style={styles.sessionDuration}>{formatDuration(s.durationSeconds)}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    } else {
+      const e = item.data;
+      return (
+        <View key={`e_${e.id}_${index}`} style={styles.timelineItem}>
+          <View style={styles.timeColumn}>
+            <Text style={styles.timeText}>{formatTime(e.timestamp)}</Text>
+          </View>
+          <View style={styles.lineColumn}>
+            <View style={[styles.dot, {backgroundColor: '#f59e0b'}]} />
+            {!isLast && <View style={styles.line} />}
+          </View>
+          <View style={styles.contentColumn}>
+            <View style={styles.eventCard}>
+              <Text style={styles.eventName}>{getEventIcon(e.type)} {e.type ? e.type.replace(/_/g, ' ') : 'Event'}</Text>
+              {e.description ? <Text style={styles.eventDesc}>{e.description}</Text> : null}
+            </View>
+          </View>
+        </View>
+      );
     }
-    return name;
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <Text style={styles.title}>Interleaved Timeline</Text>
-      
-      <View style={styles.timeline}>
-        {items.map((item, index) => {
-          if (item.type === 'SESSION') {
-            const s = item.data;
-            return (
-              <View key={`s_${s.startTime}_${index}`} style={styles.timelineItem}>
-                <View style={styles.timeColumn}>
-                  <Text style={styles.timeText}>{formatTime(s.startTime)}</Text>
-                </View>
-                <View style={styles.lineColumn}>
-                  <View style={[styles.dot, {backgroundColor: '#3b82f6'}]} />
-                  {index < items.length - 1 && <View style={styles.line} />}
-                </View>
-                <View style={styles.contentColumn}>
-                  <View style={styles.sessionCard}>
-                    <Text style={styles.sessionName}>📱 {formatAppName(s.appName)}</Text>
-                    <Text style={styles.sessionDuration}>{formatDuration(s.durationSeconds)}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          } else {
-            const e = item.data;
-            return (
-              <View key={`e_${e.id}_${index}`} style={styles.timelineItem}>
-                <View style={styles.timeColumn}>
-                  <Text style={styles.timeText}>{formatTime(e.timestamp)}</Text>
-                </View>
-                <View style={styles.lineColumn}>
-                  <View style={[styles.dot, {backgroundColor: '#f59e0b'}]} />
-                  {index < items.length - 1 && <View style={styles.line} />}
-                </View>
-                <View style={styles.contentColumn}>
-                  <View style={styles.eventCard}>
-                    <Text style={styles.eventName}>{getEventIcon(e.type)} {e.type.replace(/_/g, ' ')}</Text>
-                    {e.description && <Text style={styles.eventDesc}>{e.description}</Text>}
-                  </View>
-                </View>
-              </View>
-            );
-          }
-        })}
-      </View>
-    </ScrollView>
+    <FlatList
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      data={items}
+      keyExtractor={(item, index) =>
+        item.type === 'SESSION'
+          ? `s_${(item.data as AppUsageSession).startTime}_${index}`
+          : `e_${(item.data as UnifiedEvent).id}_${index}`
+      }
+      renderItem={renderItem}
+      ListHeaderComponent={
+        <Text style={styles.title}>
+          Interleaved Timeline{items.length >= MAX_ITEMS ? ` (showing latest ${MAX_ITEMS})` : ''}
+        </Text>
+      }
+      ListEmptyComponent={
+        <Text style={styles.emptyText}>No activity recorded yet.</Text>
+      }
+      initialNumToRender={20}
+      maxToRenderPerBatch={20}
+      windowSize={7}
+      removeClippedSubviews
+    />
   );
 }
 
@@ -112,12 +123,19 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   title: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
+  },
+  emptyText: {
+    color: '#94a3b8',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 40,
   },
   timeline: {
     flexDirection: 'column',
@@ -173,6 +191,8 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '500',
+    flex: 1,
+    paddingRight: 8,
   },
   sessionDuration: {
     color: '#38bdf8',

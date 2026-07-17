@@ -1,6 +1,7 @@
 import React, {useState, useMemo} from 'react';
 import {View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
 import {AppUsageSession} from './AppUsageScreen';
+import {aggregateAppStats, formatDuration} from './AppUsageUtils';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -10,14 +11,6 @@ type Timeframe = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 export function AppUsageReports({sessions}: Props) {
   const [timeframe, setTimeframe] = useState<Timeframe>('DAILY');
-
-  const formatDuration = (seconds: number) => {
-    if (seconds < 60) return `${Math.round(seconds)}s`;
-    const mins = Math.floor(seconds / 60);
-    const hrs = Math.floor(mins / 60);
-    if (hrs > 0) return `${hrs}h ${mins % 60}m`;
-    return `${mins}m`;
-  };
 
   // Filter Data
   const filteredSessions = useMemo(() => {
@@ -54,29 +47,7 @@ export function AppUsageReports({sessions}: Props) {
   });
   const sortedCategories = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
 
-  const formatAppName = (name: string) => {
-    if (!name) return 'Unknown';
-    if (name.includes('.')) {
-      const parts = name.split('.');
-      let lastPart = parts[parts.length - 1];
-      if (lastPart.length < 3 && parts.length > 1) {
-          lastPart = parts[parts.length - 2];
-      }
-      return lastPart.charAt(0).toUpperCase() + lastPart.slice(1);
-    }
-    return name;
-  };
-
-  // Group by app
-  const appStats: Record<string, {appName: string; duration: number}> = {};
-  filteredSessions.forEach(s => {
-    if (!appStats[s.packageName]) {
-      appStats[s.packageName] = {appName: formatAppName(s.appName), duration: 0};
-    }
-    appStats[s.packageName].duration += s.durationSeconds;
-  });
-
-  const sortedApps = Object.values(appStats).sort((a, b) => b.duration - a.duration);
+  const {sortedApps, mostUsedApp, currentApp} = aggregateAppStats(filteredSessions);
   const topApps = sortedApps.slice(0, 5);
   const bottomApps = sortedApps.slice(-5).reverse();
 

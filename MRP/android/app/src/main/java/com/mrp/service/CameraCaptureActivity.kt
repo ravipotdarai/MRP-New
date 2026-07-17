@@ -268,12 +268,43 @@ class CameraCaptureActivity : Activity() {
                     fos.write(bytes)
                 }
                 Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
+
+                // Register with MediaStore for visibility in gallery and other apps
+                registerWithMediaStore(photoFile)
             }
             try {
                 sendBroadcast(Intent("com.mrp.ACTION_PHOTO_CAPTURED"))
             } catch (ignored: Exception) {}
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
+        }
+    }
+
+    private fun registerWithMediaStore(file: File) {
+        try {
+            val mediaStoreUri = android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, file.name)
+                put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "/MRP/")
+            }
+
+            val contentResolver = contentResolver
+            val insertedUri = contentResolver.insert(mediaStoreUri, contentValues)
+
+            if (insertedUri != null) {
+                // Write the file content to MediaStore
+                contentResolver.openOutputStream(insertedUri).use { outputStream ->
+                    if (outputStream != null) {
+                        java.io.FileInputStream(file).use { inputStream ->
+                            inputStream.copyTo(outputStream)
+                        }
+                        Log.d(TAG, "Photo registered with MediaStore: $insertedUri")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register photo with MediaStore, using fallback", e)
         }
     }
 
