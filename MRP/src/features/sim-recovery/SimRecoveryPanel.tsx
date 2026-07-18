@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   PermissionsAndroid,
+  Linking,
 } from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 
@@ -37,9 +38,23 @@ type Status = {
   phonePermissionGranted?: boolean;
 };
 
+async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<T>(resolve => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
- * One master toggle: Protection Enabled.
- * Turning it ON requests Phone + SMS permissions (no separate Phone toggle needed).
+ * SIM Change Recovery — single Protection toggle.
+ * Phone permission is optional (often permanently denied on Pixel); SMS is required for Test SMS.
  */
 export function SimRecoveryPanel() {
   const [status, setStatus] = useState<Status | null>(null);
@@ -50,13 +65,14 @@ export function SimRecoveryPanel() {
   const [busy, setBusy] = useState(false);
   const [switchKey, setSwitchKey] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const busyLock = useRef(false);
 
   const bridge = mrpmModule as any;
 
   const refresh = useCallback(async () => {
     try {
       if (!bridge?.getSimRecoveryStatus) {
-        setLoadError('Native SIM Recovery module not available. Reinstall the app.');
+        setLoadError('Native SIM Recovery module missing — reinstall the app.');
         return;
       }
       const [st, cts] = await Promise.all([
@@ -79,80 +95,104 @@ export function SimRecoveryPanel() {
   const requestPerms = async (permissions: string[]): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
     try {
+      // Already granted?
+      const checks = await Promise.all(
+        permissions.map(p => PermissionsAndroid.check(p as any)),
+      );
+      if (checks.every(Boolean)) return true;
+
       if (typeof bridge.requestRuntimePermissions === 'function') {
-        return !!(await bridge.requestRuntimePermissions(permissions));
+        return await withTimeout(
+          bridge.requestRuntimePermissions(permissions),
+          8000,
+          false,
+        );
       }
-      const result = await PermissionsAndroid.requestMultiple(permissions as any);
+      const result = await withTimeout(
+        PermissionsAndroid.requestMultiple(permissions as any),
+        8000,
+        {} as Record<string, string>,
+      );
       return permissions.every(
         p => result[p] === PermissionsAndroid.RESULTS.GRANTED,
       );
-    } catch {
+    } catch (e) {
+      console.warn('[SimRecovery] requestPerms', e);
       return false;
     }
   };
 
-  const phonePerms = (): string[] => {
-    const perms = [PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE];
-    if (Platform.Version >= 33) {
-      perms.push('android.permission.READ_PHONE_NUMBERS');
+  const runBusy = async (fn: () => Promise<void>) => {
+    if (busyLock.current) return;
+    busyLock.current = true;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      busyLock.current = false;
+      setBusy(false);
+      setSwitchKey(k => k + 1);
     }
-    return perms;
   };
 
-  const enableProtection = async (): Promise<boolean> => {
-    // SMS is required to send alerts; Phone is best-effort for "New Number"
+  const enableProtection = async () => {
+    // SMS required
     const smsOk = await requestPerms([PermissionsAndroid.PERMISSIONS.SEND_SMS]);
     if (!smsOk) {
       Alert.alert(
         'SMS permission needed',
-        'Allow SMS so recovery contacts can be alerted when the SIM changes.',
+        'Allow SMS in system settings so recovery alerts can be sent.',
         [
           {text: 'Cancel', style: 'cancel'},
-          {
-            text: 'Open Settings',
-            onPress: () => bridge.openAppSettings?.(),
-          },
+          {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
         ],
       );
-      return false;
+      return;
     }
 
-    const phoneOk = await requestPerms(phonePerms());
+    // Phone is optional — do NOT block enable if permanently denied (USER_FIXED)
+    let phoneOk = false;
+    try {
+      phoneOk = !!(await withTimeout(bridge.checkPhonePermission?.() ?? Promise.resolve(false), 2000, false));
+    } catch {
+      phoneOk = false;
+    }
     if (!phoneOk) {
-      // Still enable — SMS works; New Number may show Unavailable
-      Alert.alert(
-        'Phone permission skipped',
-        'SIM Recovery will still work. Without Phone permission, the SMS may not include the new SIM number.',
+      // Best-effort short request; timeout avoids hang when USER_FIXED
+      phoneOk = await requestPerms(
+        Platform.Version >= 33
+          ? [
+              PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+              'android.permission.READ_PHONE_NUMBERS',
+            ]
+          : [PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE],
       );
     }
 
     await bridge.setSimRecoveryEnabled(true, true);
     await refresh();
-    return true;
+
+    if (!phoneOk) {
+      Alert.alert(
+        'SIM Recovery enabled',
+        'Phone permission is blocked in Android Settings (or denied). Alerts will still send, but "New Number" may show Unavailable until you enable Phone for MRP in Settings → Apps → MRP → Permissions.',
+      );
+    }
   };
 
-  const onProtectionPress = async () => {
-    if (busy) return;
+  const onProtectionPress = () => {
     const enabled = !!status?.enabled;
-
     if (enabled) {
       Alert.alert('Disable SIM Recovery?', 'Alerts will stop until you enable again.', [
         {text: 'Cancel', style: 'cancel'},
         {
           text: 'Disable',
           style: 'destructive',
-          onPress: async () => {
-            setBusy(true);
-            try {
+          onPress: () =>
+            runBusy(async () => {
               await bridge.setSimRecoveryEnabled(false, status?.consent ?? false);
               await refresh();
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to disable');
-            } finally {
-              setBusy(false);
-              setSwitchKey(k => k + 1);
-            }
-          },
+            }),
         },
       ]);
       return;
@@ -160,57 +200,49 @@ export function SimRecoveryPanel() {
 
     Alert.alert(
       'Enable SIM Change Recovery?',
-      'When another SIM is inserted, MRP will SMS your recovery contacts with location (works offline).\n\nThis will ask for SMS and Phone permissions.',
+      'On SIM change, MRP SMS your recovery contacts with location (works offline).\n\nSMS permission is required. Phone permission is optional (for New Number).',
       [
         {text: 'Cancel', style: 'cancel', onPress: () => setSwitchKey(k => k + 1)},
         {
           text: 'Enable',
-          onPress: async () => {
-            setBusy(true);
-            try {
-              const ok = await enableProtection();
-              if (!ok) {
-                /* stay off */
+          onPress: () =>
+            runBusy(async () => {
+              try {
+                await enableProtection();
+              } catch (e: any) {
+                Alert.alert('Error', e?.message || 'Failed to enable');
               }
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to enable');
-            } finally {
-              setBusy(false);
-              setSwitchKey(k => k + 1);
-            }
-          },
+            }),
         },
       ],
     );
   };
 
-  const addContact = async () => {
-    if (!phone.trim() || phone.replace(/\D/g, '').length < 8) {
-      Alert.alert('Invalid phone', 'Enter a valid phone number (min 8 digits).');
-      return;
-    }
-    if (contacts.length >= 3) {
-      Alert.alert('Limit reached', 'Maximum 3 recovery contacts.');
-      return;
-    }
-    setBusy(true);
-    try {
-      await bridge.saveRecoveryContact(
-        name.trim() || 'Contact',
-        phone.trim(),
-        relationship.trim() || 'Trusted',
-        contacts.length + 1,
-      );
-      setName('');
-      setPhone('');
-      setRelationship('');
-      await refresh();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not save contact');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const addContact = () =>
+    runBusy(async () => {
+      if (!phone.trim() || phone.replace(/\D/g, '').length < 8) {
+        Alert.alert('Invalid phone', 'Enter a valid phone number (min 8 digits).');
+        return;
+      }
+      if (contacts.length >= 3) {
+        Alert.alert('Limit reached', 'Maximum 3 recovery contacts.');
+        return;
+      }
+      try {
+        await bridge.saveRecoveryContact(
+          name.trim() || 'Contact',
+          phone.trim(),
+          relationship.trim() || 'Trusted',
+          contacts.length + 1,
+        );
+        setName('');
+        setPhone('');
+        setRelationship('');
+        await refresh();
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'Could not save contact');
+      }
+    });
 
   const removeContact = (id: string) => {
     Alert.alert('Remove contact?', 'This cannot be undone.', [
@@ -218,46 +250,49 @@ export function SimRecoveryPanel() {
       {
         text: 'Remove',
         style: 'destructive',
-        onPress: async () => {
-          await bridge.deleteRecoveryContact(id);
-          await refresh();
-        },
+        onPress: () =>
+          runBusy(async () => {
+            await bridge.deleteRecoveryContact(id);
+            await refresh();
+          }),
       },
     ]);
   };
 
-  const testSms = async () => {
-    if (!contacts.length) {
-      Alert.alert('Add a contact first', 'Save at least one recovery contact before testing SMS.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const smsOk = await requestPerms([PermissionsAndroid.PERMISSIONS.SEND_SMS]);
-      if (!smsOk) {
-        Alert.alert('SMS permission required', 'Allow SMS, then try Test SMS again.');
+  const testSms = () =>
+    runBusy(async () => {
+      if (!contacts.length) {
+        Alert.alert('Add a contact first', 'Save at least one recovery contact before testing SMS.');
         return;
       }
-      // Best-effort phone for New Number line
-      await requestPerms(phonePerms());
+      try {
+        const smsOk = await requestPerms([PermissionsAndroid.PERMISSIONS.SEND_SMS]);
+        if (!smsOk) {
+          Alert.alert('SMS permission required', 'Allow SMS for MRP, then try again.', [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
+          ]);
+          return;
+        }
 
-      const result = await bridge.testRecoverySms();
-      const ok = typeof result === 'boolean' ? result : !!result?.success;
-      const detail =
-        typeof result === 'object' && result?.message
-          ? result.message
-          : ok
-            ? 'Check the recovery phone for the test message.'
-            : 'Check SMS permission and contact numbers.';
-
-      Alert.alert(ok ? 'Test SMS sent' : 'SMS failed', detail);
-      await refresh();
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Test failed');
-    } finally {
-      setBusy(false);
-    }
-  };
+        const result = await withTimeout(
+          bridge.testRecoverySms(),
+          20000,
+          {success: false, message: 'Timed out sending SMS'},
+        );
+        const ok = typeof result === 'boolean' ? result : !!result?.success;
+        const detail =
+          typeof result === 'object' && result?.message
+            ? result.message
+            : ok
+              ? 'Check the recovery phone for the test message.'
+              : 'SMS failed. Check contact numbers.';
+        Alert.alert(ok ? 'Test SMS sent' : 'SMS failed', detail);
+        await refresh();
+      } catch (e: any) {
+        Alert.alert('Error', e?.message || 'Test failed');
+      }
+    });
 
   const clearHistory = () => {
     Alert.alert('Delete SIM change history?', undefined, [
@@ -265,12 +300,33 @@ export function SimRecoveryPanel() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: async () => {
-          await bridge.deleteSimChangeHistory();
-          await refresh();
-        },
+        onPress: () =>
+          runBusy(async () => {
+            await bridge.deleteSimChangeHistory();
+            await refresh();
+          }),
       },
     ]);
+  };
+
+  const openPhoneSettings = () => {
+    Alert.alert(
+      'Enable Phone permission',
+      'Android blocked Phone access (Don\'t ask again). Open Settings → Apps → MRP → Permissions → Phone → Allow.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Open Settings',
+          onPress: async () => {
+            try {
+              await bridge.openAppSettings?.();
+            } catch {
+              Linking.openSettings();
+            }
+          },
+        },
+      ],
+    );
   };
 
   const fmt = (ms: number) => (ms > 0 ? new Date(ms).toLocaleString() : 'Never');
@@ -279,13 +335,11 @@ export function SimRecoveryPanel() {
     <View style={styles.card}>
       <Text style={styles.title}>SIM Change Recovery</Text>
       <Text style={styles.subtitle}>
-        One switch turns this on. Enabling asks for SMS (required) and Phone (for New Number on the
-        alert). Add up to 3 recovery contacts, then use Test SMS.
+        Turn Protection ON, add a contact, then Test SMS. Phone permission is optional — if Android
+        blocked it, open App Settings to allow Phone.
       </Text>
 
-      {loadError ? (
-        <Text style={styles.errorText}>{loadError}</Text>
-      ) : null}
+      {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
 
       <TouchableOpacity
         style={styles.row}
@@ -295,9 +349,11 @@ export function SimRecoveryPanel() {
         <View style={{flex: 1}}>
           <Text style={styles.rowTitle}>Protection Enabled</Text>
           <Text style={styles.rowSub}>
-            {status?.enabled
-              ? 'Armed — will SMS contacts on SIM change'
-              : 'Off — tap to enable (requests SMS + Phone)'}
+            {busy
+              ? 'Working…'
+              : status?.enabled
+                ? 'Armed — SMS on SIM change'
+                : 'Off — tap to enable'}
           </Text>
         </View>
         <View pointerEvents="none">
@@ -310,6 +366,14 @@ export function SimRecoveryPanel() {
         </View>
       </TouchableOpacity>
 
+      {status?.phonePermissionGranted === false ? (
+        <TouchableOpacity onPress={openPhoneSettings} style={styles.warnBanner}>
+          <Text style={styles.warnText}>
+            Phone permission blocked — tap to open Settings (needed for New Number in SMS)
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
       <View style={styles.stats}>
         <Stat label="Carrier" value={status?.currentCarrier || '—'} />
         <Stat
@@ -317,7 +381,7 @@ export function SimRecoveryPanel() {
           value={
             status?.currentSimPhoneMasked ||
             (status?.phonePermissionGranted === false
-              ? 'Allow Phone when enabling'
+              ? 'Phone blocked in Settings'
               : 'Not provided by carrier')
           }
         />
@@ -327,7 +391,7 @@ export function SimRecoveryPanel() {
           label="Baseline"
           value={status?.baselineEnrolled ? 'Enrolled' : 'Not set'}
         />
-        <Stat label="Pending Sync" value={String(status?.pendingSync ?? 0)} />
+        <Stat label="SMS Perm" value={status?.enabled ? 'Required' : '—'} />
       </View>
 
       <Text style={styles.section}>Recovery Contacts (max 3)</Text>
@@ -340,7 +404,7 @@ export function SimRecoveryPanel() {
             <Text style={styles.contactPhone}>{c.phoneNumber}</Text>
             <Text style={styles.contactRel}>{c.relationship}</Text>
           </View>
-          <TouchableOpacity onPress={() => removeContact(c.id)}>
+          <TouchableOpacity onPress={() => removeContact(c.id)} disabled={busy}>
             <Text style={styles.delete}>Remove</Text>
           </TouchableOpacity>
         </View>
@@ -378,7 +442,7 @@ export function SimRecoveryPanel() {
 
       <View style={styles.actions}>
         <TouchableOpacity style={styles.btnSecondary} onPress={testSms} disabled={busy}>
-          <Text style={styles.btnSecondaryText}>Test SMS</Text>
+          <Text style={styles.btnSecondaryText}>{busy ? '…' : 'Test SMS'}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.btnSecondary} onPress={clearHistory} disabled={busy}>
           <Text style={styles.btnSecondaryText}>Delete History</Text>
@@ -411,6 +475,13 @@ const styles = StyleSheet.create({
   title: {color: '#f8fafc', fontSize: 16, fontWeight: '700', marginBottom: 4},
   subtitle: {color: '#94a3b8', fontSize: 13, lineHeight: 18, marginBottom: 12},
   errorText: {color: '#fca5a5', fontSize: 12, marginBottom: 8},
+  warnBanner: {
+    backgroundColor: '#422006',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  warnText: {color: '#fdba74', fontSize: 12, lineHeight: 16},
   row: {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
   rowTitle: {color: '#e2e8f0', fontSize: 15, fontWeight: '600'},
   rowSub: {color: '#64748b', fontSize: 12, marginTop: 2, paddingRight: 8},

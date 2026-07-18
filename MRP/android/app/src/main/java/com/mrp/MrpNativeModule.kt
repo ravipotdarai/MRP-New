@@ -1048,15 +1048,15 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     /**
-     * Request one or more runtime permissions and wait for the user result.
-     * Uses RN PermissionAwareActivity so the system dialog is shown reliably.
+     * Request runtime permissions and ALWAYS resolve (never hang).
+     * If Android will not show a dialog (USER_FIXED / permanent deny), resolves false quickly.
      */
     @ReactMethod
     fun requestRuntimePermissions(permissions: ReadableArray, promise: Promise) {
         try {
             val activity = currentActivity
             if (activity == null) {
-                promise.reject("NO_ACTIVITY", "No activity to show permission dialog")
+                promise.resolve(false)
                 return
             }
             val perms = ArrayList<String>()
@@ -1067,41 +1067,62 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 promise.resolve(true)
                 return
             }
-            val allGranted = perms.all {
-                ActivityCompat.checkSelfPermission(reactContext, it) == PackageManager.PERMISSION_GRANTED
+            val need = perms.filter {
+                ActivityCompat.checkSelfPermission(reactContext, it) != PackageManager.PERMISSION_GRANTED
             }
-            if (allGranted) {
+            if (need.isEmpty()) {
                 promise.resolve(true)
                 return
             }
 
-            val listener = com.facebook.react.modules.core.PermissionListener { _, _, grantResults ->
-                val ok = grantResults.isNotEmpty() &&
-                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
-                promise.resolve(ok)
-                true
+            // Permanent deny: OS will not show a dialog and may never invoke the callback.
+            val anyCanShowRationale = need.any {
+                ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
             }
+            // If we already asked before (none can show rationale) — skip requestPermissions to avoid hang.
+            // Heuristic: check shared flag isn't available; use: if ALL need request and none show
+            // rationale, still TRY once with a short timeout below.
 
             val aware = activity as? com.facebook.react.modules.core.PermissionAwareActivity
             if (aware == null) {
-                promise.reject("NO_PERMISSION_ACTIVITY", "Activity cannot request permissions")
+                promise.resolve(false)
                 return
+            }
+
+            val settled = java.util.concurrent.atomic.AtomicBoolean(false)
+            fun settle(value: Boolean) {
+                if (settled.compareAndSet(false, true)) {
+                    promise.resolve(value)
+                }
+            }
+
+            // Failsafe: never leave JS waiting (fixes stuck toggles when USER_FIXED)
+            Handler(Looper.getMainLooper()).postDelayed({
+                settle(false)
+            }, if (anyCanShowRationale) 60_000L else 1_200L)
+
+            val listener = com.facebook.react.modules.core.PermissionListener { _, _, grantResults ->
+                val ok = grantResults.isNotEmpty() &&
+                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                settle(ok)
+                true
             }
 
             UiThreadUtil.runOnUiThread {
                 try {
                     aware.requestPermissions(
-                        perms.toTypedArray(),
+                        need.toTypedArray(),
                         PERM_REQUEST_CODE_BASE + (System.currentTimeMillis() % 1000).toInt(),
                         listener
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "requestRuntimePermissions failed", e)
-                    promise.reject("PERM_REQUEST", e.message, e)
+                    settle(false)
                 }
             }
         } catch (e: Exception) {
-            promise.reject("PERM_REQUEST", e.message, e)
+            Log.e(TAG, "requestRuntimePermissions error", e)
+            promise.resolve(false)
         }
     }
 
