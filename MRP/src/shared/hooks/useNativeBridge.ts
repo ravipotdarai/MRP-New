@@ -27,7 +27,6 @@ export interface MrpNativeInterface {
   testPhotoCapture(eventName: string): Promise<boolean>;
   getServiceRunning(): Promise<boolean>;
   openAppSettings(): Promise<boolean>;
-  openAppSettings(): Promise<boolean>;
   getSettings(): Promise<any>;
   saveSettings(settings: any): Promise<boolean>;
   getTimeline(): Promise<any[]>;
@@ -40,6 +39,19 @@ export interface MrpNativeInterface {
   requestUsageStatsPermission(): Promise<boolean>;
   getMrpBatteryUsage(): Promise<any>;
   clearPermissionCache(): Promise<boolean>;
+  getDeviceBatteryLevel(): Promise<number>;
+  getNetworkInfo(): Promise<{
+    carrierName: string;
+    connectionType: string;
+    isWifi: boolean;
+    isMobile: boolean;
+  }>;
+  getGpsStatus(): Promise<{
+    gpsActive: boolean;
+    networkLocationActive: boolean;
+    permissionGranted: boolean;
+    isLocationAvailable: boolean;
+  }>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

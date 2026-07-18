@@ -5,11 +5,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
@@ -676,6 +680,105 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear permission cache", e)
             promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun getDeviceBatteryLevel(promise: Promise) {
+        try {
+            val bm = reactContext.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+            val level = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
+            promise.resolve(level)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get battery level", e)
+            promise.resolve(-1)
+        }
+    }
+
+    @ReactMethod
+    fun getNetworkInfo(promise: Promise) {
+        try {
+            val map = Arguments.createMap().apply {
+                putString("carrierName", "Unknown")
+                putString("connectionType", "Offline")
+                putBoolean("isWifi", false)
+                putBoolean("isMobile", false)
+            }
+            try {
+                val cm = reactContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                if (cm != null) {
+                    val network = cm.activeNetwork
+                    val caps = cm.getNetworkCapabilities(network)
+                    if (caps != null) {
+                        when {
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
+                                map.putBoolean("isWifi", true)
+                                map.putString("connectionType", "Wi-Fi")
+                            }
+                            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
+                                map.putBoolean("isMobile", true)
+                                var type = "Mobile Data"
+                                // Refine using TelephonyManager (carrier + data network type)
+                                try {
+                                    val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                                    if (tm != null) {
+                                        val carrier = tm.networkOperatorName
+                                        if (!carrier.isNullOrBlank()) map.putString("carrierName", carrier)
+                                        type = when (tm.dataNetworkType) {
+                                            13 -> "4G/LTE"
+                                            20 -> "5G"
+                                            0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 15 -> "3G"
+                                            else -> "Mobile Data"
+                                        }
+                                    }
+                                } catch (ignored: SecurityException) {
+                                    // READ_PHONE_STATE not granted — keep "Mobile Data"
+                                }
+                                map.putString("connectionType", type)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Connectivity check failed", e)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get network info", e)
+            promise.resolve(Arguments.createMap().apply {
+                putString("carrierName", "Unknown")
+                putString("connectionType", "Offline")
+                putBoolean("isWifi", false)
+                putBoolean("isMobile", false)
+            })
+        }
+    }
+
+    @ReactMethod
+    fun getGpsStatus(promise: Promise) {
+        try {
+            val lm = reactContext.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            val gps = lm?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) == true
+            val network = lm?.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER) == true
+            val granted = ActivityCompat.checkSelfPermission(
+                reactContext,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            val map = Arguments.createMap().apply {
+                putBoolean("gpsActive", gps)
+                putBoolean("networkLocationActive", network)
+                putBoolean("permissionGranted", granted)
+                putBoolean("isLocationAvailable", gps || network)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get GPS status", e)
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("gpsActive", false)
+                putBoolean("networkLocationActive", false)
+                putBoolean("permissionGranted", false)
+                putBoolean("isLocationAvailable", false)
+            })
         }
     }
 

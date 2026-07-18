@@ -78,8 +78,8 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
 
   // Aggregate Events
   const todayEvents = events.filter(e => e.timestamp >= todayStartMs);
-  const unlocksToday = todayEvents.filter(e => e.type === 'DEVICE_UNLOCK').length;
-  const photosToday = todayEvents.filter(e => e.type === 'PHOTO_CAPTURED' || e.type === 'INTRUDER_SELFIE').length;
+  const unlocksToday = todayEvents.filter(e => e.type === 'SCREEN_UNLOCK').length;
+  const photosToday = todayEvents.filter(e => e.photoPath && e.photoPath.length > 0).length;
   const pendingSync = events.filter(e => e.syncStatus === 'PENDING').length;
 
   // Render Widget

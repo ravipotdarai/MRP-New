@@ -45,16 +45,33 @@ export function AppUsageTimeline({sessions, events}: Props) {
 
   const getEventIcon = (type: string) => {
     switch (type) {
-      case 'DEVICE_UNLOCK':
+      case 'SCREEN_UNLOCK':
         return '🔓';
-      case 'DEVICE_LOCK':
+      case 'SCREEN_LOCK':
         return '🔒';
-      case 'PHOTO_CAPTURED':
-        return '📸';
-      case 'WIFI_CONNECTED':
+      case 'WRONG_PASSWORD':
+        return '🚨';
+      case 'WRONG_BIOMETRIC':
+        return '👆';
+      case 'UNLOCK_FAILED':
+        return '⚠️';
+      case 'SIM_REMOVED':
+      case 'SIM_INSERTED':
+        return '📱';
+      case 'FACTORY_RESET':
+        return '💣';
+      case 'AIRPLANE_MODE_TOGGLE':
+        return '✈️';
+      case 'WIFI_TOGGLE':
         return '📶';
-      case 'WIFI_DISCONNECTED':
-        return '📵';
+      case 'MOBILE_DATA_TOGGLE':
+        return '📡';
+      case 'HOTSPOT_TOGGLE':
+        return '🔥';
+      case 'USB_CONNECTED':
+        return '💻';
+      case 'DEVICE_BOOT':
+        return '🔄';
       default:
         return '⚡';
     }

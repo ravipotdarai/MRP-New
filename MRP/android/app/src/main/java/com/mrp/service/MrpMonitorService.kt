@@ -1190,7 +1190,7 @@ class MrpMonitorService : Service() {
             photosDir.mkdirs()
         }
 
-        val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val safeEventName = currentPhotoEventName.replace(Regex("[^a-zA-Z0-9]"), "_")
         val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 

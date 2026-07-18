@@ -259,6 +259,10 @@ export function TimelineScreen() {
                         style={styles.modalSelfieImage}
                         resizeMode="cover"
                       />
+                      <Text style={styles.selfiePathLabel}>File Path:</Text>
+                      <Text style={styles.selfiePathValue} selectable>
+                        {matchedPhoto.path}
+                      </Text>
                     </View>
                   )}
 
@@ -644,5 +648,20 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 10,
     backgroundColor: '#1e293b',
+  },
+  selfiePathLabel: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 10,
+    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    alignSelf: 'flex-start',
+  },
+  selfiePathValue: {
+    fontSize: 11,
+    color: '#64748b',
+    fontFamily: 'monospace',
+    alignSelf: 'flex-start',
   },
 });

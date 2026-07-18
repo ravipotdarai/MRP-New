@@ -144,6 +144,31 @@ export function PhotoGallery() {
     );
   };
 
+  const deleteAllPhotos = () => {
+    Alert.alert(
+      'Delete All Photos',
+      'Are you sure you want to permanently delete ALL intruder selfies?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await mrpmModule.deleteAllPhotos();
+              setPhotos([]);
+              if (selectedPhoto) {
+                setSelectedPhoto(null);
+              }
+            } catch (e) {
+              console.error('Failed to delete all photos:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // Apply type filter + time-range filter + sort order
   const displayedPhotos = (() => {
     let result = photos.filter(p => {
@@ -172,15 +197,14 @@ export function PhotoGallery() {
 
     return [...result].sort((a, b) => {
       if (sortBy === 'OLDEST') return a.timestamp - b.timestamp;
-      return b.timestamp - a.timestamp; // NEWEST, DAY, WEEK, MONTH all default to newest-first
+      return b.timestamp - a.timestamp;
     });
   })();
 
-  // Find closest matching timeline event within 180 seconds
   const findMatchingEvent = (photo: Photo): TimelineEntry | null => {
     if (!timelineEvents.length) return null;
     let closest: TimelineEntry | null = null;
-    let minDiff = 180000; // 3 minutes max delta
+    let minDiff = 180000;
 
     for (const evt of timelineEvents) {
       let evtTime = 0;
@@ -202,8 +226,6 @@ export function PhotoGallery() {
   const renderPhotoItem = ({item}: {item: Photo}) => {
     const eventTitle = formatPhotoEventName(item.name);
 
-    // Photos are stored in app-specific external storage (getExternalFilesDir(null)/MRP/)
-    // which is directly readable with a file:// URI - no content:// provider needed.
     const imageUri = `file://${item.path}`;
 
     return (
@@ -233,31 +255,6 @@ export function PhotoGallery() {
 
   const matchedEvent = selectedPhoto ? findMatchingEvent(selectedPhoto) : null;
 
-  const deleteAllPhotos = () => {
-    Alert.alert(
-      'Delete All Photos',
-      'Are you sure you want to permanently delete ALL intruder selfies?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete All',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await mrpmModule.deleteAllPhotos();
-              setPhotos([]);
-              if (selectedPhoto) {
-                setSelectedPhoto(null);
-              }
-            } catch (e) {
-              console.error('Failed to delete all photos:', e);
-            }
-          },
-        },
-      ],
-    );
-  };
-
   const FILTER_CHIPS: {key: typeof activeTab; label: string}[] = [
     {key: 'ALL', label: `All (${photos.length})`},
     {key: 'WRONG_UNLOCK', label: 'Unlock Attempts'},
@@ -276,22 +273,26 @@ export function PhotoGallery() {
   return (
     <View style={styles.container}>
       <Card>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.header}>📷 Intruder Selfie Evidence</Text>
-            <Text style={styles.subheader}>
-              {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
-            </Text>
-          </View>
+        <Text style={styles.headerLabel}>CONTROLS</Text>
+        <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={[styles.testBtn, capturingTest && styles.testBtnDisabled]}
+            style={[styles.controlButton, capturingTest && styles.controlButtonDisabled]}
             disabled={capturingTest}
             onPress={triggerTestSelfie}>
-            <Text style={styles.testBtnText}>
+            <Text style={styles.controlButtonText}>
               {capturingTest ? 'Taking...' : '📸 Test Capture'}
             </Text>
           </TouchableOpacity>
+          {photos.length > 0 && (
+            <TouchableOpacity style={styles.controlButton} onPress={deleteAllPhotos}>
+              <Text style={styles.controlButtonText}>🗑️ Delete All Photos</Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        <Text style={styles.subheader}>
+          {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
+        </Text>
 
         <View style={styles.controlSection}>
           <Text style={styles.controlLabel}>Filter by Type</Text>
@@ -324,12 +325,6 @@ export function PhotoGallery() {
             ))}
           </View>
         </View>
-
-        {photos.length > 0 && (
-          <TouchableOpacity style={styles.deleteAllBtn} onPress={deleteAllPhotos}>
-            <Text style={styles.deleteAllText}>🗑️ Delete All Photos</Text>
-          </TouchableOpacity>
-        )}
       </Card>
 
       {displayedPhotos.length === 0 ? (
@@ -358,7 +353,6 @@ export function PhotoGallery() {
         />
       )}
 
-      {/* Full-Screen Selfie & Completed Details Modal */}
       <Modal
         visible={!!selectedPhoto}
         transparent={true}
@@ -462,8 +456,11 @@ export function PhotoGallery() {
 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>📁 Evidence File:</Text>
-                  <Text style={[styles.detailValue, {fontSize: 11, color: '#aaa'}]}>
+                  <Text style={[styles.detailValue, {fontSize: 13, color: '#f8fafc'}]}>
                     {selectedPhoto.name}
+                  </Text>
+                  <Text style={[styles.detailValue, {fontSize: 11, color: '#64748b', marginTop: 4}]}>
+                    {selectedPhoto.path}
                   </Text>
                 </View>
               </Card>
@@ -494,43 +491,43 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
     padding: 16,
   },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  headerTextWrap: {
-    flex: 1,
-    marginRight: 12,
-  },
-  header: {
-    fontSize: 18,
+  headerLabel: {
+    fontSize: 11,
+    color: '#64748b',
     fontWeight: '700',
-    color: '#ffffff',
-    flexShrink: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
-  testBtn: {
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  controlButton: {
+    flex: 1,
     backgroundColor: '#0284c7',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
-  testBtnDisabled: {
+  controlButtonDisabled: {
     backgroundColor: '#1e3a5f',
     opacity: 0.7,
   },
-  testBtnText: {
+  controlButtonText: {
     color: '#ffffff',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
+    textAlign: 'center',
   },
   subheader: {
     fontSize: 13,
     color: '#94a3b8',
     lineHeight: 18,
-    marginTop: 4,
+    marginBottom: 16,
   },
   controlSection: {
     marginBottom: 12,
@@ -568,33 +565,6 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: '#ffffff',
     fontWeight: '700',
-  },
-  deleteAllBtn: {
-    marginTop: 4,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.5)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  deleteAllText: {
-    color: '#ef4444',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  refreshEmptyBtn: {
-    marginTop: 18,
-    backgroundColor: '#0284c7',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  refreshEmptyBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 13,
   },
   gridContainer: {
     paddingTop: 12,
@@ -660,6 +630,18 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  refreshEmptyBtn: {
+    marginTop: 18,
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  refreshEmptyBtnText: {
+    color: '#ffffff',
+    fontWeight: '700',
+    fontSize: 13,
   },
   modalContainer: {
     flex: 1,

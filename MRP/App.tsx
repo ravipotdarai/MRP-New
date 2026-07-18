@@ -5,11 +5,9 @@ import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {PinLockScreen} from './src/screens/PinLockScreen';
 import {usePinLock} from './src/hooks/usePinLock';
-import {MonitoringScreen} from './src/features/monitoring/MonitoringScreen';
-import {TimelineScreen} from './src/features/graph/TimelineScreen';
-import {PhotoGallery} from './src/features/photos/PhotoGallery';
+import {HomeScreen} from './src/features/home/HomeScreen';
+import {SecurityScreen} from './src/features/security/SecurityScreen';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
-import {PermissionsScreen} from './src/screens/PermissionsScreen';
 import {AboutScreen} from './src/screens/AboutScreen';
 import {Text} from 'react-native';
 
@@ -33,57 +31,31 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
         tabBarLabelStyle: {fontSize: 12, fontWeight: '600'},
       }}>
       <Tab.Screen
-        name="Monitoring"
-        component={MonitoringScreen}
+        name="Home"
         options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>🛡️</Text>
-          ),
-        }}
-      />
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>🏠</Text>,
+        }}>
+        {({navigation}) => <HomeScreen navigation={navigation} onLogout={onLogout} />}
+      </Tab.Screen>
       <Tab.Screen
-        name="Timeline"
-        component={TimelineScreen}
+        name="Security"
+        component={SecurityScreen}
         options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>📋</Text>
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Photos"
-        component={PhotoGallery}
-        options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>📷</Text>
-          ),
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>🛡️</Text>,
         }}
       />
       <Tab.Screen
         name="App Usage"
         component={AppUsageScreen}
         options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>📊</Text>
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Permissions"
-        component={PermissionsScreen}
-        options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>🔒</Text>
-          ),
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>📊</Text>,
         }}
       />
       <Tab.Screen
         name="About"
         component={AboutScreen}
         options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 20}}>ℹ️</Text>
-          ),
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>ℹ️</Text>,
         }}
       />
     </Tab.Navigator>

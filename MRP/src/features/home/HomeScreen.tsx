@@ -1,0 +1,730 @@
+import React, {useState, useEffect, useCallback} from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Linking,
+  Alert,
+  RefreshControl,
+} from 'react-native';
+import {colors, spacing, radius} from '../../shared/theme';
+import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {useSettings} from '../../shared/hooks/useSettings';
+
+const USER_NAME = 'Ravi';
+
+const EVENT_ICONS: Record<string, string> = {
+  SCREEN_LOCK: '🔒',
+  SCREEN_UNLOCK: '🔓',
+  UNLOCK_FAILED: '⚠️',
+  WRONG_UNLOCK_ATTEMPT: '⚠️',
+  WRONG_PASSWORD: '🚨',
+  WRONG_BIOMETRIC: '👆',
+  SIM_REMOVED: '📵',
+  SIM_INSERTED: '📱',
+  SIM_CHANGE: '🔄',
+  FACTORY_RESET: '💣',
+  DEVICE_SHUTDOWN: '🔴',
+  DEVICE_REBOOT: '🔄',
+  AIRPLANE_MODE_TOGGLE: '✈️',
+  WIFI_TOGGLE: '📶',
+  WIFI_ENABLED: '📶',
+  WIFI_DISABLED: '📶',
+  MOBILE_DATA_TOGGLE: '📱',
+  MOBILE_DATA_ENABLED: '📱',
+  MOBILE_DATA_DISABLED: '📱',
+  HOTSPOT_TOGGLE: '🔥',
+  HOTSPOT_ENABLED: '🔥',
+  HOTSPOT_DISABLED: '🔥',
+  BLUETOOTH_TOGGLE: '🎧',
+  USB_CONNECTED: '💻',
+  USB_DISCONNECTED: '🚫',
+};
+
+interface TimelineEntry {
+  id: string;
+  timestamp: string;
+  event_type: string;
+  status: string;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracy_meters: number;
+    detailed_address: string;
+  };
+  geofence_status: {inside_fence: boolean; fence_id: string | null};
+  metadata: Record<string, any>;
+}
+
+interface PhotoItem {
+  path: string;
+  timestamp: number;
+  name?: string;
+}
+
+interface GpsStatus {
+  gpsActive: boolean;
+  networkLocationActive: boolean;
+  permissionGranted: boolean;
+  isLocationAvailable: boolean;
+}
+
+interface NetworkInfo {
+  carrierName: string;
+  connectionType: string;
+  isWifi: boolean;
+  isMobile: boolean;
+}
+
+const formatEventType = (type: string | undefined): string => {
+  if (!type) return 'Unknown Event';
+  return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+};
+
+const getGreeting = (): string => {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+};
+
+const formatTime = (ts: string): string => {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  } catch {
+    return '';
+  }
+};
+
+const relativeTime = (ts: string | number): string => {
+  try {
+    const t = typeof ts === 'string' ? Date.parse(ts) : ts;
+    if (isNaN(t)) return 'never';
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return `${days}d ago`;
+  } catch {
+    return 'never';
+  }
+};
+
+export function HomeScreen({
+  navigation,
+  onLogout,
+}: {
+  navigation: any;
+  onLogout?: () => void;
+}) {
+  const {settings} = useSettings();
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [battery, setBattery] = useState<number>(-1);
+  const [network, setNetwork] = useState<NetworkInfo | null>(null);
+  const [gps, setGps] = useState<GpsStatus | null>(null);
+  const [permFlags, setPermFlags] = useState({
+    camera: false,
+    location: false,
+    overlay: false,
+    admin: false,
+    usageStats: false,
+  });
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadAll = useCallback(async () => {
+    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes] =
+      await Promise.allSettled([
+        mrpmModule.getTimeline(),
+        mrpmModule.getPhotos(),
+        mrpmModule.getDeviceBatteryLevel(),
+        mrpmModule.getNetworkInfo(),
+        mrpmModule.getGpsStatus(),
+        mrpmModule.checkCameraPermission(),
+        mrpmModule.checkLocationPermission(),
+        mrpmModule.checkOverlayPermission(),
+        mrpmModule.isDeviceAdminEnabled(),
+        mrpmModule.hasUsageStatsPermission(),
+      ]);
+
+    if (tRes.status === 'fulfilled') setTimeline(Array.isArray(tRes.value) ? tRes.value : []);
+    if (pRes.status === 'fulfilled') setPhotos(Array.isArray(pRes.value) ? pRes.value : []);
+    if (bRes.status === 'fulfilled') setBattery(typeof bRes.value === 'number' ? bRes.value : -1);
+    if (nRes.status === 'fulfilled') setNetwork(nRes.value as NetworkInfo);
+    if (gRes.status === 'fulfilled') setGps(gRes.value as GpsStatus);
+    setPermFlags({
+      camera: camRes.status === 'fulfilled' ? !!camRes.value : false,
+      location: locRes.status === 'fulfilled' ? !!locRes.value : false,
+      overlay: ovRes.status === 'fulfilled' ? !!ovRes.value : false,
+      admin: adRes.status === 'fulfilled' ? !!adRes.value : false,
+      usageStats: usRes.status === 'fulfilled' ? !!usRes.value : false,
+    });
+  }, []);
+
+  useEffect(() => {
+    loadAll();
+    const interval = setInterval(loadAll, 15000);
+    return () => clearInterval(interval);
+  }, [loadAll]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadAll().finally(() => setRefreshing(false));
+  }, [loadAll]);
+
+  // Match a selfie to an event (3-min delta)
+  const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
+    if (!photos.length) return null;
+    let evtTime = Date.parse(entry.timestamp);
+    if (isNaN(evtTime)) evtTime = Number(entry.timestamp) || 0;
+    let closest: PhotoItem | null = null;
+    let minDiff = 180000;
+    for (const p of photos) {
+      const diff = Math.abs(p.timestamp - evtTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = p;
+      }
+    }
+    return closest;
+  };
+
+  // --- Security score (real, computed) ---
+  const computeScore = (): number => {
+    let score = 100;
+    if (!settings.isMonitoringEnabled) score -= 25;
+    if (!permFlags.camera) score -= 10;
+    if (!permFlags.location) score -= 10;
+    if (!permFlags.overlay) score -= 10;
+    if (!permFlags.admin) score -= 10;
+    if (!permFlags.usageStats) score -= 5;
+    const features = [
+      settings.captureOnWrongUnlock,
+      settings.captureOnUsb,
+      settings.captureOnSimChange,
+      settings.captureOnFactoryReset,
+      settings.captureOnWifiToggle,
+      settings.captureOnAirplaneMode,
+      settings.captureOnMobileData,
+      settings.captureOnHotspot,
+    ];
+    const enabledCount = features.filter(Boolean).length;
+    if (enabledCount === 0) score -= 20;
+    else if (enabledCount < 3) score -= 10;
+    return Math.max(0, Math.min(100, score));
+  };
+
+  const securityScore = computeScore();
+  const isProtected =
+    settings.isMonitoringEnabled &&
+    permFlags.camera &&
+    permFlags.location &&
+    permFlags.overlay;
+
+  const latestEvent = timeline[0] ?? null;
+  const latestPhoto = latestEvent ? findMatchingPhoto(latestEvent) : null;
+
+  const isToday = (ts: string) => {
+    try {
+      const d = new Date(ts);
+      const now = new Date();
+      return (
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear()
+      );
+    } catch {
+      return false;
+    }
+  };
+  const todayEvents = timeline.filter(e => isToday(e.timestamp)).slice(0, 5);
+
+  const lastSynced = latestEvent ? relativeTime(latestEvent.timestamp) : 'never';
+
+  const overview = [
+    {
+      icon: '🛡️',
+      label: 'Anti Theft',
+      ok: settings.isMonitoringEnabled && (settings.captureOnWrongUnlock || settings.captureOnUsb),
+    },
+    {
+      icon: '🔄',
+      label: 'SIM Monitoring',
+      ok: settings.captureOnSimChange,
+    },
+    {
+      icon: '👤',
+      label: 'Recovery Contact',
+      ok: false,
+    },
+    {
+      icon: '☁️',
+      label: 'Google Drive Backup',
+      ok: false,
+    },
+    {
+      icon: '📍',
+      label: 'Geofence',
+      ok: permFlags.location,
+    },
+    {
+      icon: '📊',
+      label: 'App Usage',
+      ok: permFlags.usageStats,
+    },
+  ];
+
+  const openMaps = (lat: number, lng: number) => {
+    if (!lat && !lng) return;
+    Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`).catch(() =>
+      Alert.alert('Error', 'Could not open maps'),
+    );
+  };
+
+  const goToSecurity = (tab?: string) => {
+    if (navigation?.navigate) {
+      navigation.navigate('Security', tab ? {initialTab: tab} : undefined);
+    }
+  };
+
+  const handleAvatarPress = () => {
+    if (!onLogout) return;
+    Alert.alert('MRP Account', 'Sign out of MRP?', [
+      {text: 'Cancel', style: 'cancel'},
+      {text: 'Sign Out', style: 'destructive', onPress: onLogout},
+    ]);
+  };
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.scrollContent}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.sky} />
+      }>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={() => goToSecurity('Monitoring')}>
+          <Text style={styles.headerIcon}>☰</Text>
+        </TouchableOpacity>
+        <Text style={styles.brandTitle}>MRP</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerIconBtn}>
+            <Text style={styles.headerIcon}>🔔</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.avatarBtn} onPress={handleAvatarPress}>
+            <Text style={styles.avatarText}>{USER_NAME[0]}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Greeting + protection status */}
+      <View style={styles.greetingRow}>
+        <View style={{flex: 1}}>
+          <Text style={styles.greeting}>
+            {getGreeting()}, {USER_NAME} 👋
+          </Text>
+          <Text
+            style={[
+              styles.protectionStatus,
+              {color: isProtected ? colors.emerald : colors.amber},
+            ]}>
+            {isProtected ? '✓ Your device is protected' : '⚠ Protection incomplete'}
+          </Text>
+          <Text style={styles.syncedText}>Last synced {lastSynced}</Text>
+        </View>
+      </View>
+
+      {/* Stat cards: Security score, Battery, Network, GPS */}
+      <View style={styles.statGrid}>
+        <StatCard
+          icon="🔒"
+          label="Security Score"
+          value={`${securityScore}%`}
+          accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
+        />
+        <StatCard
+          icon="🔋"
+          label="Battery"
+          value={battery >= 0 ? `${battery}%` : '--'}
+          accent={battery >= 50 ? colors.emerald : battery >= 20 ? colors.amber : colors.red}
+        />
+        <StatCard
+          icon="📶"
+          label="Network"
+          value={network ? network.connectionType : '--'}
+          sub={network && network.carrierName && network.carrierName !== 'Unknown' ? network.carrierName : undefined}
+          accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
+        />
+        <StatCard
+          icon="📡"
+          label="GPS"
+          value={gps?.gpsActive ? 'Active' : gps?.isLocationAvailable ? 'Network' : 'Off'}
+          accent={gps?.isLocationAvailable ? colors.emerald : colors.red}
+        />
+      </View>
+
+      {/* Latest Event */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.sectionTitle}>LATEST EVENT</Text>
+          <TouchableOpacity onPress={() => goToSecurity('Timeline')}>
+            <Text style={styles.viewAllText}>View All →</Text>
+          </TouchableOpacity>
+        </View>
+        {latestEvent ? (
+          <View style={styles.latestEventBody}>
+            <View style={styles.latestEventTop}>
+              <View style={styles.latestEventIcon}>
+                <Text style={{fontSize: 22}}>{EVENT_ICONS[latestEvent.event_type] || '📋'}</Text>
+              </View>
+              <View style={{flex: 1}}>
+                <Text style={styles.latestEventTitle}>
+                  {formatEventType(latestEvent.event_type)}
+                </Text>
+                <Text style={styles.latestEventTime}>
+                  {relativeTime(latestEvent.timestamp)}
+                </Text>
+              </View>
+              {latestPhoto ? (
+                <Image
+                  source={{uri: `file://${latestPhoto.path}`}}
+                  style={styles.latestEventSelfie}
+                />
+              ) : null}
+            </View>
+            {latestEvent.location?.detailed_address &&
+              latestEvent.location.detailed_address !== 'Address Unavailable (Offline)' && (
+                <Text style={styles.latestEventAddress} numberOfLines={2}>
+                  📍 {latestEvent.location.detailed_address}
+                </Text>
+              )}
+            <View style={styles.geofenceRow}>
+              <Text
+                style={[
+                  styles.geofencePill,
+                  {
+                    backgroundColor: latestEvent.geofence_status?.inside_fence
+                      ? colors.emeraldSoft
+                      : colors.amberSoft,
+                    color: latestEvent.geofence_status?.inside_fence ? colors.emerald : colors.amber,
+                  },
+                ]}>
+                {latestEvent.geofence_status?.inside_fence ? '🏠 Inside Geofence' : '📍 Outside Geofence'}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>No security events recorded yet.</Text>
+        )}
+      </View>
+
+      {/* Current Location */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.sectionTitle}>CURRENT LOCATION</Text>
+          <TouchableOpacity
+            onPress={() =>
+              latestEvent?.location
+                ? openMaps(latestEvent.location.latitude, latestEvent.location.longitude)
+                : null
+            }>
+            <Text style={styles.viewAllText}>Open Maps →</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={styles.mapPlaceholder}>
+          <View style={styles.mapGrid} />
+          <View style={styles.mapPinWrap}>
+            <Text style={styles.mapPin}>📍</Text>
+            <View style={styles.mapPinPulse} />
+          </View>
+          <Text style={styles.mapLabel}>Live Location</Text>
+        </View>
+        {latestEvent?.location && latestEvent.location.latitude !== 0 ? (
+          <View style={styles.locationInfoRow}>
+            <Text style={styles.locationCoord}>
+              {latestEvent.location.latitude.toFixed(5)}, {latestEvent.location.longitude.toFixed(5)}
+            </Text>
+            <Text style={styles.locationAccuracy}>
+              Accuracy ±{Math.round(latestEvent.location.accuracy_meters || 0)}m
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>No location data available yet.</Text>
+        )}
+      </View>
+
+      {/* Today's Timeline */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.sectionTitle}>TODAY'S TIMELINE</Text>
+          <TouchableOpacity onPress={() => goToSecurity('Timeline')}>
+            <Text style={styles.viewAllText}>View Full Timeline →</Text>
+          </TouchableOpacity>
+        </View>
+        {todayEvents.length > 0 ? (
+          todayEvents.map((e, idx) => (
+            <View key={e.id} style={[styles.todayRow, idx < todayEvents.length - 1 && styles.todayRowBorder]}>
+              <Text style={styles.todayTime}>{formatTime(e.timestamp)}</Text>
+              <Text style={styles.todayIcon}>{EVENT_ICONS[e.event_type] || '📋'}</Text>
+              <Text style={styles.todayLabel} numberOfLines={1}>
+                {formatEventType(e.event_type)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyText}>No events today.</Text>
+        )}
+      </View>
+
+      {/* Security Overview checklist */}
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>SECURITY OVERVIEW</Text>
+        <View style={styles.overviewGrid}>
+          {overview.map(item => (
+            <View key={item.label} style={styles.overviewItem}>
+              <View style={styles.overviewLeft}>
+                <Text style={styles.overviewIcon}>{item.icon}</Text>
+                <Text style={styles.overviewLabel}>{item.label}</Text>
+              </View>
+              <Text style={[styles.overviewStatus, {color: item.ok ? colors.emerald : colors.textMuted}]}>
+                {item.ok ? '✓' : '○'}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <TouchableOpacity style={styles.manageBtn} onPress={() => goToSecurity('Monitoring')}>
+          <Text style={styles.manageBtnText}>Manage Security Features</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  sub,
+  accent,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  sub?: string;
+  accent: string;
+}) {
+  return (
+    <View style={styles.statCard}>
+      <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
+        <Text style={{fontSize: 16}}>{icon}</Text>
+      </View>
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
+      {sub ? (
+        <Text style={styles.statSub} numberOfLines={1}>
+          {sub}
+        </Text>
+      ) : null}
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {flex: 1, backgroundColor: colors.bg},
+  scrollContent: {padding: spacing.lg, paddingBottom: 40},
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  headerIcon: {fontSize: 20},
+  headerRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
+  brandTitle: {fontSize: 22, fontWeight: '900', color: colors.textPrimary, letterSpacing: 1},
+  avatarBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.emerald,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {fontSize: 18, fontWeight: '800', color: '#fff'},
+  greetingRow: {marginBottom: spacing.lg},
+  greeting: {fontSize: 22, fontWeight: '800', color: colors.textPrimary},
+  protectionStatus: {fontSize: 14, fontWeight: '700', marginTop: 4},
+  syncedText: {fontSize: 12, color: colors.textMuted, marginTop: 4},
+  statGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg,
+  },
+  statCard: {
+    width: '48%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  statValue: {fontSize: 18, fontWeight: '800', color: colors.textPrimary},
+  statSub: {fontSize: 11, color: colors.sky, fontWeight: '600'},
+  statLabel: {fontSize: 11, color: colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5},
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 1,
+  },
+  viewAllText: {fontSize: 13, color: colors.sky, fontWeight: '600'},
+  latestEventBody: {},
+  latestEventTop: {flexDirection: 'row', alignItems: 'center'},
+  latestEventIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.skySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  latestEventTitle: {fontSize: 15, fontWeight: '700', color: colors.textPrimary, flex: 1},
+  latestEventTime: {fontSize: 12, color: colors.textSecondary, marginTop: 2},
+  latestEventSelfie: {
+    width: 48,
+    height: 48,
+    borderRadius: radius.sm,
+    borderWidth: 1.5,
+    borderColor: colors.sky,
+    marginLeft: spacing.sm,
+  },
+  latestEventAddress: {
+    fontSize: 12,
+    color: colors.emerald,
+    marginTop: spacing.md,
+    lineHeight: 18,
+  },
+  geofenceRow: {flexDirection: 'row', marginTop: spacing.sm},
+  geofencePill: {paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, fontSize: 11, fontWeight: '700'},
+  emptyText: {fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.md},
+  mapPlaceholder: {
+    height: 140,
+    borderRadius: radius.md,
+    backgroundColor: '#0b1424',
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    position: 'relative',
+  },
+  mapGrid: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+    borderColor: 'rgba(56, 189, 248, 0.08)',
+    borderWidth: 0,
+  },
+  mapPinWrap: {alignItems: 'center', justifyContent: 'center'},
+  mapPin: {fontSize: 32},
+  mapPinPulse: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    zIndex: -1,
+  },
+  mapLabel: {fontSize: 12, color: colors.textSecondary, marginTop: spacing.sm},
+  locationInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  locationCoord: {fontSize: 12, color: colors.textBody, fontFamily: 'monospace'},
+  locationAccuracy: {fontSize: 12, color: colors.emerald, fontWeight: '600'},
+  todayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  todayRowBorder: {borderBottomWidth: 1, borderBottomColor: colors.borderSubtle},
+  todayTime: {fontSize: 12, color: colors.sky, fontWeight: '700', width: 50, fontFamily: 'monospace'},
+  todayIcon: {fontSize: 16, marginRight: spacing.md},
+  todayLabel: {fontSize: 13, color: colors.textPrimary, flex: 1},
+  overviewGrid: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'},
+  overviewItem: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  overviewLeft: {flexDirection: 'row', alignItems: 'center', flex: 1},
+  overviewIcon: {fontSize: 16, marginRight: spacing.sm},
+  overviewLabel: {fontSize: 12, color: colors.textBody, fontWeight: '600'},
+  overviewStatus: {fontSize: 18, fontWeight: '800'},
+  manageBtn: {
+    backgroundColor: colors.skySoft,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  manageBtnText: {color: colors.sky, fontSize: 14, fontWeight: '700'},
+});

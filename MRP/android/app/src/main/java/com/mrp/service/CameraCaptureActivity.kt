@@ -250,7 +250,7 @@ class CameraCaptureActivity : Activity() {
             photosDir.mkdirs()
         }
 
-        val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9_]"), "_").uppercase(Locale.getDefault())
 
         try {
