@@ -4,95 +4,221 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  TouchableOpacity,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 
 export function AboutScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header with Gradient */}
+      <LinearGradient
+        colors={['#0f172a', '#1e293b', '#0f172a']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.headerGradient}>
         <View style={styles.headerContent}>
           <View style={styles.logoBox}>
             <Text style={styles.logo}>🛡️</Text>
           </View>
-          <Text style={styles.appName}>MRP Stay Sync.. Stay Connected</Text>
+          <Text style={styles.appName}>MRP Stay Sync</Text>
+          <Text style={styles.appTagline}>Your Security, Your Control</Text>
+          <Text style={styles.version}>Version 1.0.0</Text>
+        </View>
+      </LinearGradient>
+
+      {/* Quick Stats Grid */}
+      <View style={styles.statsGrid}>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>100%</Text>
+          <Text style={styles.statLabel}>Local Storage</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>0s</Text>
+          <Text style={styles.statLabel}>Latency</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>Offline</Text>
+          <Text style={styles.statLabel}>First Class</Text>
         </View>
       </View>
 
       {/* What is MRP */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <LinearGradient
+          colors={['#38bdf8', '#0ea5e9']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cardHeaderGradient}>
           <Text style={styles.cardIcon}>🎯</Text>
           <Text style={styles.cardTitle}>What is MRP?</Text>
+        </LinearGradient>
+        <Text style={styles.cardText}>
+          MRP is your personal security companion that gives you complete control over your phone's security.
+        </Text>
+        <View style={styles.featureGrid}>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>📸</Text>
+            <Text style={styles.featureText}>Intruder Selfies</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>📍</Text>
+            <Text style={styles.featureText}>GPS Tracking</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>⚡</Text>
+            <Text style={styles.featureText}>Instant Alerts</Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Text style={styles.featureIcon}>📊</Text>
+            <Text style={styles.featureText}>Activity Monitor</Text>
+          </View>
         </View>
-        <Text style={styles.cardText}>
-          MRP is your personal security companion that keeps complete control of your phone's security.
-        </Text>
-        <Text style={styles.cardText}>
-          Key features: Capture intruder selfies, track GPS location, receive instant alerts, monitor background activity.
-        </Text>
       </View>
 
       {/* Your Privacy */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <LinearGradient
+          colors={['#10b981', '#059669']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cardHeaderGradient}>
           <Text style={styles.cardIcon}>🔒</Text>
           <Text style={styles.cardTitle}>Your Privacy</Text>
+        </LinearGradient>
+        <Text style={styles.cardText}>Your data security is our priority:</Text>
+        <View style={styles.privacyList}>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>All data stored locally on device</Text>
+          </View>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>No data sent to cloud servers</Text>
+          </View>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>No third-party tracking or analytics</Text>
+          </View>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>Data never shared with advertisers</Text>
+          </View>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>No user accounts needed</Text>
+          </View>
+          <View style={styles.privacyItem}>
+            <View style={styles.privacyBullet} />
+            <Text style={styles.privacyText}>No internet connection required</Text>
+          </View>
         </View>
-        <Text style={styles.cardList}>✓ All data stored locally on device</Text>
-        <Text style={styles.cardList}>✓ No data sent to cloud servers</Text>
-        <Text style={styles.cardList}>✓ No third-party tracking or analytics</Text>
-        <Text style={styles.cardList}>✓ Data never shared with advertisers</Text>
-        <Text style={styles.cardList}>✓ No user accounts needed</Text>
-        <Text style={styles.cardList}>✓ No internet connection required</Text>
       </View>
 
       {/* Permissions */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <LinearGradient
+          colors={['#8b5cf6', '#7c3aed']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cardHeaderGradient}>
           <Text style={styles.cardIcon}>📋</Text>
           <Text style={styles.cardTitle}>Required Permissions</Text>
+        </LinearGradient>
+        <View style={styles.permissionList}>
+          {permissionData.map((perm) => (
+            <View key={perm.name} style={styles.permissionItem}>
+              <Text style={styles.permissionIcon}>{perm.icon}</Text>
+              <View style={styles.permissionInfo}>
+                <Text style={styles.permissionName}>{perm.name}</Text>
+                <Text style={styles.permissionDesc}>{perm.desc}</Text>
+              </View>
+            </View>
+          ))}
         </View>
-        <Text style={styles.permissionRow}>📷 Camera - Captures intruder selfies</Text>
-        <Text style={styles.permissionRow}>📍 Location - Records GPS coordinates</Text>
-        <Text style={styles.permissionRow}>🖥️ Display Over Other Apps - Shows camera preview</Text>
-        <Text style={styles.permissionRow}>🔐 Device Admin - Detects wrong password</Text>
-        <Text style={styles.permissionRow}>♿ Accessibility - Monitors screen activity</Text>
-        <Text style={styles.permissionRow}>📊 Usage Stats - Tracks open apps</Text>
       </View>
 
-      {/* Why Trust Us */}
+      {/* Why Trust MRP */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <LinearGradient
+          colors={['#f59e0b', '#d97706']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cardHeaderGradient}>
           <Text style={styles.cardIcon}>✅</Text>
           <Text style={styles.cardTitle}>Why Trust MRP?</Text>
+        </LinearGradient>
+        <View style={styles.trustList}>
+          {trustData.map((item, index) => (
+            <View key={index} style={styles.trustItem}>
+              <Text style={styles.trustIcon}>{item.icon}</Text>
+              <Text style={styles.trustText}>{item.text}</Text>
+            </View>
+          ))}
         </View>
-        <Text style={styles.cardList}>✓ Transparent - You control every permission</Text>
-        <Text style={styles.cardList}>✓ Minimal - Only essential permissions</Text>
-        <Text style={styles.cardList}>✓ Local-first - Data never leaves your phone</Text>
-        <Text style={styles.cardList}>✓ Open - Check everything in Settings</Text>
-        <Text style={styles.cardList}>✓ Secure - Encryption for all local data</Text>
-        <Text style={styles.cardList}>✓ Yours - Data belongs only to you</Text>
       </View>
 
       {/* Data Ownership */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <LinearGradient
+          colors={['#ec4899', '#db2777']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.cardHeaderGradient}>
           <Text style={styles.cardIcon}>💎</Text>
           <Text style={styles.cardTitle}>Your Data Belongs Only to You</Text>
+        </LinearGradient>
+        <View style={styles.dataTimeline}>
+          <View style={styles.timelineItem}>
+            <View style={styles.timelineDot} />
+            <View style={styles.timelineContent}>
+              <Text style={styles.timelineTitle}>Today</Text>
+              <Text style={styles.timelineText}>All data stored locally. No cloud, no servers.</Text>
+            </View>
+          </View>
+          <View style={styles.timelineItem}>
+            <View style={styles.timelineDot} />
+            <View style={styles.timelineContent}>
+              <Text style={styles.timelineTitle}>Future</Text>
+              <Text style={styles.timelineText}>Data syncs ONLY to YOUR Google Drive account.</Text>
+            </View>
+          </View>
+          <View style={styles.timelineItem}>
+            <View style={styles.timelineDot} />
+            <View style={styles.timelineContent}>
+              <Text style={styles.timelineTitle}>Never</Text>
+              <Text style={styles.timelineText}>We will never sell or share your data.</Text>
+            </View>
+          </View>
         </View>
-        <Text style={styles.dataHighlight}>Today: All data stored locally. No cloud, no servers.</Text>
-        <Text style={styles.dataHighlight}>Future: Data syncs ONLY to YOUR Google Drive account.</Text>
-        <Text style={styles.dataHighlight}>Never: We will never sell or share your data.</Text>
       </View>
 
       {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerTitle}>Your security, your privacy, your peace of mind</Text>
+        <Text style={styles.footerText}>Made with 💚 for your protection</Text>
       </View>
     </ScrollView>
   );
 }
+
+const permissionData = [
+  { name: 'Camera Access', desc: 'Captures intruder selfies', icon: '📷' },
+  { name: 'Location Access', desc: 'Records GPS coordinates', icon: '📍' },
+  { name: 'Display Over Other Apps', desc: 'Shows camera preview', icon: '🖥️' },
+  { name: 'Device Admin', desc: 'Detects wrong password', icon: '🔐' },
+  { name: 'Accessibility Service', desc: 'Monitors screen activity', icon: '♿' },
+  { name: 'Usage Stats', desc: 'Tracks open apps', icon: '📊' },
+];
+
+const trustData = [
+  { icon: '👁️', text: 'Transparent - You control every permission' },
+  { icon: '🔧', text: 'Minimal - Only essential permissions' },
+  { icon: '🏠', text: 'Local-first - Data never leaves your phone' },
+  { icon: '📖', text: 'Open - Check everything in Settings' },
+  { icon: '🔒', text: 'Secure - Encryption for all local data' },
+  { icon: '👤', text: 'Yours - Data belongs only to you' },
+];
 
 const styles = StyleSheet.create({
   container: {
@@ -100,24 +226,26 @@ const styles = StyleSheet.create({
     backgroundColor: '#0f172a',
   },
   scrollContent: {
-    padding: 32,
-    paddingBottom: 60,
+    padding: 20,
+    paddingBottom: 80,
   },
-  header: {
-    marginBottom: 48,
-    paddingTop: 20,
+  headerGradient: {
+    borderRadius: 24,
+    padding: 32,
+    alignItems: 'center',
+    marginBottom: 24,
   },
   headerContent: {
     alignItems: 'center',
   },
   logoBox: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#10b981',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 32,
+    marginBottom: 20,
     shadowColor: '#10b981',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.5,
@@ -125,71 +253,224 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   logo: {
-    fontSize: 60,
+    fontSize: 50,
   },
   appName: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#fff',
     textAlign: 'center',
-    lineHeight: 32,
+    marginBottom: 8,
+  },
+  appTagline: {
+    fontSize: 14,
+    color: '#38bdf8',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  version: {
+    fontSize: 12,
+    color: '#64748b',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  statCard: {
+    flex: 1,
+    marginHorizontal: 8,
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.2)',
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#38bdf8',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   card: {
     backgroundColor: '#1e293b',
     borderRadius: 20,
-    padding: 32,
-    marginBottom: 32,
-    borderLeftWidth: 4,
-    borderLeftColor: '#38bdf8',
+    padding: 24,
+    marginBottom: 24,
+    overflow: 'hidden',
   },
-  cardHeader: {
+  cardHeaderGradient: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     marginBottom: 20,
   },
   cardIcon: {
-    fontSize: 32,
-    marginRight: 20,
+    fontSize: 28,
+    marginRight: 12,
   },
   cardTitle: {
-    color: '#f8fafc',
-    fontSize: 22,
+    color: '#fff',
+    fontSize: 18,
     fontWeight: '700',
+    flex: 1,
   },
   cardText: {
     color: '#cbd5e1',
-    fontSize: 16,
-    lineHeight: 28,
-    marginBottom: 16,
-  },
-  cardList: {
-    color: '#cbd5e1',
-    fontSize: 16,
-    lineHeight: 28,
-    marginBottom: 12,
-  },
-  permissionRow: {
-    color: '#94a3b8',
-    fontSize: 15,
-    lineHeight: 24,
-    marginBottom: 10,
-  },
-  dataHighlight: {
-    color: '#cbd5e1',
     fontSize: 15,
     lineHeight: 26,
-    marginBottom: 12,
+    marginBottom: 16,
+  },
+  featureGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+  },
+  featureItem: {
+    flex: 1,
+    minWidth: '48%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  featureIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  featureText: {
+    color: '#cbd5e1',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  privacyList: {
+    gap: 16,
+  },
+  privacyItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  privacyBullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#10b981',
+    marginTop: 8,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  privacyText: {
+    color: '#cbd5e1',
+    fontSize: 15,
+    lineHeight: 24,
+    flex: 1,
+  },
+  permissionList: {
+    gap: 12,
+  },
+  permissionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  permissionIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  permissionInfo: {
+    flex: 1,
+  },
+  permissionName: {
+    color: '#f8fafc',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  permissionDesc: {
+    color: '#94a3b8',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  trustList: {
+    gap: 16,
+  },
+  trustItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  trustIcon: {
+    fontSize: 20,
+    marginRight: 12,
+  },
+  trustText: {
+    color: '#cbd5e1',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  dataTimeline: {
+    gap: 16,
+  },
+  timelineItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  timelineDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#ec4899',
+    marginTop: 6,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  timelineContent: {
+    flex: 1,
+  },
+  timelineTitle: {
+    color: '#f8fafc',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  timelineText: {
+    color: '#cbd5e1',
+    fontSize: 14,
+    lineHeight: 22,
   },
   footer: {
     alignItems: 'center',
-    paddingTop: 50,
-    paddingBottom: 50,
+    paddingTop: 40,
+    paddingBottom: 40,
     marginTop: 20,
   },
   footerTitle: {
+    color: '#f8fafc',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  footerText: {
     color: '#64748b',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
     textAlign: 'center',
   },
 });

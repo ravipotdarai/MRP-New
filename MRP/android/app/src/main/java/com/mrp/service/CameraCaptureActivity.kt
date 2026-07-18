@@ -100,6 +100,7 @@ class CameraCaptureActivity : Activity() {
     }
 
     private var cameraRetryCount = 0
+    @Volatile private var photoSaved = false
 
     private fun takeSelfie() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -185,10 +186,11 @@ class CameraCaptureActivity : Activity() {
             imageReader = ImageReader.newInstance(chosenSize.width, chosenSize.height, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
                     val image = reader.acquireLatestImage()
-                    if (image != null) {
+                    if (image != null && !photoSaved) {
+                        photoSaved = true
                         savePhoto(image)
-                        image.close()
                     }
+                    image?.close()
                     cleanupAndFinish()
                 }, backgroundHandler)
             }
@@ -248,7 +250,7 @@ class CameraCaptureActivity : Activity() {
             photosDir.mkdirs()
         }
 
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val timestamp = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
         val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9_]"), "_").uppercase(Locale.getDefault())
 
         try {
@@ -256,22 +258,15 @@ class CameraCaptureActivity : Activity() {
             val bytes = ByteArray(buffer.remaining())
             buffer.get(bytes)
 
-            val filenames = if (safeEventName.contains("WRONG") || safeEventName.contains("PASSWORD") || safeEventName.contains("UNLOCK")) {
-                listOf("WRONG_UNLOCK_ATTEMPT_$timestamp.jpg", "WRONG_PASSWORD_$timestamp.jpg")
-            } else {
-                listOf("${safeEventName}_$timestamp.jpg")
+            val filename = "${safeEventName}_$timestamp.jpg"
+            val photoFile = File(photosDir, filename)
+            FileOutputStream(photoFile).use { fos ->
+                fos.write(bytes)
             }
+            Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
 
-            for (filename in filenames) {
-                val photoFile = File(photosDir, filename)
-                FileOutputStream(photoFile).use { fos ->
-                    fos.write(bytes)
-                }
-                Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
-
-                // Register with MediaStore for visibility in gallery and other apps
-                registerWithMediaStore(photoFile)
-            }
+            // Register with MediaStore for visibility in gallery and other apps
+            registerWithMediaStore(photoFile)
             try {
                 sendBroadcast(Intent("com.mrp.ACTION_PHOTO_CAPTURED"))
             } catch (ignored: Exception) {}

@@ -27,6 +27,7 @@ export interface MrpNativeInterface {
   testPhotoCapture(eventName: string): Promise<boolean>;
   getServiceRunning(): Promise<boolean>;
   openAppSettings(): Promise<boolean>;
+  openAppSettings(): Promise<boolean>;
   getSettings(): Promise<any>;
   saveSettings(settings: any): Promise<boolean>;
   getTimeline(): Promise<any[]>;

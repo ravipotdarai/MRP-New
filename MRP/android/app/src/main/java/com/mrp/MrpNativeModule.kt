@@ -161,6 +161,18 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun testPhotoCapture(eventName: String, promise: Promise) {
+        try {
+            Log.d(TAG, "Test photo capture requested with event: $eventName")
+            MrpMonitorService.requestPhoto(reactContext, eventName)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to test photo capture", e)
+            promise.reject("TEST_CAPTURE_ERROR", "Failed to launch camera for test", e)
+        }
+    }
+
+    @ReactMethod
     fun getServiceRunning(promise: Promise) {
         try {
             // This is a simplified check - we can't directly check service running state

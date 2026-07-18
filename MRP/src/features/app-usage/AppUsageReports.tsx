@@ -16,7 +16,7 @@ export function AppUsageReports({sessions}: Props) {
   const filteredSessions = useMemo(() => {
     const now = Date.now();
     const msInDay = 24 * 60 * 60 * 1000;
-    
+
     let cutoff = 0;
     if (timeframe === 'DAILY') {
       const today = new Date();
@@ -34,7 +34,7 @@ export function AppUsageReports({sessions}: Props) {
   // General Stats
   let totalUsage = 0;
   filteredSessions.forEach(s => totalUsage += s.durationSeconds);
-  
+
   const daysInPeriod = timeframe === 'DAILY' ? 1 : (timeframe === 'WEEKLY' ? 7 : 30);
   const avgDailyUsage = totalUsage / daysInPeriod;
 
@@ -47,9 +47,16 @@ export function AppUsageReports({sessions}: Props) {
   });
   const sortedCategories = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
 
-  const {sortedApps, mostUsedApp, currentApp} = aggregateAppStats(filteredSessions);
+  // Sort apps by duration (descending) from filtered sessions
+  const sortedApps = [...filteredSessions].sort((a, b) => b.durationSeconds - a.durationSeconds);
   const topApps = sortedApps.slice(0, 5);
   const bottomApps = sortedApps.slice(-5).reverse();
+
+  // Get most used app from filtered sessions
+  const mostUsedApp = sortedApps.length > 0 ? sortedApps[0] : null;
+
+  // Get current (most recent) app from filtered sessions
+  const currentApp = filteredSessions.length > 0 ? filteredSessions[filteredSessions.length - 1] : null;
 
   // Hourly Usage Array
   const hourlyStats = new Array(24).fill(0);

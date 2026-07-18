@@ -16,14 +16,28 @@ type TimelineItem =
 const MAX_ITEMS = 200;
 
 export function AppUsageTimeline({sessions, events}: Props) {
+  // Deduplicate sessions by packageName + startTime
+  const uniqueSessions = useMemo(() => {
+    const seen = new Set<string>();
+    const unique: AppUsageSession[] = [];
+    sessions.forEach(s => {
+      const key = `${s.packageName}_${s.startTime}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
+      }
+    });
+    return unique;
+  }, [sessions]);
+
   // Merge and sort (newest first), capped to MAX_ITEMS
   const items: TimelineItem[] = useMemo(() => {
     const merged: TimelineItem[] = [
-      ...sessions.map(s => ({type: 'SESSION' as const, data: s, timestamp: s.startTime})),
+      ...uniqueSessions.map(s => ({type: 'SESSION' as const, data: s, timestamp: s.startTime})),
       ...events.map(e => ({type: 'EVENT' as const, data: e, timestamp: e.timestamp})),
     ].sort((a, b) => b.timestamp - a.timestamp);
     return merged.slice(0, MAX_ITEMS);
-  }, [sessions, events]);
+  }, [uniqueSessions, events]);
 
   const formatTime = (ts: number) => {
     return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});

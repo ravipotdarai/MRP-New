@@ -12,10 +12,8 @@ import {
   ScrollView,
   SafeAreaView,
   Linking,
-  Platform,
 } from 'react-native';
 import {Card} from '../../shared/components/Card';
-import {Button} from '../../shared/components/Button';
 import mrpmModule, {Photo} from '../../shared/hooks/useNativeBridge';
 
 const {width} = Dimensions.get('window');
@@ -38,17 +36,7 @@ interface TimelineEntry {
   };
 }
 
-const EVENT_ICONS: Record<string, string> = {
-  WRONG_UNLOCK_ATTEMPT: '⚠️',
-  UNLOCK_FAILED: '⚠️',
-  WIFI_DISABLED: '📶',
-  WIFI_DISCONNECTED: '📶',
-  WIFI_TOGGLE: '📶',
-  AIRPLANE_MODE_ENABLED: '✈️',
-  SIM_CHANGE: '🔄',
-  USB_CONNECTED: '💻',
-  DEFAULT: '📷',
-};
+type SortOption = 'NEWEST' | 'OLDEST' | 'MONTH' | 'WEEK' | 'DAY';
 
 export function PhotoGallery() {
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -57,6 +45,7 @@ export function PhotoGallery() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [activeTab, setActiveTab] = useState<'ALL' | 'WRONG_UNLOCK' | 'WRONG_PASSWORD' | 'TEST'>('ALL');
+  const [sortBy, setSortBy] = useState<SortOption>('NEWEST');
   const [capturingTest, setCapturingTest] = useState(false);
 
   const formatPhotoEventName = (filename: string) => {
@@ -155,19 +144,37 @@ export function PhotoGallery() {
     );
   };
 
-  const filteredPhotos = photos.filter(p => {
-    const upper = p.name.toUpperCase();
-    if (activeTab === 'WRONG_UNLOCK') {
-      return upper.includes('WRONG_UNLOCK_ATTEMPT');
+  // Apply type filter + time-range filter + sort order
+  const displayedPhotos = (() => {
+    let result = photos.filter(p => {
+      const upper = p.name.toUpperCase();
+      if (activeTab === 'WRONG_UNLOCK') {
+        return upper.includes('WRONG_UNLOCK_ATTEMPT');
+      }
+      if (activeTab === 'WRONG_PASSWORD') {
+        return upper.includes('WRONG_PASSWORD');
+      }
+      if (activeTab === 'TEST') {
+        return upper.includes('TEST') || upper.includes('WIFI');
+      }
+      return true;
+    });
+
+    const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    if (sortBy === 'DAY') {
+      result = result.filter(p => now - p.timestamp < DAY_MS);
+    } else if (sortBy === 'WEEK') {
+      result = result.filter(p => now - p.timestamp < 7 * DAY_MS);
+    } else if (sortBy === 'MONTH') {
+      result = result.filter(p => now - p.timestamp < 30 * DAY_MS);
     }
-    if (activeTab === 'WRONG_PASSWORD') {
-      return upper.includes('WRONG_PASSWORD');
-    }
-    if (activeTab === 'TEST') {
-      return upper.includes('TEST') || upper.includes('WIFI');
-    }
-    return true;
-  });
+
+    return [...result].sort((a, b) => {
+      if (sortBy === 'OLDEST') return a.timestamp - b.timestamp;
+      return b.timestamp - a.timestamp; // NEWEST, DAY, WEEK, MONTH all default to newest-first
+    });
+  })();
 
   // Find closest matching timeline event within 180 seconds
   const findMatchingEvent = (photo: Photo): TimelineEntry | null => {
@@ -195,16 +202,9 @@ export function PhotoGallery() {
   const renderPhotoItem = ({item}: {item: Photo}) => {
     const eventTitle = formatPhotoEventName(item.name);
 
-    // Convert to content URI for Android 10+ (scoped storage)
-    let imageUri = item.path;
-    const androidVersion = Platform.OS === 'android' ? (Platform.Version as number) : 0;
-    if (androidVersion >= 29) {
-      // Use last segment of path for MediaStore content URI
-      const lastSegment = item.path?.split('/').pop();
-      imageUri = lastSegment ? `content://com.android.externalstorage.documents/document/primary%3AMRP/${lastSegment}` : item.path;
-    } else {
-      imageUri = `file://${item.path}`;
-    }
+    // Photos are stored in app-specific external storage (getExternalFilesDir(null)/MRP/)
+    // which is directly readable with a file:// URI - no content:// provider needed.
+    const imageUri = `file://${item.path}`;
 
     return (
       <TouchableOpacity
@@ -212,13 +212,19 @@ export function PhotoGallery() {
         activeOpacity={0.8}
         onPress={() => setSelectedPhoto(item)}
         onLongPress={() => deletePhoto(item)}>
-        <Image source={{uri: imageUri}} style={styles.photo} resizeMode="cover" />
+        <Image
+          source={{uri: imageUri}}
+          style={styles.photo}
+          resizeMode="cover"
+          onError={(e) => console.warn('Image load failed:', imageUri, e.nativeEvent.error)}
+        />
         <View style={styles.photoOverlay}>
           <Text style={styles.photoTitle} numberOfLines={1}>
             {eventTitle}
           </Text>
           <Text style={styles.photoTime}>
-            {new Date(item.timestamp).toLocaleDateString()} {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+            {new Date(item.timestamp).toLocaleDateString()}{' '}
+            {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
           </Text>
         </View>
       </TouchableOpacity>
@@ -227,13 +233,58 @@ export function PhotoGallery() {
 
   const matchedEvent = selectedPhoto ? findMatchingEvent(selectedPhoto) : null;
 
+  const deleteAllPhotos = () => {
+    Alert.alert(
+      'Delete All Photos',
+      'Are you sure you want to permanently delete ALL intruder selfies?',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await mrpmModule.deleteAllPhotos();
+              setPhotos([]);
+              if (selectedPhoto) {
+                setSelectedPhoto(null);
+              }
+            } catch (e) {
+              console.error('Failed to delete all photos:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const FILTER_CHIPS: {key: typeof activeTab; label: string}[] = [
+    {key: 'ALL', label: `All (${photos.length})`},
+    {key: 'WRONG_UNLOCK', label: 'Unlock Attempts'},
+    {key: 'WRONG_PASSWORD', label: 'Wrong Password'},
+    {key: 'TEST', label: 'Test / Network'},
+  ];
+
+  const SORT_CHIPS: {key: SortOption; label: string}[] = [
+    {key: 'NEWEST', label: 'Newest'},
+    {key: 'OLDEST', label: 'Oldest'},
+    {key: 'DAY', label: 'Today'},
+    {key: 'WEEK', label: 'This Week'},
+    {key: 'MONTH', label: 'This Month'},
+  ];
+
   return (
     <View style={styles.container}>
       <Card>
         <View style={styles.headerRow}>
-          <Text style={styles.header}>📷 Intruder Selfie Evidence</Text>
+          <View style={styles.headerTextWrap}>
+            <Text style={styles.header}>📷 Intruder Selfie Evidence</Text>
+            <Text style={styles.subheader}>
+              {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
+            </Text>
+          </View>
           <TouchableOpacity
-            style={styles.testBtn}
+            style={[styles.testBtn, capturingTest && styles.testBtnDisabled]}
             disabled={capturingTest}
             onPress={triggerTestSelfie}>
             <Text style={styles.testBtnText}>
@@ -241,60 +292,62 @@ export function PhotoGallery() {
             </Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.subheader}>
-          {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged. Select a category below or tap any selfie to inspect full evidence.
-        </Text>
 
-        <View style={styles.filterBar}>
-          <TouchableOpacity
-            style={[styles.filterChip, activeTab === 'ALL' && styles.filterChipActive]}
-            onPress={() => setActiveTab('ALL')}>
-            <Text style={[styles.filterChipText, activeTab === 'ALL' && styles.filterChipTextActive]}>
-              All ({photos.length})
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, activeTab === 'WRONG_UNLOCK' && styles.filterChipActive]}
-            onPress={() => setActiveTab('WRONG_UNLOCK')}>
-            <Text style={[styles.filterChipText, activeTab === 'WRONG_UNLOCK' && styles.filterChipTextActive]}>
-              Unlock Attempts
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, activeTab === 'WRONG_PASSWORD' && styles.filterChipActive]}
-            onPress={() => setActiveTab('WRONG_PASSWORD')}>
-            <Text style={[styles.filterChipText, activeTab === 'WRONG_PASSWORD' && styles.filterChipTextActive]}>
-              Wrong Password
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.filterChip, activeTab === 'TEST' && styles.filterChipActive]}
-            onPress={() => setActiveTab('TEST')}>
-            <Text style={[styles.filterChipText, activeTab === 'TEST' && styles.filterChipTextActive]}>
-              Test / Network
-            </Text>
-          </TouchableOpacity>
+        <View style={styles.controlSection}>
+          <Text style={styles.controlLabel}>Filter by Type</Text>
+          <View style={styles.chipRow}>
+            {FILTER_CHIPS.map(chip => (
+              <TouchableOpacity
+                key={chip.key}
+                style={[styles.chip, activeTab === chip.key && styles.chipActive]}
+                onPress={() => setActiveTab(chip.key)}>
+                <Text style={[styles.chipText, activeTab === chip.key && styles.chipTextActive]}>
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
+
+        <View style={styles.controlSection}>
+          <Text style={styles.controlLabel}>Sort & Time Range</Text>
+          <View style={styles.chipRow}>
+            {SORT_CHIPS.map(chip => (
+              <TouchableOpacity
+                key={chip.key}
+                style={[styles.chip, sortBy === chip.key && styles.chipActive]}
+                onPress={() => setSortBy(chip.key)}>
+                <Text style={[styles.chipText, sortBy === chip.key && styles.chipTextActive]}>
+                  {chip.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {photos.length > 0 && (
+          <TouchableOpacity style={styles.deleteAllBtn} onPress={deleteAllPhotos}>
+            <Text style={styles.deleteAllText}>🗑️ Delete All Photos</Text>
+          </TouchableOpacity>
+        )}
       </Card>
 
-      {filteredPhotos.length === 0 ? (
+      {displayedPhotos.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🛡️</Text>
           <Text style={styles.emptyTitle}>No Intruder Selfies Found</Text>
           <Text style={styles.emptyText}>
-            {activeTab === 'ALL'
+            {photos.length === 0
               ? 'When an unauthorized unlock attempt or wrong password occurs, MRP captures front camera selfies automatically.'
-              : `No selfies found for category "${activeTab === 'WRONG_UNLOCK' ? 'Unlock Attempts' : activeTab === 'WRONG_PASSWORD' ? 'Wrong Password' : 'Test Selfies'}".`}
+              : 'No selfies match the current filter. Try changing the filter or time range.'}
           </Text>
-          <TouchableOpacity
-            style={styles.refreshEmptyBtn}
-            onPress={() => loadData(true)}>
+          <TouchableOpacity style={styles.refreshEmptyBtn} onPress={() => loadData(true)}>
             <Text style={styles.refreshEmptyBtnText}>🔄 Refresh Photos</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
-          data={filteredPhotos}
+          data={displayedPhotos}
           keyExtractor={item => item.path}
           renderItem={renderPhotoItem}
           numColumns={2}
@@ -362,13 +415,18 @@ export function PhotoGallery() {
                       <>
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>📍 Address:</Text>
-                          <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <View style={{flex: 1, alignItems: 'flex-end'}}>
                             <Text style={styles.detailValue}>
                               {matchedEvent.location.detailed_address || 'Address lookup in progress'}
                             </Text>
                             <TouchableOpacity
                               style={styles.mapButton}
-                              onPress={() => openLocation(matchedEvent.location!.latitude, matchedEvent.location!.longitude)}>
+                              onPress={() =>
+                                openLocation(
+                                  matchedEvent.location!.latitude,
+                                  matchedEvent.location!.longitude,
+                                )
+                              }>
                               <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
                             </TouchableOpacity>
                           </View>
@@ -376,7 +434,8 @@ export function PhotoGallery() {
                         <View style={styles.detailRow}>
                           <Text style={styles.detailLabel}>🌐 GPS Coordinates:</Text>
                           <Text style={styles.detailValue} numberOfLines={1}>
-                            {matchedEvent.location.latitude.toFixed(5)}, {matchedEvent.location.longitude.toFixed(5)} (±1m)
+                            {matchedEvent.location.latitude.toFixed(5)},{' '}
+                            {matchedEvent.location.longitude.toFixed(5)} (±1m)
                           </Text>
                         </View>
                       </>
@@ -438,19 +497,29 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  headerTextWrap: {
+    flex: 1,
+    marginRight: 12,
   },
   header: {
     fontSize: 18,
     fontWeight: '700',
     color: '#ffffff',
+    flexShrink: 1,
   },
   testBtn: {
     backgroundColor: '#0284c7',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  testBtnDisabled: {
+    backgroundColor: '#1e3a5f',
+    opacity: 0.7,
   },
   testBtnText: {
     color: '#ffffff',
@@ -461,15 +530,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94a3b8',
     lineHeight: 18,
+    marginTop: 4,
+  },
+  controlSection: {
     marginBottom: 12,
   },
-  filterBar: {
+  controlLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: 4,
   },
-  filterChip: {
+  chip: {
     backgroundColor: '#1e293b',
     borderWidth: 1,
     borderColor: '#334155',
@@ -477,17 +556,32 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
-  filterChipActive: {
+  chipActive: {
     backgroundColor: '#0284c7',
     borderColor: '#38bdf8',
   },
-  filterChipText: {
+  chipText: {
     color: '#94a3b8',
     fontSize: 11,
     fontWeight: '600',
   },
-  filterChipTextActive: {
+  chipTextActive: {
     color: '#ffffff',
+    fontWeight: '700',
+  },
+  deleteAllBtn: {
+    marginTop: 4,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  deleteAllText: {
+    color: '#ef4444',
+    fontSize: 13,
     fontWeight: '700',
   },
   refreshEmptyBtn: {
@@ -585,6 +679,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: '#ffffff',
+    flex: 1,
   },
   closeBtn: {
     width: 38,
@@ -593,6 +688,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#334155',
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 12,
   },
   closeBtnText: {
     fontSize: 18,
@@ -625,12 +721,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#38bdf8',
+    flex: 1,
   },
   badge: {
     backgroundColor: '#0284c7',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
+    marginLeft: 8,
   },
   badgeText: {
     color: '#ffffff',

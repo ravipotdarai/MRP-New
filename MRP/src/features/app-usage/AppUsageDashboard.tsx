@@ -17,6 +17,20 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
 
+  // Deduplicate sessions by packageName + startTime to prevent duplicates
+  const uniqueSessions = useMemo(() => {
+    const seen = new Set<string>();
+    const unique: AppUsageSession[] = [];
+    sessions.forEach(s => {
+      const key = `${s.packageName}_${s.startTime}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
+      }
+    });
+    return unique;
+  }, [sessions]);
+
   // Aggregate stats - ALL sessions (not filtered by date). Memoized to avoid
   // recomputing (and re-logging) on every render.
   const {totalScreenTime, longestSession, avgBattery, todayDistance} = useMemo(() => {
@@ -24,13 +38,13 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
     let longestSession = 0;
     let totalBattery = 0;
 
-    sessions.forEach(s => {
+    uniqueSessions.forEach(s => {
       totalScreenTime += s.durationSeconds;
       if (s.durationSeconds > longestSession) longestSession = s.durationSeconds;
       if (s.batteryLevel) totalBattery += s.batteryLevel;
     });
 
-    const avgBattery = sessions.length > 0 ? Math.round(totalBattery / sessions.length) : 0;
+    const avgBattery = uniqueSessions.length > 0 ? Math.round(totalBattery / uniqueSessions.length) : 0;
 
     // Haversine Distance Calculator
     const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
