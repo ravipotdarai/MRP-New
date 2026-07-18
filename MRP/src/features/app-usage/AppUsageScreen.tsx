@@ -34,6 +34,7 @@ export function AppUsageScreen() {
   const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TIMELINE' | 'REPORTS'>('DASHBOARD');
   const [sessions, setSessions] = useState<AppUsageSession[]>([]);
   const [events, setEvents] = useState<UnifiedEvent[]>([]);
+  const [photos, setPhotos] = useState<any[]>([]);
   const [mrpBattery, setMrpBattery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
@@ -71,32 +72,55 @@ export function AppUsageScreen() {
         console.error('[AppUsageScreen] MrpNative module not available');
         return;
       }
-      // Use allSettled so one failing/hanging call doesn't block the others.
-      const [usageRes, eventsRes, batteryRes] = await Promise.allSettled([
-        mrpmModule.getAppUsage(),
-        mrpmModule.getEvents(),
+      // Events come from getTimeline() — getEvents() reads a separate store that
+      // is never written. Photos feed the "Photos captured today" count.
+      const [usageRes, timelineRes, photosRes, batteryRes] = await Promise.allSettled([
+        // 30 days so Reports WEEKLY/MONTHLY have data; Dashboard filters to today
+        (mrpmModule as any).getAppUsageForRange
+          ? (mrpmModule as any).getAppUsageForRange(30)
+          : mrpmModule.getAppUsage(),
+        mrpmModule.getTimeline(),
+        mrpmModule.getPhotos(),
         mrpmModule.getMrpBatteryUsage(),
       ]);
 
       const usageData = usageRes.status === 'fulfilled' ? usageRes.value : [];
-      const eventsData = eventsRes.status === 'fulfilled' ? eventsRes.value : [];
+      const timelineData = timelineRes.status === 'fulfilled' ? timelineRes.value : [];
+      const photosData = photosRes.status === 'fulfilled' ? photosRes.value : [];
       const mrpBatteryData = batteryRes.status === 'fulfilled' ? batteryRes.value : null;
 
       if (usageRes.status === 'rejected') console.error('[AppUsageScreen] getAppUsage failed:', usageRes.reason);
-      if (eventsRes.status === 'rejected') console.error('[AppUsageScreen] getEvents failed:', eventsRes.reason);
+      if (timelineRes.status === 'rejected') console.error('[AppUsageScreen] getTimeline failed:', timelineRes.reason);
+      if (photosRes.status === 'rejected') console.error('[AppUsageScreen] getPhotos failed:', photosRes.reason);
       if (batteryRes.status === 'rejected') console.error('[AppUsageScreen] getMrpBatteryUsage failed:', batteryRes.reason);
 
       console.log('[AppUsageScreen] Usage length:', Array.isArray(usageData) ? usageData.length : 0);
-      console.log('[AppUsageScreen] Events length:', Array.isArray(eventsData) ? eventsData.length : 0);
+      console.log('[AppUsageScreen] Timeline length:', Array.isArray(timelineData) ? timelineData.length : 0);
 
       setSessions(Array.isArray(usageData) ? usageData : []);
-      setEvents(Array.isArray(eventsData) ? eventsData : []);
+      setEvents(mapTimelineToEvents(Array.isArray(timelineData) ? timelineData : []));
+      setPhotos(Array.isArray(photosData) ? photosData : []);
       setMrpBattery(mrpBatteryData);
     } catch (e) {
       console.error('[AppUsageScreen] Failed to fetch data:', e);
       Alert.alert('Error', 'Failed to fetch data: ' + String(e));
     }
   };
+
+  // Map timeline entries (the real event store) into the UnifiedEvent shape the
+  // dashboard/timeline expect: top-level type/timestamp/description/lat/lng.
+  const mapTimelineToEvents = (tl: any[]): UnifiedEvent[] =>
+    (tl || []).map(e => ({
+      id: e.id,
+      type: e.event_type,
+      timestamp: Date.parse(e.timestamp) || Number(e.timestamp) || 0,
+      description: e.metadata?.description || e.status || '',
+      syncStatus: 'SYNCED',
+      latitude: e.location?.latitude || undefined,
+      longitude: e.location?.longitude || undefined,
+      intruderId: e.metadata?.intruderId,
+      photoPath: e.metadata?.photoPath || '',
+    }));
 
   const handleRequestPermission = async () => {
     try {
@@ -162,7 +186,7 @@ export function AppUsageScreen() {
       </View>
 
       <View style={styles.content}>
-        {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} mrpBattery={mrpBattery} onRefresh={fetchData} />}
+        {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
         {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
         {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
       </View>

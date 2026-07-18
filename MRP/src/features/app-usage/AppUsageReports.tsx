@@ -47,16 +47,27 @@ export function AppUsageReports({sessions}: Props) {
   });
   const sortedCategories = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
 
-  // Sort apps by duration (descending) from filtered sessions
-  const sortedApps = [...filteredSessions].sort((a, b) => b.durationSeconds - a.durationSeconds);
-  const topApps = sortedApps.slice(0, 5);
-  const bottomApps = sortedApps.slice(-5).reverse();
+  // Aggregate by app for Most/Least Used (not raw sessions)
+  const aggregatedApps = useMemo(() => {
+    const byPkg: Record<string, {appName: string; durationSeconds: number; startTime: number}> = {};
+    filteredSessions.forEach(s => {
+      if (!byPkg[s.packageName]) {
+        byPkg[s.packageName] = {
+          appName: s.appName,
+          durationSeconds: 0,
+          startTime: s.startTime,
+        };
+      }
+      byPkg[s.packageName].durationSeconds += s.durationSeconds;
+      if (s.startTime > byPkg[s.packageName].startTime) {
+        byPkg[s.packageName].startTime = s.startTime;
+      }
+    });
+    return Object.values(byPkg).sort((a, b) => b.durationSeconds - a.durationSeconds);
+  }, [filteredSessions]);
 
-  // Get most used app from filtered sessions
-  const mostUsedApp = sortedApps.length > 0 ? sortedApps[0] : null;
-
-  // Get current (most recent) app from filtered sessions
-  const currentApp = filteredSessions.length > 0 ? filteredSessions[filteredSessions.length - 1] : null;
+  const topApps = aggregatedApps.slice(0, 5);
+  const bottomApps = [...aggregatedApps].reverse().slice(0, 5);
 
   // Hourly Usage Array
   const hourlyStats = new Array(24).fill(0);
@@ -133,7 +144,7 @@ export function AppUsageReports({sessions}: Props) {
         {topApps.map((app, index) => (
           <View key={index} style={styles.appRow}>
             <Text style={styles.appName} numberOfLines={1}>{index + 1}. {app.appName}</Text>
-            <Text style={styles.appDuration}>{formatDuration(app.duration)}</Text>
+            <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
           </View>
         ))}
       </View>
@@ -143,7 +154,7 @@ export function AppUsageReports({sessions}: Props) {
         {bottomApps.map((app, index) => (
           <View key={index} style={styles.appRow}>
             <Text style={styles.appName} numberOfLines={1}>{app.appName}</Text>
-            <Text style={styles.appDuration}>{formatDuration(app.duration)}</Text>
+            <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
           </View>
         ))}
       </View>

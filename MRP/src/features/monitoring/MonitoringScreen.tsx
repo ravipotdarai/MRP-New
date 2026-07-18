@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   View,
   Text,
@@ -9,62 +9,178 @@ import {
   PermissionsAndroid,
   Alert,
   TouchableOpacity,
+  AppState,
+  type Permission,
 } from 'react-native';
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
 
-// Helper functions for permission requests
-const requestCameraPermissionNative = async (): Promise<boolean> => {
+type PermOutcome = 'granted' | 'denied' | 'blocked';
+
+/** Surfaces SIM Recovery render failures instead of silently blanking the panel. */
+class SimRecoveryErrorBoundary extends React.Component<
+  {children: React.ReactNode},
+  {error: string | null}
+> {
+  state = {error: null as string | null};
+
+  static getDerivedStateFromError(error: Error) {
+    return {error: error?.message || String(error)};
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={{padding: 12, backgroundColor: '#450a0a', borderRadius: 8}}>
+          <Text style={{color: '#fecaca', fontWeight: '700'}}>SIM Recovery failed to load</Text>
+          <Text style={{color: '#fca5a5', marginTop: 6}}>{this.state.error}</Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/**
+ * Request Android runtime permission(s) via native PermissionAwareActivity
+ * so the system dialog shows every time the OS still allows it.
+ */
+async function requestRuntimePermissions(
+  permissions: Permission[],
+): Promise<PermOutcome> {
   if (Platform.OS !== 'android') {
-    return true;
+    return 'granted';
+  }
+
+  const unique = [...new Set(permissions.filter(Boolean))];
+  if (unique.length === 0) {
+    return 'granted';
   }
 
   try {
-    console.log('[Permission] Requesting camera permission (always show dialog)...');
-    // Request permission - this will ALWAYS show the native dialog in Bridgeless mode
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.CAMERA,
-      {
-        title: 'Camera Access Required',
-        message: 'MRP requires camera access to capture intruder selfies during security events.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Deny',
+    if (typeof mrpmModule.requestRuntimePermissions === 'function') {
+      const granted = await mrpmModule.requestRuntimePermissions(unique);
+      if (granted) {
+        return 'granted';
       }
-    );
-
-    console.log('[Permission] Camera permission result:', granted);
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
-  } catch (err) {
-    console.error('[Permission] Camera permission request error:', err);
-    return false;
-  }
-};
-
-const requestLocationPermissionNative = async (): Promise<boolean> => {
-  if (Platform.OS !== 'android') {
-    return true;
-  }
-
-  try {
-    console.log('[Permission] Requesting location permission (always show dialog)...');
-    // Request permission - this will ALWAYS show the native dialog in Bridgeless mode
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: 'Location Access Required',
-        message: 'MRP requires location access to log GPS coordinates and addresses for security events.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Deny',
+      try {
+        const canAskAgain = await Promise.all(
+          unique.map(p =>
+            PermissionsAndroid.shouldShowRequestPermissionRationale(p),
+          ),
+        );
+        // After Deny, rationale=true means OS will show the dialog again next time
+        if (canAskAgain.some(Boolean)) {
+          return 'denied';
+        }
+      } catch {
+        /* ignore */
       }
-    );
+      // Permanent deny (or OEM won't re-prompt) — open Settings
+      return 'blocked';
+    }
 
-    console.log('[Permission] Location permission result:', granted);
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
-  } catch (err) {
-    console.error('[Permission] Location permission request error:', err);
-    return false;
+    // Fallback if native method missing
+    const result =
+      unique.length === 1
+        ? ({[unique[0]]: await PermissionsAndroid.request(unique[0])} as Record<
+            string,
+            string
+          >)
+        : ((await PermissionsAndroid.requestMultiple(unique)) as Record<
+            string,
+            string
+          >);
+
+    const statuses = unique.map(p => result[p]);
+    if (statuses.every(s => s === PermissionsAndroid.RESULTS.GRANTED)) {
+      return 'granted';
+    }
+    if (statuses.some(s => s === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN)) {
+      return 'blocked';
+    }
+    return 'denied';
+  } catch (e) {
+    console.error('[requestRuntimePermissions]', e);
+    return 'denied';
   }
-};
+}
+
+function locationPermissions(): Permission[] {
+  return [
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+  ];
+}
+
+function promptOpenSettings(title: string, message: string) {
+  Alert.alert(title, message, [
+    {text: 'Cancel', style: 'cancel'},
+    {
+      text: 'Open Settings',
+      onPress: async () => {
+        try {
+          await mrpmModule.openAppSettings();
+        } catch {
+          /* ignore */
+        }
+      },
+    },
+  ]);
+}
+
+/**
+ * Controlled Switch often stops firing onValueChange after Deny (value stays false).
+ * Wrap in Pressable + remount key so every tap when OFF re-requests the system dialog.
+ */
+function PermissionSwitch({
+  value,
+  onRequestEnable,
+  onRequestDisable,
+}: {
+  value: boolean;
+  onRequestEnable: () => Promise<boolean>;
+  onRequestDisable: () => void;
+}) {
+  const [switchKey, setSwitchKey] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  const onPress = async () => {
+    if (busy) {
+      return;
+    }
+    if (value) {
+      onRequestDisable();
+      return;
+    }
+    setBusy(true);
+    try {
+      await onRequestEnable();
+    } finally {
+      setBusy(false);
+      // Remount so the next tap always works after Deny
+      setSwitchKey(k => k + 1);
+    }
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      disabled={busy}
+      hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+      <View pointerEvents="none">
+        <Switch
+          key={switchKey}
+          value={value}
+          trackColor={{false: '#334155', true: '#059669'}}
+          thumbColor={value ? '#10b981' : '#94a3b8'}
+        />
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 interface SettingItemProps {
   icon: string;
@@ -120,33 +236,35 @@ export function MonitoringScreen() {
   const [hasLocationPerm, setHasLocationPerm] = useState(false);
   const [hasOverlayPerm, setHasOverlayPerm] = useState(false);
 
-  const checkPermissions = async () => {
+  const checkPermissions = useCallback(async () => {
     try {
-      console.log('[checkPermissions] Starting permission check...');
       const camCheck = await mrpmModule.checkCameraPermission();
       const locCheck = await mrpmModule.checkLocationPermission();
       const admin = await mrpmModule.isDeviceAdminEnabled();
       const overlayCheck = await mrpmModule.checkOverlayPermission();
 
-      console.log('[checkPermissions] Permission results:', {
-        admin,
-        camGranted: camCheck,
-        locGranted: locCheck,
-        overlayGranted: overlayCheck
-      });
       setIsDeviceAdminEnabled(admin);
       setHasCameraPerm(camCheck);
       setHasLocationPerm(locCheck);
       setHasOverlayPerm(overlayCheck);
-      console.log('[checkPermissions] Permission states updated');
     } catch (e) {
       console.error('[checkPermissions] Failed to check permissions:', e);
     }
-  };
+  }, []);
 
   useEffect(() => {
     checkPermissions();
-  }, []);
+  }, [checkPermissions]);
+
+  // Re-sync when returning from the system permission dialog / Settings
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        checkPermissions();
+      }
+    });
+    return () => sub.remove();
+  }, [checkPermissions]);
 
   if (loading) {
     return (
@@ -204,12 +322,26 @@ export function MonitoringScreen() {
             style={styles.grantAllButton}
             onPress={async () => {
               if (!hasCameraPerm) {
-                const cam = await requestCameraPermissionNative();
-                setHasCameraPerm(cam);
+                const cam = await requestRuntimePermissions([
+                  PermissionsAndroid.PERMISSIONS.CAMERA,
+                ]);
+                setHasCameraPerm(cam === 'granted');
+                if (cam === 'blocked') {
+                  promptOpenSettings(
+                    'Camera permission blocked',
+                    'Enable Camera in App Settings.',
+                  );
+                }
               }
               if (!hasLocationPerm) {
-                const loc = await requestLocationPermissionNative();
-                setHasLocationPerm(loc);
+                const loc = await requestRuntimePermissions(locationPermissions());
+                setHasLocationPerm(loc === 'granted');
+                if (loc === 'blocked') {
+                  promptOpenSettings(
+                    'Location permission blocked',
+                    'Enable Location in App Settings.',
+                  );
+                }
               }
               if (!hasOverlayPerm) {
                 await mrpmModule.requestOverlayPermission();
@@ -232,82 +364,36 @@ export function MonitoringScreen() {
             <Text style={styles.itemTitle}>Camera Access</Text>
             <Text style={styles.itemSubtitle}>Capture intruder selfie on security event</Text>
           </View>
-          <Switch
+          <PermissionSwitch
             value={hasCameraPerm}
-            onValueChange={async (val) => {
-              console.log('[Toggle] Camera toggle clicked:', val);
-
-              if (val) {
-                // User wants to turn ON - ALWAYS request permission dialog
-                console.log('[Toggle] Requesting camera permission via PermissionsAndroid...');
-
-                try {
-                  console.log('[Toggle] Calling PermissionsAndroid.request...');
-                  const granted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.CAMERA,
-                    {
-                      title: 'Camera Access Required',
-                      message: 'MRP requires camera access to capture intruder selfies during security events.',
-                      buttonPositive: 'Allow',
-                      buttonNegative: 'Deny',
-                    }
-                  );
-                  console.log('[Toggle] Camera permission result:', granted);
-
-                  // Check if permission was granted or denied
-                  const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
-                  console.log('[Toggle] Setting hasCameraPerm to:', isGranted);
-                  setHasCameraPerm(isGranted);
-
-                  if (!isGranted) {
-                    console.log('[Toggle] Permission denied, showing alert with manual steps');
-                    Alert.alert(
-                      'Permission Denied - How to Enable',
-                      `Camera permission is required to enable this feature.\n\nTo grant this permission:\n\n1. Go to: Settings → Apps → MRP\n2. Tap on "Permissions"\n3. Enable "Camera"\n\nOr click "Open Settings" below to go directly.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Open Settings',
-                          onPress: async () => {
-                            await mrpmModule.openAppSettings();
-                          }
-                        }
-                      ]
-                    );
-                  } else {
-                    console.log('[Toggle] Permission granted');
-                  }
-                } catch (err) {
-                  console.error('[Toggle] Error requesting camera permission:', err);
-                  Alert.alert(
-                    'Error',
-                    'Failed to request camera permission: ' + String(err)
-                  );
-                  // Set to false on error
-                  setHasCameraPerm(false);
-                }
-              } else {
-                // User wants to turn OFF - ask for confirmation
-                console.log('[Toggle] Toggle turning OFF, asking confirmation...');
-                Alert.alert(
-                  'Disable Camera Access',
-                  'Camera access will be disabled. Would you like to confirm?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Disable',
-                      style: 'destructive',
-                      onPress: () => {
-                        console.log('[Toggle] User confirmed disabling camera');
-                        setHasCameraPerm(false);
-                      }
-                    }
-                  ]
+            onRequestEnable={async () => {
+              const outcome = await requestRuntimePermissions([
+                PermissionsAndroid.PERMISSIONS.CAMERA,
+              ]);
+              const granted = outcome === 'granted';
+              setHasCameraPerm(granted);
+              if (outcome === 'blocked') {
+                promptOpenSettings(
+                  'Camera permission blocked',
+                  'Android will no longer show the permission dialog. Enable Camera in App Settings.',
                 );
               }
+              return granted;
             }}
-            trackColor={{false: '#334155', true: '#059669'}}
-            thumbColor={hasCameraPerm ? '#10b981' : '#94a3b8'}
+            onRequestDisable={() => {
+              Alert.alert(
+                'Disable Camera Access',
+                'Turn off camera access in MRP?',
+                [
+                  {text: 'Cancel', style: 'cancel'},
+                  {
+                    text: 'Disable',
+                    style: 'destructive',
+                    onPress: () => setHasCameraPerm(false),
+                  },
+                ],
+              );
+            }}
           />
         </View>
 
@@ -319,82 +405,34 @@ export function MonitoringScreen() {
             <Text style={styles.itemTitle}>Location Access</Text>
             <Text style={styles.itemSubtitle}>Record GPS coordinates & exact address</Text>
           </View>
-          <Switch
+          <PermissionSwitch
             value={hasLocationPerm}
-            onValueChange={async (val) => {
-              console.log('[Toggle] Location toggle clicked:', val);
-
-              if (val) {
-                // User wants to turn ON - ALWAYS request permission dialog
-                console.log('[Toggle] Requesting location permission via PermissionsAndroid...');
-
-                try {
-                  console.log('[Toggle] Calling PermissionsAndroid.request...');
-                  const granted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-                    {
-                      title: 'Location Access Required',
-                      message: 'MRP requires location access to log GPS coordinates and addresses for security events.',
-                      buttonPositive: 'Allow',
-                      buttonNegative: 'Deny',
-                    }
-                  );
-                  console.log('[Toggle] Location permission result:', granted);
-
-                  // Check if permission was granted or denied
-                  const isGranted = granted === PermissionsAndroid.RESULTS.GRANTED;
-                  console.log('[Toggle] Setting hasLocationPerm to:', isGranted);
-                  setHasLocationPerm(isGranted);
-
-                  if (!isGranted) {
-                    console.log('[Toggle] Permission denied, showing alert with manual steps');
-                    Alert.alert(
-                      'Permission Denied - How to Enable',
-                      `Location permission is required to enable this feature.\n\nTo grant this permission:\n\n1. Go to: Settings → Apps → MRP\n2. Tap on "Permissions"\n3. Enable "Location"\n4. Select "Allow all the time"\n\nOr click "Open Settings" below to go directly.`,
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'Open Settings',
-                          onPress: async () => {
-                            await mrpmModule.openAppSettings();
-                          }
-                        }
-                      ]
-                    );
-                  } else {
-                    console.log('[Toggle] Permission granted');
-                  }
-                } catch (err) {
-                  console.error('[Toggle] Error requesting location permission:', err);
-                  Alert.alert(
-                    'Error',
-                    'Failed to request location permission: ' + String(err)
-                  );
-                  // Set to false on error
-                  setHasLocationPerm(false);
-                }
-              } else {
-                // User wants to turn OFF - ask for confirmation
-                console.log('[Toggle] Toggle turning OFF, asking confirmation...');
-                Alert.alert(
-                  'Disable Location Access',
-                  'Location access will be disabled. Would you like to confirm?',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Disable',
-                      style: 'destructive',
-                      onPress: () => {
-                        console.log('[Toggle] User confirmed disabling location');
-                        setHasLocationPerm(false);
-                      }
-                    }
-                  ]
+            onRequestEnable={async () => {
+              const outcome = await requestRuntimePermissions(locationPermissions());
+              const granted = outcome === 'granted';
+              setHasLocationPerm(granted);
+              if (outcome === 'blocked') {
+                promptOpenSettings(
+                  'Location permission blocked',
+                  'Android will no longer show the permission dialog. Enable Location in App Settings.',
                 );
               }
+              return granted;
             }}
-            trackColor={{false: '#334155', true: '#059669'}}
-            thumbColor={hasLocationPerm ? '#10b981' : '#94a3b8'}
+            onRequestDisable={() => {
+              Alert.alert(
+                'Disable Location Access',
+                'Turn off location access in MRP?',
+                [
+                  {text: 'Cancel', style: 'cancel'},
+                  {
+                    text: 'Disable',
+                    style: 'destructive',
+                    onPress: () => setHasLocationPerm(false),
+                  },
+                ],
+              );
+            }}
           />
         </View>
 
@@ -423,6 +461,8 @@ export function MonitoringScreen() {
           }}
         />
 
+        {/* Phone/SMS permissions are requested by SIM Recovery "Protection Enabled" — no separate toggle */}
+
         <SettingItem
           icon="🔐"
           title="Device Admin Access"
@@ -439,6 +479,20 @@ export function MonitoringScreen() {
             setTimeout(checkPermissions, 1000);
           }}
         />
+      </View>
+
+      {/* SIM Change Recovery — placed here (right after permissions) so it stays visible */}
+      <View style={styles.sectionCard}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>SIM CHANGE RECOVERY ALERT</Text>
+        </View>
+        <Text style={styles.simRecoveryHint}>
+          Alert trusted contacts by SMS when a different SIM is inserted. Add contacts and use Test
+          SMS below.
+        </Text>
+        <SimRecoveryErrorBoundary>
+          <SimRecoveryPanel />
+        </SimRecoveryErrorBoundary>
       </View>
 
       {/* Security Surveillance Rules */}
@@ -535,6 +589,12 @@ const styles = StyleSheet.create({
     color: '#38bdf8',
     fontSize: 15,
     fontWeight: '600',
+  },
+  simRecoveryHint: {
+    color: '#94a3b8',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
   },
   masterBanner: {
     backgroundColor: '#1e293b',

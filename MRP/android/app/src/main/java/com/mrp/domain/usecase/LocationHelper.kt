@@ -169,12 +169,13 @@ class LocationHelper(private val context: Context) {
                     val geocoder = Geocoder(context, Locale.getDefault())
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val latch = java.util.concurrent.CountDownLatch(1)
                         var result: String? = null
                         geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
                             result = addresses.firstOrNull()?.getAddressLine(0)
+                            latch.countDown()
                         }
-                        // Give it time to callback
-                        delay(500)
+                        latch.await(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
                         result
                     } else {
                         val addresses = geocoder.getFromLocation(latitude, longitude, 1)

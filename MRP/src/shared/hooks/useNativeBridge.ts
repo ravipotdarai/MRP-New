@@ -35,6 +35,7 @@ export interface MrpNativeInterface {
   getPhotosDirectory(): Promise<string>;
   getTimelineFilePath(): Promise<string>;
   getAppUsage(): Promise<any[]>;
+  getAppUsageForRange(days: number): Promise<any[]>;
   hasUsageStatsPermission(): Promise<boolean>;
   requestUsageStatsPermission(): Promise<boolean>;
   getMrpBatteryUsage(): Promise<any>;
@@ -51,6 +52,36 @@ export interface MrpNativeInterface {
     networkLocationActive: boolean;
     permissionGranted: boolean;
     isLocationAvailable: boolean;
+  }>;
+  getCurrentLocationWithAddress(): Promise<{
+    latitude: number;
+    longitude: number;
+    accuracy_meters: number;
+    detailed_address: string;
+    provider: string;
+  } | null>;
+  getSimRecoveryStatus(): Promise<any>;
+  setSimRecoveryEnabled(enabled: boolean, consent: boolean): Promise<boolean>;
+  getRecoveryContacts(): Promise<any[]>;
+  saveRecoveryContact(
+    name: string,
+    phone: string,
+    relationship: string,
+    priority: number,
+  ): Promise<any>;
+  deleteRecoveryContact(id: string): Promise<boolean>;
+  testRecoverySms(): Promise<boolean | {success: boolean; message: string}>;
+  getSimChangeHistory(): Promise<string>;
+  deleteSimChangeHistory(): Promise<boolean>;
+  checkSmsPermission(): Promise<boolean>;
+  checkPhonePermission(): Promise<boolean>;
+  requestRuntimePermissions(permissions: string[]): Promise<boolean>;
+  getCurrentSimPhoneNumber(): Promise<{
+    available: boolean;
+    phoneNumber: string;
+    phoneNumberMasked: string;
+    carrier: string;
+    simSlot: number;
   }>;
 }
 

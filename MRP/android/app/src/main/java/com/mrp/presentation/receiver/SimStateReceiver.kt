@@ -84,6 +84,15 @@ class SimStateReceiver : BroadcastReceiver() {
                 "source" to "SimStateReceiver"
             )
         )
+
+        try {
+            com.mrp.domain.usecase.SimChangeRecoveryAlertUseCase(context).onSimStateChanged(
+                simState = simState,
+                isInsertion = eventType == "SIM_INSERTED"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "SIM recovery alert failed", e)
+        }
     }
 
     private fun handleUsbConnection(context: Context) {

@@ -13,6 +13,7 @@ import {
 import {colors, spacing, radius} from '../../shared/theme';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useSettings} from '../../shared/hooks/useSettings';
+import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 
 const USER_NAME = 'Ravi';
 
@@ -94,7 +95,7 @@ const getGreeting = (): string => {
 const formatTime = (ts: string): string => {
   try {
     const d = new Date(ts);
-    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    return d.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: true});
   } catch {
     return '';
   }
@@ -127,6 +128,12 @@ export function HomeScreen({
   const {settings} = useSettings();
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [liveLocation, setLiveLocation] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy_meters: number;
+    detailed_address: string;
+  } | null>(null);
   const [battery, setBattery] = useState<number>(-1);
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [gps, setGps] = useState<GpsStatus | null>(null);
@@ -139,8 +146,10 @@ export function HomeScreen({
   });
   const [refreshing, setRefreshing] = useState(false);
 
+  const [recoveryContactOk, setRecoveryContactOk] = useState(false);
+
   const loadAll = useCallback(async () => {
-    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes] =
+    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes] =
       await Promise.allSettled([
         mrpmModule.getTimeline(),
         mrpmModule.getPhotos(),
@@ -152,6 +161,8 @@ export function HomeScreen({
         mrpmModule.checkOverlayPermission(),
         mrpmModule.isDeviceAdminEnabled(),
         mrpmModule.hasUsageStatsPermission(),
+        mrpmModule.getCurrentLocationWithAddress?.() ?? Promise.resolve(null),
+        (mrpmModule as any).getSimRecoveryStatus?.() ?? Promise.resolve(null),
       ]);
 
     if (tRes.status === 'fulfilled') setTimeline(Array.isArray(tRes.value) ? tRes.value : []);
@@ -159,6 +170,13 @@ export function HomeScreen({
     if (bRes.status === 'fulfilled') setBattery(typeof bRes.value === 'number' ? bRes.value : -1);
     if (nRes.status === 'fulfilled') setNetwork(nRes.value as NetworkInfo);
     if (gRes.status === 'fulfilled') setGps(gRes.value as GpsStatus);
+    if (liveRes.status === 'fulfilled' && liveRes.value) {
+      setLiveLocation(liveRes.value as typeof liveLocation);
+    }
+    if (simRes.status === 'fulfilled' && simRes.value) {
+      const st = simRes.value as {enabled?: boolean; hasContacts?: boolean};
+      setRecoveryContactOk(!!(st.enabled && st.hasContacts));
+    }
     setPermFlags({
       camera: camRes.status === 'fulfilled' ? !!camRes.value : false,
       location: locRes.status === 'fulfilled' ? !!locRes.value : false,
@@ -179,21 +197,9 @@ export function HomeScreen({
     loadAll().finally(() => setRefreshing(false));
   }, [loadAll]);
 
-  // Match a selfie to an event (3-min delta)
+  // Match a selfie to an event (by event-type prefix + tight time window)
   const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
-    if (!photos.length) return null;
-    let evtTime = Date.parse(entry.timestamp);
-    if (isNaN(evtTime)) evtTime = Number(entry.timestamp) || 0;
-    let closest: PhotoItem | null = null;
-    let minDiff = 180000;
-    for (const p of photos) {
-      const diff = Math.abs(p.timestamp - evtTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = p;
-      }
-    }
-    return closest;
+    return findMatchingSelfie(entry.event_type, entry.timestamp, photos);
   };
 
   // --- Security score (real, computed) ---
@@ -262,7 +268,7 @@ export function HomeScreen({
     {
       icon: '👤',
       label: 'Recovery Contact',
-      ok: false,
+      ok: recoveryContactOk,
     },
     {
       icon: '☁️',
@@ -432,34 +438,75 @@ export function HomeScreen({
         <View style={styles.cardHeaderRow}>
           <Text style={styles.sectionTitle}>CURRENT LOCATION</Text>
           <TouchableOpacity
-            onPress={() =>
-              latestEvent?.location
-                ? openMaps(latestEvent.location.latitude, latestEvent.location.longitude)
-                : null
-            }>
+            onPress={() => {
+              const loc = liveLocation ?? latestEvent?.location;
+              if (loc && loc.latitude !== 0) openMaps(loc.latitude, loc.longitude);
+            }}>
             <Text style={styles.viewAllText}>Open Maps →</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.mapPlaceholder}>
-          <View style={styles.mapGrid} />
-          <View style={styles.mapPinWrap}>
-            <Text style={styles.mapPin}>📍</Text>
-            <View style={styles.mapPinPulse} />
-          </View>
-          <Text style={styles.mapLabel}>Live Location</Text>
-        </View>
-        {latestEvent?.location && latestEvent.location.latitude !== 0 ? (
-          <View style={styles.locationInfoRow}>
-            <Text style={styles.locationCoord}>
-              {latestEvent.location.latitude.toFixed(5)}, {latestEvent.location.longitude.toFixed(5)}
-            </Text>
-            <Text style={styles.locationAccuracy}>
-              Accuracy ±{Math.round(latestEvent.location.accuracy_meters || 0)}m
-            </Text>
-          </View>
-        ) : (
-          <Text style={styles.emptyText}>No location data available yet.</Text>
-        )}
+        {(() => {
+          const loc = liveLocation ??
+            (latestEvent?.location && latestEvent.location.latitude !== 0
+              ? latestEvent.location
+              : null);
+          if (!loc) {
+            return (
+              <>
+                <View style={styles.mapPlaceholder}>
+                  <Text style={styles.mapLabel}>Waiting for GPS…</Text>
+                </View>
+                <Text style={styles.emptyText}>No location data available yet.</Text>
+              </>
+            );
+          }
+          const address =
+            loc.detailed_address &&
+            loc.detailed_address !== 'Address Unavailable (Offline)'
+              ? loc.detailed_address
+              : null;
+          // Map centered on live coords; pin overlay at center = live location
+          const mapUri =
+            `https://staticmap.openstreetmap.de/staticmap.php` +
+            `?center=${loc.latitude},${loc.longitude}` +
+            `&zoom=16&size=600x320&maptype=mapnik` +
+            `&markers=${loc.latitude},${loc.longitude},red-pushpin`;
+          return (
+            <>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => openMaps(loc.latitude, loc.longitude)}
+                style={styles.mapPlaceholder}>
+                <Image
+                  source={{uri: mapUri}}
+                  style={styles.mapImage}
+                  resizeMode="cover"
+                />
+                {/* Live location pin — map is centered on GPS, so pin sits at center */}
+                <View style={styles.livePinWrap} pointerEvents="none">
+                  <Text style={styles.livePin}>📍</Text>
+                  <View style={styles.livePinDot} />
+                </View>
+                <View style={styles.mapOverlay}>
+                  <Text style={styles.mapLabel}>Live location · Tap for Google Maps</Text>
+                </View>
+              </TouchableOpacity>
+              {address ? (
+                <Text style={styles.locationAddress} numberOfLines={3}>
+                  📍 {address}
+                </Text>
+              ) : null}
+              <View style={styles.locationInfoRow}>
+                <Text style={styles.locationCoord}>
+                  {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
+                </Text>
+                <Text style={styles.locationAccuracy}>
+                  Accuracy ±{Math.round(loc.accuracy_meters || 0)}m
+                </Text>
+              </View>
+            </>
+          );
+        })()}
       </View>
 
       {/* Today's Timeline */}
@@ -474,8 +521,10 @@ export function HomeScreen({
           todayEvents.map((e, idx) => (
             <View key={e.id} style={[styles.todayRow, idx < todayEvents.length - 1 && styles.todayRowBorder]}>
               <Text style={styles.todayTime}>{formatTime(e.timestamp)}</Text>
-              <Text style={styles.todayIcon}>{EVENT_ICONS[e.event_type] || '📋'}</Text>
-              <Text style={styles.todayLabel} numberOfLines={1}>
+              <View style={styles.todayIconWrap}>
+                <Text style={styles.todayIcon}>{EVENT_ICONS[e.event_type] || '📋'}</Text>
+              </View>
+              <Text style={styles.todayLabel} numberOfLines={2}>
                 {formatEventType(e.event_type)}
               </Text>
             </View>
@@ -655,7 +704,7 @@ const styles = StyleSheet.create({
   geofencePill: {paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, fontSize: 11, fontWeight: '700'},
   emptyText: {fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.md},
   mapPlaceholder: {
-    height: 140,
+    height: 160,
     borderRadius: radius.md,
     backgroundColor: '#0b1424',
     overflow: 'hidden',
@@ -664,6 +713,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     position: 'relative',
+  },
+  mapImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+  },
+  mapOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+    alignItems: 'center',
+  },
+  livePinWrap: {
+    position: 'absolute',
+    top: '42%',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  livePin: {
+    fontSize: 36,
+    textShadowColor: 'rgba(0,0,0,0.45)',
+    textShadowOffset: {width: 0, height: 1},
+    textShadowRadius: 3,
+  },
+  livePinDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#fff',
+    marginTop: -8,
   },
   mapGrid: {
     position: 'absolute',
@@ -676,7 +764,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   mapPinWrap: {alignItems: 'center', justifyContent: 'center'},
-  mapPin: {fontSize: 32},
+  mapPin: {fontSize: 18},
   mapPinPulse: {
     position: 'absolute',
     width: 60,
@@ -685,23 +773,49 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 189, 248, 0.15)',
     zIndex: -1,
   },
-  mapLabel: {fontSize: 12, color: colors.textSecondary, marginTop: spacing.sm},
+  mapLabel: {fontSize: 12, color: '#e2e8f0', fontWeight: '600'},
   locationInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: spacing.md,
+  },
+  locationAddress: {
+    fontSize: 13,
+    color: colors.emerald,
+    marginTop: spacing.md,
+    lineHeight: 19,
   },
   locationCoord: {fontSize: 12, color: colors.textBody, fontFamily: 'monospace'},
   locationAccuracy: {fontSize: 12, color: colors.emerald, fontWeight: '600'},
   todayRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    minHeight: 44,
   },
   todayRowBorder: {borderBottomWidth: 1, borderBottomColor: colors.borderSubtle},
-  todayTime: {fontSize: 12, color: colors.sky, fontWeight: '700', width: 50, fontFamily: 'monospace'},
-  todayIcon: {fontSize: 16, marginRight: spacing.md},
-  todayLabel: {fontSize: 13, color: colors.textPrimary, flex: 1},
+  todayTime: {
+    fontSize: 12,
+    color: colors.sky,
+    fontWeight: '700',
+    width: 78,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'left',
+  },
+  todayIconWrap: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  todayIcon: {fontSize: 16},
+  todayLabel: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    flex: 1,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
   overviewGrid: {flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'},
   overviewItem: {
     width: '48%',

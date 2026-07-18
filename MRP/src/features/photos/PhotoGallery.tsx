@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {Photo} from '../../shared/hooks/useNativeBridge';
+import {findMatchingEventForPhoto} from '../../shared/utils/selfieMatcher';
 
 const {width} = Dimensions.get('window');
 const PHOTO_SIZE = (width - 48) / 2;
@@ -202,25 +203,7 @@ export function PhotoGallery() {
   })();
 
   const findMatchingEvent = (photo: Photo): TimelineEntry | null => {
-    if (!timelineEvents.length) return null;
-    let closest: TimelineEntry | null = null;
-    let minDiff = 180000;
-
-    for (const evt of timelineEvents) {
-      let evtTime = 0;
-      const parsedTime = Date.parse(evt.timestamp);
-      if (!isNaN(parsedTime)) {
-        evtTime = parsedTime;
-      } else {
-        evtTime = Number(evt.timestamp) || 0;
-      }
-      const diff = Math.abs(evtTime - photo.timestamp);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = evt;
-      }
-    }
-    return closest;
+    return findMatchingEventForPhoto(photo, timelineEvents);
   };
 
   const renderPhotoItem = ({item}: {item: Photo}) => {

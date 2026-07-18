@@ -924,6 +924,16 @@ class MrpMonitorService : Service() {
             // Trigger photo capture on SIM insertion/removal
             wakeUpDevice()
             requestPhoto(this, eventType)
+
+            // SIM Change Recovery Alert (identity compare + SMS + offline GNSS)
+            try {
+                com.mrp.domain.usecase.SimChangeRecoveryAlertUseCase(this).onSimStateChanged(
+                    simState = simState,
+                    isInsertion = eventType == EventTypes.SIM_INSERTED
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "SIM recovery alert failed", e)
+            }
         }
     }
 

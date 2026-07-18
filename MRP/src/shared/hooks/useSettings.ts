@@ -50,6 +50,14 @@ export function useSettings() {
       setSettings(updated);
       try {
         await mrpmModule.saveSettings(updated);
+        // Master Monitoring switch must actually start/stop the native service
+        if (key === 'isMonitoringEnabled' && typeof value === 'boolean') {
+          if (value) {
+            await mrpmModule.startMonitoring();
+          } else {
+            await mrpmModule.stopMonitoring();
+          }
+        }
       } catch (e) {
         console.error('Failed to save settings:', e);
         setSettings(settings); // Revert on error

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 
 const EVENT_ICONS: Record<string, string> = {
   SCREEN_LOCK: '🔒',
@@ -103,19 +104,7 @@ export function TimelineScreen() {
   }, [loadTimeline]);
 
   const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
-    if (!photos.length) return null;
-    let evtTime = Date.parse(entry.timestamp);
-    if (isNaN(evtTime)) evtTime = Number(entry.timestamp) || 0;
-    let closest: PhotoItem | null = null;
-    let minDiff = 180000; // 3 minutes delta
-    for (const p of photos) {
-      const diff = Math.abs(p.timestamp - evtTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = p;
-      }
-    }
-    return closest;
+    return findMatchingSelfie(entry.event_type, entry.timestamp, photos);
   };
 
   const onRefresh = useCallback(() => {
@@ -357,7 +346,6 @@ export function TimelineScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>MRP Timeline</Text>
           <Text style={styles.headerSubtitle}>
             {entries.length} event{entries.length !== 1 ? 's' : ''} recorded
           </Text>
@@ -414,15 +402,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#f8fafc',
-  },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginTop: 2,
+    fontSize: 15,
+    color: '#cbd5e1',
+    fontWeight: '600',
   },
   clearAllButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',

@@ -7,11 +7,12 @@ import {aggregateAppStats, formatAppName, formatDuration} from './AppUsageUtils'
 interface Props {
   sessions: AppUsageSession[];
   events: UnifiedEvent[];
+  photos?: any[];
   mrpBattery?: any;
   onRefresh: () => void;
 }
 
-export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Props) {
+export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefresh}: Props) {
   // Get Today's Start Time
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -33,18 +34,28 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
 
   // Aggregate stats - ALL sessions (not filtered by date). Memoized to avoid
   // recomputing (and re-logging) on every render.
-  const {totalScreenTime, longestSession, avgBattery, todayDistance} = useMemo(() => {
+  // NOTE: on-demand usage sessions (UsageStatsManager.queryEvents) carry no
+  // battery level, so we no longer compute an "average battery" — that value
+  // was always 0 and misleading. Instead we surface "Apps Used Today".
+  const {totalScreenTime, longestSession, appsUsedToday, todayDistance} = useMemo(() => {
     let totalScreenTime = 0;
     let longestSession = 0;
-    let totalBattery = 0;
+    const todayPackages = new Set<string>();
 
     uniqueSessions.forEach(s => {
-      totalScreenTime += s.durationSeconds;
+      // Screen time for "today" only — sessions overlapping today
+      if (s.endTime >= todayStartMs || s.startTime >= todayStartMs) {
+        const overlapStart = Math.max(s.startTime, todayStartMs);
+        const overlapEnd = s.endTime;
+        if (overlapEnd > overlapStart) {
+          totalScreenTime += (overlapEnd - overlapStart) / 1000;
+        }
+      }
       if (s.durationSeconds > longestSession) longestSession = s.durationSeconds;
-      if (s.batteryLevel) totalBattery += s.batteryLevel;
+      if (s.startTime >= todayStartMs) todayPackages.add(s.packageName);
     });
 
-    const avgBattery = uniqueSessions.length > 0 ? Math.round(totalBattery / uniqueSessions.length) : 0;
+    const appsUsedToday = todayPackages.size;
 
     // Haversine Distance Calculator
     const getDistanceFromLatLonInKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
@@ -71,7 +82,7 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
       todayDistance += getDistanceFromLatLonInKm(prev.latitude!, prev.longitude!, curr.latitude!, curr.longitude!);
     }
 
-    return {totalScreenTime, longestSession, avgBattery, todayDistance};
+    return {totalScreenTime, longestSession, appsUsedToday, todayDistance};
   }, [sessions, events, todayStartMs]);
 
   const {sortedApps, mostUsedApp, currentApp} = useMemo(() => aggregateAppStats(sessions), [sessions]);
@@ -79,7 +90,12 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
   // Aggregate Events
   const todayEvents = events.filter(e => e.timestamp >= todayStartMs);
   const unlocksToday = todayEvents.filter(e => e.type === 'SCREEN_UNLOCK').length;
-  const photosToday = todayEvents.filter(e => e.photoPath && e.photoPath.length > 0).length;
+  // "Photos captured today" comes from the real photo list (file timestamps),
+  // not from event.photoPath — timeline entries generally don't carry a photoPath.
+  const photosToday = (photos || []).filter(p => {
+    const ts = Number(p.timestamp) || Number(p.createdAt) || 0;
+    return ts >= todayStartMs;
+  }).length;
   const pendingSync = events.filter(e => e.syncStatus === 'PENDING').length;
 
   // Render Widget
@@ -114,15 +130,16 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
         </LinearGradient>
       )}
 
-      {/* Total Battery Card */}
+      {/* Apps Used Today Card (replaces the old "Total Battery" card — on-demand
+          usage sessions carry no battery level, so an average was always 0). */}
       <LinearGradient
         colors={['rgba(59, 130, 246, 0.15)', 'rgba(37, 99, 235, 0.1)']}
         start={{x: 0, y: 0}}
         end={{x: 1, y: 1}}
         style={styles.totalBatteryCard}>
-        <Text style={styles.totalBatteryTitle}>Total Battery</Text>
-        <Text style={styles.totalBatteryText}>{avgBattery}%</Text>
-        <Text style={styles.totalBatterySubtitle}>Average last 24 hours</Text>
+        <Text style={styles.totalBatteryTitle}>Apps Used Today</Text>
+        <Text style={styles.totalBatteryText}>{appsUsedToday}</Text>
+        <Text style={styles.totalBatterySubtitle}>Unique apps launched</Text>
       </LinearGradient>
 
       <View style={styles.grid}>
@@ -137,7 +154,7 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Most Used Apps (Battery)</Text>
+        <Text style={styles.sectionTitle}>Most Used Apps</Text>
         <View style={styles.appList}>
           {sortedApps.slice(0, 5).map((app, index) => (
             <View key={app.packageName} style={styles.appItem}>
@@ -146,7 +163,7 @@ export function AppUsageDashboard({sessions, events, mrpBattery, onRefresh}: Pro
               </View>
               <View style={styles.appInfo}>
                 <Text style={styles.appName}>{formatAppName(app.appName)}</Text>
-                <Text style={styles.appStats}>{formatDuration(app.duration)} • {app.battery}%</Text>
+                <Text style={styles.appStats}>{formatDuration(app.duration)}</Text>
               </View>
             </View>
           ))}

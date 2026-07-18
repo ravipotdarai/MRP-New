@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
 import {colors, spacing, radius} from '../../shared/theme';
 import {MonitoringScreen} from '../monitoring/MonitoringScreen';
 import {TimelineScreen} from '../graph/TimelineScreen';
@@ -28,23 +28,27 @@ export function SecurityScreen({route}: {route?: any}) {
 
   return (
     <View style={styles.container}>
-      {/* Security header + segmented tabs */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Security</Text>
-        <View style={styles.tabBar}>
-          {TABS.map(tab => (
-            <TouchableOpacity
-              key={tab.key}
-              style={[styles.tab, active === tab.key && styles.activeTab]}
-              onPress={() => setActive(tab.key)}>
-              <Text style={styles.tabIcon}>{tab.icon}</Text>
-              <Text
-                style={[styles.tabText, active === tab.key && styles.activeTabText]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      <View style={styles.tabHeader}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabBar}>
+          {TABS.map(tab => {
+            const isActive = active === tab.key;
+            return (
+              <TouchableOpacity
+                key={tab.key}
+                style={[styles.tab, isActive && styles.activeTab]}
+                onPress={() => setActive(tab.key)}
+                activeOpacity={0.7}>
+                <Text style={styles.tabIcon}>{tab.icon}</Text>
+                <Text style={[styles.tabText, isActive && styles.activeTabText]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <View style={styles.content}>
@@ -59,31 +63,36 @@ export function SecurityScreen({route}: {route?: any}) {
 
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.bg},
-  header: {
+  tabHeader: {
     backgroundColor: colors.surface,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderSoft,
   },
-  headerTitle: {fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.md},
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: colors.bg,
-    borderRadius: radius.md,
-    padding: 4,
+    gap: spacing.sm,
+    alignItems: 'center',
   },
   tab: {
-    flex: 1,
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    borderRadius: radius.sm,
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  activeTab: {backgroundColor: colors.surface},
-  tabIcon: {fontSize: 14},
-  tabText: {fontSize: 10, color: colors.textMuted, fontWeight: '600', marginTop: 2, textAlign: 'center'},
-  activeTabText: {color: colors.sky},
+  activeTab: {
+    backgroundColor: colors.skySoft,
+    borderColor: colors.sky,
+  },
+  tabIcon: {fontSize: 14, marginRight: 6},
+  tabText: {fontSize: 13, color: colors.textSecondary, fontWeight: '600'},
+  activeTabText: {color: colors.sky, fontWeight: '700'},
   content: {flex: 1},
 });
+

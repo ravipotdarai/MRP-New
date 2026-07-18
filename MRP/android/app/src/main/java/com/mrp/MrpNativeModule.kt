@@ -25,6 +25,7 @@ import com.mrp.data.local.TimelineStorage
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.service.MrpMonitorService
 import com.mrp.domain.usecase.AppUsageTracker
+import com.mrp.domain.usecase.LocationHelper
 import com.mrp.data.local.AppUsageDao
 import java.io.File
 
@@ -593,30 +594,68 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getAppUsage(promise: Promise) {
+        getAppUsageForRange(30.0, promise)
+    }
+
+    /**
+     * On-demand UsageStatsManager.queryEvents for the last [days] days (1–30).
+     * Handles both ACTIVITY_RESUMED/PAUSED (API 29+) and MOVE_TO_FOREGROUND/BACKGROUND.
+     */
+    @ReactMethod
+    fun getAppUsageForRange(days: Double, promise: Promise) {
         try {
-            val dao = AppUsageDao(reactContext)
-            val sessions = dao.getAllSessions()
+            val usageStatsManager = reactContext.getSystemService(Context.USAGE_STATS_SERVICE)
+                as android.app.usage.UsageStatsManager
+            val pm = reactContext.packageManager
+            val now = System.currentTimeMillis()
+            val clampedDays = days.coerceIn(1.0, 30.0)
+            val since = now - (clampedDays * 24L * 60L * 60L * 1000L).toLong()
+
+            val events = usageStatsManager.queryEvents(since, now)
+            val openStart = LinkedHashMap<String, Long>()
+            data class Sess(val pkg: String, val appName: String, val category: String,
+                            val start: Long, val end: Long, val dur: Long)
+            val sessions = mutableListOf<Sess>()
+
+            val moveToFg = android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
+            val moveToBg = android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND
+            val activityResumed = android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED
+            val activityPaused = android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED
+
+            val ev = android.app.usage.UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(ev)
+                val pkg = ev.packageName ?: continue
+                when (ev.eventType) {
+                    moveToFg, activityResumed -> {
+                        openStart[pkg] = ev.timeStamp
+                    }
+                    moveToBg, activityPaused -> {
+                        val start = openStart.remove(pkg)
+                        if (start != null && ev.timeStamp > start) {
+                            sessions += Sess(pkg, appNameFor(pm, pkg), categoryFor(pm, pkg),
+                                start, ev.timeStamp, (ev.timeStamp - start) / 1000L)
+                        }
+                    }
+                }
+            }
+            for ((pkg, start) in openStart) {
+                if (now > start) {
+                    sessions += Sess(pkg, appNameFor(pm, pkg), categoryFor(pm, pkg),
+                        start, now, (now - start) / 1000L)
+                }
+            }
+            sessions.sortByDescending { it.start }
+
             val list = Arguments.createArray()
-            for (session in sessions) {
+            for (s in sessions) {
                 val map = Arguments.createMap().apply {
-                    putString("packageName", session.packageName)
-                    putString("appName", session.appName ?: session.packageName)
-                    putString("category", session.category ?: "Uncategorized")
-                    putDouble("startTime", session.startTime.toDouble())
-                    putDouble("endTime", session.endTime.toDouble())
-                    putDouble("durationSeconds", session.durationSeconds.toDouble())
-                    if (session.batteryLevel != null) {
-                        putInt("batteryLevel", session.batteryLevel!!)
-                    }
-                    if (session.networkType != null) {
-                        putString("networkType", session.networkType)
-                    }
-                    if (session.latitude != null) {
-                        putDouble("latitude", session.latitude!!)
-                    }
-                    if (session.longitude != null) {
-                        putDouble("longitude", session.longitude!!)
-                    }
+                    putString("packageName", s.pkg)
+                    putString("appName", s.appName)
+                    putString("category", s.category)
+                    putDouble("startTime", s.start.toDouble())
+                    putDouble("endTime", s.end.toDouble())
+                    putDouble("durationSeconds", s.dur.toDouble())
                 }
                 list.pushMap(map)
             }
@@ -624,6 +663,34 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get app usage", e)
             promise.reject("GET_APP_USAGE_ERROR", "Failed to get app usage stats", e)
+        }
+    }
+
+    private fun appNameFor(pm: android.content.pm.PackageManager, pkg: String): String {
+        return try {
+            val info = pm.getApplicationInfo(pkg, 0)
+            pm.getApplicationLabel(info).toString()
+        } catch (e: Exception) {
+            pkg
+        }
+    }
+
+    private fun categoryFor(pm: android.content.pm.PackageManager, pkg: String): String {
+        return try {
+            val info = pm.getApplicationInfo(pkg, 0)
+            when (info.category) {
+                android.content.pm.ApplicationInfo.CATEGORY_GAME -> "Game"
+                android.content.pm.ApplicationInfo.CATEGORY_SOCIAL -> "Social"
+                android.content.pm.ApplicationInfo.CATEGORY_PRODUCTIVITY -> "Productivity"
+                android.content.pm.ApplicationInfo.CATEGORY_VIDEO -> "Video"
+                android.content.pm.ApplicationInfo.CATEGORY_AUDIO -> "Audio"
+                android.content.pm.ApplicationInfo.CATEGORY_NEWS -> "News"
+                android.content.pm.ApplicationInfo.CATEGORY_MAPS -> "Maps"
+                android.content.pm.ApplicationInfo.CATEGORY_IMAGE -> "Image"
+                else -> "Other"
+            }
+        } catch (e: Exception) {
+            "Other"
         }
     }
 
@@ -782,8 +849,306 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
+    /**
+     * Live location + reverse geocode for Home "Current Location".
+     * Falls back to lat/long label when geocoder is offline.
+     */
+    @ReactMethod
+    fun getCurrentLocationWithAddress(promise: Promise) {
+        try {
+            val helper = LocationHelper(reactContext)
+            helper.getCurrentLocation { loc ->
+                if (loc == null) {
+                    promise.resolve(null)
+                    return@getCurrentLocation
+                }
+                val address = helper.reverseGeocodeSync(loc.latitude, loc.longitude)
+                val map = Arguments.createMap().apply {
+                    putDouble("latitude", loc.latitude)
+                    putDouble("longitude", loc.longitude)
+                    putDouble("accuracy_meters", loc.accuracy.toDouble())
+                    putString("detailed_address", address)
+                    putString("provider", loc.provider)
+                }
+                promise.resolve(map)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get current location with address", e)
+            promise.reject("LOCATION_ERROR", "Failed to get current location", e)
+        }
+    }
+
+    // ─── SIM Change Recovery Alert ───────────────────────────────────────────
+
+    @ReactMethod
+    fun getSimRecoveryStatus(promise: Promise) {
+        try {
+            val storage = com.mrp.data.local.SimRecoveryStorage(reactContext)
+            val tracker = com.mrp.domain.usecase.SimIdentityTracker(reactContext)
+            val current = tracker.readCurrentIdentity()
+            val map = Arguments.createMap().apply {
+                putBoolean("enabled", storage.isEnabled())
+                putBoolean("consent", storage.hasConsent())
+                putBoolean("hasContacts", storage.hasRecoveryContacts())
+                putInt("contactCount", storage.getContacts().size)
+                putDouble("lastSimChangeMs", storage.getLastSimChangeMs().toDouble())
+                putDouble("lastSmsMs", storage.getLastSmsMs().toDouble())
+                putInt("pendingSync", storage.pendingSyncCount())
+                putString("currentCarrier", current.carrier)
+                putInt("currentSlot", current.simSlot)
+                putString("currentIccidMasked", com.mrp.data.local.SimRecoveryStorage.maskPhone(
+                    current.iccid.ifBlank { "0000" }
+                ))
+                putBoolean("baselineEnrolled", tracker.getBaseline() != null)
+                val livePhone = current.phoneNumber
+                putBoolean("hasSimPhoneNumber", livePhone.isNotBlank())
+                putString(
+                    "currentSimPhoneMasked",
+                    if (livePhone.isNotBlank())
+                        com.mrp.data.local.SimRecoveryStorage.maskPhone(livePhone)
+                    else ""
+                )
+                val phonePerm = ActivityCompat.checkSelfPermission(
+                    reactContext,
+                    android.Manifest.permission.READ_PHONE_STATE
+                ) == PackageManager.PERMISSION_GRANTED &&
+                    (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                        ActivityCompat.checkSelfPermission(
+                            reactContext,
+                            android.Manifest.permission.READ_PHONE_NUMBERS
+                        ) == PackageManager.PERMISSION_GRANTED)
+                putBoolean("phonePermissionGranted", phonePerm)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "getSimRecoveryStatus failed", e)
+            promise.reject("SIM_RECOVERY_STATUS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setSimRecoveryEnabled(enabled: Boolean, consent: Boolean, promise: Promise) {
+        try {
+            val storage = com.mrp.data.local.SimRecoveryStorage(reactContext)
+            if (enabled && !consent) {
+                promise.reject("CONSENT_REQUIRED", "Explicit consent is required to enable SIM recovery")
+                return
+            }
+            storage.setConsent(consent)
+            storage.setEnabled(enabled)
+            if (enabled) {
+                com.mrp.domain.usecase.SimChangeRecoveryAlertUseCase(reactContext).enrollNow()
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "setSimRecoveryEnabled failed", e)
+            promise.reject("SIM_RECOVERY_ENABLE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getRecoveryContacts(promise: Promise) {
+        try {
+            val storage = com.mrp.data.local.SimRecoveryStorage(reactContext)
+            val list = Arguments.createArray()
+            storage.getContactsMasked().forEach { c ->
+                list.pushMap(Arguments.createMap().apply {
+                    putString("id", c["id"]?.toString() ?: "")
+                    putString("name", c["name"]?.toString() ?: "")
+                    putString("phoneNumber", c["phoneNumber"]?.toString() ?: "")
+                    putString("relationship", c["relationship"]?.toString() ?: "")
+                    putInt("priority", (c["priority"] as? Number)?.toInt() ?: 1)
+                    putBoolean("verified", c["verified"] as? Boolean ?: false)
+                    putDouble("createdAtMs", (c["createdAtMs"] as? Number)?.toDouble() ?: 0.0)
+                })
+            }
+            promise.resolve(list)
+        } catch (e: Exception) {
+            promise.reject("GET_CONTACTS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun saveRecoveryContact(name: String, phone: String, relationship: String, priority: Double, promise: Promise) {
+        try {
+            val storage = com.mrp.data.local.SimRecoveryStorage(reactContext)
+            val contact = storage.saveContact(name, phone, relationship, priority.toInt())
+            if (contact == null) {
+                promise.reject("SAVE_CONTACT", "Invalid phone or max 3 contacts reached")
+                return
+            }
+            promise.resolve(Arguments.createMap().apply {
+                putString("id", contact.id)
+                putString("name", contact.name)
+                putString("phoneNumber", com.mrp.data.local.SimRecoveryStorage.maskPhone(contact.phoneNumber))
+                putString("relationship", contact.relationship)
+                putInt("priority", contact.priority)
+            })
+        } catch (e: Exception) {
+            promise.reject("SAVE_CONTACT", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun deleteRecoveryContact(id: String, promise: Promise) {
+        try {
+            val ok = com.mrp.data.local.SimRecoveryStorage(reactContext).deleteContact(id)
+            promise.resolve(ok)
+        } catch (e: Exception) {
+            promise.reject("DELETE_CONTACT", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun testRecoverySms(promise: Promise) {
+        try {
+            val (ok, message) = com.mrp.domain.usecase.SimChangeRecoveryAlertUseCase(reactContext)
+                .sendTestSmsDetailed()
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", ok)
+                putString("message", message)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "testRecoverySms failed", e)
+            promise.reject("TEST_SMS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getSimChangeHistory(promise: Promise) {
+        try {
+            val json = com.mrp.data.local.SimRecoveryStorage(reactContext).getHistoryJson()
+            promise.resolve(json)
+        } catch (e: Exception) {
+            promise.reject("HISTORY", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun deleteSimChangeHistory(promise: Promise) {
+        try {
+            com.mrp.data.local.SimRecoveryStorage(reactContext).clearHistory()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CLEAR_HISTORY", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun checkSmsPermission(promise: Promise) {
+        try {
+            val granted = ActivityCompat.checkSelfPermission(
+                reactContext,
+                android.Manifest.permission.SEND_SMS
+            ) == PackageManager.PERMISSION_GRANTED
+            promise.resolve(granted)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    /**
+     * Request one or more runtime permissions and wait for the user result.
+     * Uses RN PermissionAwareActivity so the system dialog is shown reliably.
+     */
+    @ReactMethod
+    fun requestRuntimePermissions(permissions: ReadableArray, promise: Promise) {
+        try {
+            val activity = currentActivity
+            if (activity == null) {
+                promise.reject("NO_ACTIVITY", "No activity to show permission dialog")
+                return
+            }
+            val perms = ArrayList<String>()
+            for (i in 0 until permissions.size()) {
+                permissions.getString(i)?.takeIf { it.isNotBlank() }?.let { perms.add(it) }
+            }
+            if (perms.isEmpty()) {
+                promise.resolve(true)
+                return
+            }
+            val allGranted = perms.all {
+                ActivityCompat.checkSelfPermission(reactContext, it) == PackageManager.PERMISSION_GRANTED
+            }
+            if (allGranted) {
+                promise.resolve(true)
+                return
+            }
+
+            val listener = com.facebook.react.modules.core.PermissionListener { _, _, grantResults ->
+                val ok = grantResults.isNotEmpty() &&
+                    grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+                promise.resolve(ok)
+                true
+            }
+
+            val aware = activity as? com.facebook.react.modules.core.PermissionAwareActivity
+            if (aware == null) {
+                promise.reject("NO_PERMISSION_ACTIVITY", "Activity cannot request permissions")
+                return
+            }
+
+            UiThreadUtil.runOnUiThread {
+                try {
+                    aware.requestPermissions(
+                        perms.toTypedArray(),
+                        PERM_REQUEST_CODE_BASE + (System.currentTimeMillis() % 1000).toInt(),
+                        listener
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "requestRuntimePermissions failed", e)
+                    promise.reject("PERM_REQUEST", e.message, e)
+                }
+            }
+        } catch (e: Exception) {
+            promise.reject("PERM_REQUEST", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun checkPhonePermission(promise: Promise) {
+        try {
+            val state = ActivityCompat.checkSelfPermission(
+                reactContext,
+                android.Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+            val numbersOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ActivityCompat.checkSelfPermission(
+                    reactContext,
+                    android.Manifest.permission.READ_PHONE_NUMBERS
+                ) == PackageManager.PERMISSION_GRANTED
+            promise.resolve(state && numbersOk)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    /** Returns the live SIM MSISDN when readable (never log callers should mask in UI). */
+    @ReactMethod
+    fun getCurrentSimPhoneNumber(promise: Promise) {
+        try {
+            val identity = com.mrp.domain.usecase.SimIdentityTracker(reactContext).readCurrentIdentity()
+            val map = Arguments.createMap().apply {
+                putBoolean("available", identity.phoneNumber.isNotBlank())
+                putString("phoneNumber", identity.phoneNumber)
+                putString(
+                    "phoneNumberMasked",
+                    if (identity.phoneNumber.isNotBlank())
+                        com.mrp.data.local.SimRecoveryStorage.maskPhone(identity.phoneNumber)
+                    else ""
+                )
+                putString("carrier", identity.carrier)
+                putInt("simSlot", identity.simSlot)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("SIM_PHONE", e.message, e)
+        }
+    }
+
     companion object {
         private const val TAG = "MrpNative"
+        private const val PERM_REQUEST_CODE_BASE = 7100
         const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
         const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
     }

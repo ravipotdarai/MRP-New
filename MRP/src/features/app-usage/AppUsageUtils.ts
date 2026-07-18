@@ -29,8 +29,10 @@ export const aggregateAppStats = (sessions: AppUsageSession[]) => {
       appStats[s.packageName] = {appName: formatAppName(s.appName), duration: 0, battery: 0};
     }
     appStats[s.packageName].duration += s.durationSeconds;
-    if (s.batteryLevel) {
-      appStats[s.packageName].battery += s.batteryLevel;
+    // Use the most recent battery level seen for this app, not a running sum
+    // (summing battery across sessions produced nonsense like 800%).
+    if (s.batteryLevel != null) {
+      appStats[s.packageName].battery = s.batteryLevel;
     }
   });
 
@@ -39,13 +41,18 @@ export const aggregateAppStats = (sessions: AppUsageSession[]) => {
     .sort((a, b) => b.duration - a.duration);
 
   const mostUsedApp = sortedApps.length > 0 ? sortedApps[0] : null;
-  const currentApp = sessions.length > 0 ? sessions[sessions.length - 1] : null;
+  // Most recent session = the app currently/last in foreground. Native returns
+  // sessions DESC by start time, but sort defensively in case order changes.
+  const currentApp =
+    sessions.length > 0
+      ? sessions.slice().sort((a, b) => b.startTime - a.startTime)[0]
+      : null;
 
   return {
     sortedApps,
     mostUsedApp,
     currentApp,
     totalDuration: Object.values(appStats).reduce((sum, app) => sum + app.duration, 0),
-    battery: Object.values(appStats).reduce((sum, app) => sum + app.battery, 0),
+    battery: sortedApps.length > 0 ? sortedApps[0].battery : 0,
   };
 };

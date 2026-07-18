@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Linking,
   Alert,
+  Platform,
+  PermissionsAndroid,
 } from 'react-native';
 import mrpmModule from '../shared/hooks/useNativeBridge';
 
@@ -26,6 +28,8 @@ export function PermissionsScreen() {
   const [overlayPermission, setOverlayPermission] = useState<boolean | null>(null);
   const [deviceAdminPermission, setDeviceAdminPermission] = useState<boolean | null>(null);
   const [usageStatsPermission, setUsageStatsPermission] = useState<boolean | null>(null);
+  const [smsPermission, setSmsPermission] = useState<boolean | null>(null);
+  const [phonePermission, setPhonePermission] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,13 +51,27 @@ export function PermissionsScreen() {
       const overlay = await mrpmModule.checkOverlayPermission();
       const admin = await mrpmModule.isDeviceAdminEnabled();
       const usageStats = await mrpmModule.hasUsageStatsPermission();
+      let sms = false;
+      try {
+        sms = await (mrpmModule as any).checkSmsPermission?.() ?? false;
+      } catch {
+        sms = false;
+      }
+      let phone = false;
+      try {
+        phone = await (mrpmModule as any).checkPhonePermission?.() ?? false;
+      } catch {
+        phone = false;
+      }
 
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
         location: loc,
         overlay: overlay,
         admin: admin,
-        usageStats: usageStats
+        usageStats: usageStats,
+        sms: sms,
+        phone: phone,
       });
 
       setCameraPermission(cam);
@@ -61,6 +79,8 @@ export function PermissionsScreen() {
       setOverlayPermission(overlay);
       setDeviceAdminPermission(admin);
       setUsageStatsPermission(usageStats);
+      setSmsPermission(sms);
+      setPhonePermission(phone);
     } catch (e) {
       console.error('[PermissionsScreen] Failed to check permissions:', e);
       Alert.alert('Error', 'Failed to check permissions: ' + String(e));
@@ -105,6 +125,74 @@ export function PermissionsScreen() {
       await mrpmModule.requestUsageStatsPermission();
     } catch (e) {
       console.error('[PermissionsScreen] Error opening usage access settings:', e);
+      await openAppDetails();
+    }
+  };
+
+  const requestSmsPermission = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.SEND_SMS,
+        {
+          title: 'SMS Access Required',
+          message:
+            'MRP needs SMS permission to alert your recovery contacts when a SIM change is detected — even when mobile data or Wi‑Fi is off.',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Deny',
+        },
+      );
+      const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
+      setSmsPermission(ok);
+      if (!ok) {
+        Alert.alert(
+          'Permission Denied',
+          'To enable SMS:\n\n1. Settings → Apps → MRP\n2. Permissions\n3. Enable SMS / Messages',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Settings', onPress: openAppDetails},
+          ],
+        );
+      } else {
+        await checkPermissions();
+      }
+    } catch (e) {
+      console.error('[PermissionsScreen] SMS permission error:', e);
+      await openAppDetails();
+    }
+  };
+
+  const requestPhonePermission = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const perms: string[] = [PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE];
+      if (Platform.Version >= 33) {
+        perms.push('android.permission.READ_PHONE_NUMBERS');
+      }
+      const result = await PermissionsAndroid.requestMultiple(perms as any);
+      const stateOk =
+        result[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] ===
+        PermissionsAndroid.RESULTS.GRANTED;
+      const numbersOk =
+        Platform.Version < 33 ||
+        result['android.permission.READ_PHONE_NUMBERS'] ===
+          PermissionsAndroid.RESULTS.GRANTED;
+      const ok = stateOk && numbersOk;
+      setPhonePermission(ok);
+      if (!ok) {
+        Alert.alert(
+          'Permission Denied',
+          'To read the SIM phone number:\n\n1. Settings → Apps → MRP\n2. Permissions\n3. Enable Phone / Phone numbers',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Settings', onPress: openAppDetails},
+          ],
+        );
+      } else {
+        await checkPermissions();
+      }
+    } catch (e) {
+      console.error('[PermissionsScreen] Phone permission error:', e);
       await openAppDetails();
     }
   };
@@ -177,6 +265,33 @@ export function PermissionsScreen() {
       ],
       onOpen: openAppDetails,
       buttonLabel: 'Open App Settings',
+    },
+    {
+      name: 'Phone / SIM Number',
+      icon: '📱',
+      description:
+        'Required to read the phone number on the inserted SIM so recovery SMS can include "New Number". Same class of permission as Camera / Location.',
+      granted: phonePermission === true,
+      grantSteps: [
+        'Tap "Allow Phone" below to show the system dialog',
+        'Or go to: Settings → Apps → MRP → Permissions',
+        'Enable "Phone" / "Phone numbers"',
+      ],
+      onOpen: requestPhonePermission,
+      buttonLabel: 'Allow Phone',
+    },
+    {
+      name: 'SMS / Messages',
+      icon: '💬',
+      description: 'Required for SIM Change Recovery Alert. When a different SIM is inserted, MRP sends an SMS with the new number and GPS location to your trusted recovery contacts — even offline.',
+      granted: smsPermission === true,
+      grantSteps: [
+        'Tap "Allow SMS" below to show the system dialog',
+        'Or go to: Settings → Apps → MRP → Permissions',
+        'Enable "SMS" / "Messages"',
+      ],
+      onOpen: requestSmsPermission,
+      buttonLabel: 'Allow SMS',
     },
     {
       name: 'Display Over Other Apps',

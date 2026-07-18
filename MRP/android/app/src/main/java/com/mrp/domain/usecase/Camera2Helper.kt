@@ -152,9 +152,9 @@ class Camera2Helper(private val context: Context) {
         if (!photosDir.exists()) photosDir.mkdirs()
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        // Include event name in filename: intruder_WRONG_PASSWORD_20260707_143052.jpg
-        val safeEventName = eventName.replace("_", "").lowercase()
-        val photoFile = File(photosDir, "intruder_${safeEventName}_$timestamp.jpg")
+        // Match MrpMonitorService naming: EVENTTYPE_yyyyMMdd_HHmmss.jpg
+        val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9]"), "_").uppercase(Locale.getDefault())
+        val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 
         try {
             val buffer = image.planes[0].buffer
