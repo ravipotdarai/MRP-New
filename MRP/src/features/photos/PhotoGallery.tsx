@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useCallback} from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   ScrollView,
   SafeAreaView,
   Linking,
+  AppState,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {Photo} from '../../shared/hooks/useNativeBridge';
 import {findMatchingEventForPhoto} from '../../shared/utils/selfieMatcher';
@@ -71,7 +73,7 @@ export function PhotoGallery() {
     });
   };
 
-  const loadData = async (isRefresh = false) => {
+  const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
       const [photoList, eventsList] = await Promise.all([
@@ -94,14 +96,20 @@ export function PhotoGallery() {
       setLoading(false);
       if (isRefresh) setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(() => loadData(false), 2500);
-    return () => clearInterval(interval);
   }, []);
 
+  // Refresh only when Gallery is opened / focused — no continuous polling
+  useFocusEffect(
+    useCallback(() => {
+      loadData(false);
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') {
+          loadData(false);
+        }
+      });
+      return () => sub.remove();
+    }, [loadData]),
+  );
   const triggerTestSelfie = async () => {
     try {
       setCapturingTest(true);

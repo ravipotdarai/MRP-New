@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useCallback} from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
   Linking,
   Alert,
   RefreshControl,
+  AppState,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {colors, spacing, radius} from '../../shared/theme';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useSettings} from '../../shared/hooks/useSettings';
@@ -186,11 +188,18 @@ export function HomeScreen({
     });
   }, []);
 
-  useEffect(() => {
-    loadAll();
-    const interval = setInterval(loadAll, 15000);
-    return () => clearInterval(interval);
-  }, [loadAll]);
+  // Refresh only when Home is opened / focused — no continuous polling (battery)
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') {
+          loadAll();
+        }
+      });
+      return () => sub.remove();
+    }, [loadAll]),
+  );
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

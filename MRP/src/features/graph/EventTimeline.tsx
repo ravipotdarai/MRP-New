@@ -1,5 +1,6 @@
-import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, FlatList, TouchableOpacity} from 'react-native';
+import React, {useState, useCallback} from 'react';
+import {View, Text, StyleSheet, FlatList, TouchableOpacity, AppState} from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {MonitoringEvent} from '../../shared/hooks/useNativeBridge';
 
@@ -32,7 +33,7 @@ export function EventTimeline() {
   const [events, setEvents] = useState<MonitoringEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async () => {
     try {
       const result = await mrpmModule.getEvents();
       const sorted = [...result].sort((a, b) => b.timestamp - a.timestamp);
@@ -42,14 +43,19 @@ export function EventTimeline() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadEvents();
-    const interval = setInterval(loadEvents, 5000);
-    return () => clearInterval(interval);
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadEvents();
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') {
+          loadEvents();
+        }
+      });
+      return () => sub.remove();
+    }, [loadEvents]),
+  );
   const renderEvent = ({item}: {item: MonitoringEvent}) => (
     <TouchableOpacity style={styles.eventItem}>
       <Text style={styles.eventIcon}>{EVENT_ICONS[item.type] || '📋'}</Text>

@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useCallback} from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,9 @@ import {
   ScrollView,
   Linking,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 
@@ -97,12 +99,18 @@ export function TimelineScreen() {
     }
   }, []);
 
-  useEffect(() => {
-    loadTimeline();
-    const interval = setInterval(loadTimeline, 2500);
-    return () => clearInterval(interval);
-  }, [loadTimeline]);
-
+  // Refresh only when Timeline is opened / focused — no continuous polling
+  useFocusEffect(
+    useCallback(() => {
+      loadTimeline();
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') {
+          loadTimeline();
+        }
+      });
+      return () => sub.remove();
+    }, [loadTimeline]),
+  );
   const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
     return findMatchingSelfie(entry.event_type, entry.timestamp, photos);
   };
