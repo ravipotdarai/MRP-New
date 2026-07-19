@@ -1,5 +1,6 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert} from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
@@ -30,14 +31,33 @@ export type UnifiedEvent = {
   photoPath?: string;
 };
 
-export function AppUsageScreen() {
-  const [activeTab, setActiveTab] = useState<'DASHBOARD' | 'TIMELINE' | 'REPORTS'>('DASHBOARD');
+type AppUsageTab = 'DASHBOARD' | 'TIMELINE' | 'REPORTS';
+
+export function AppUsageScreen({route}: {route?: any}) {
+  const [activeTab, setActiveTab] = useState<AppUsageTab>('DASHBOARD');
   const [sessions, setSessions] = useState<AppUsageSession[]>([]);
   const [events, setEvents] = useState<UnifiedEvent[]>([]);
   const [photos, setPhotos] = useState<any[]>([]);
   const [mrpBattery, setMrpBattery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
+
+  const applyInitialTab = useCallback(() => {
+    const t = route?.params?.initialTab as AppUsageTab | undefined;
+    if (t === 'DASHBOARD' || t === 'TIMELINE' || t === 'REPORTS') {
+      setActiveTab(t);
+    }
+  }, [route?.params?.initialTab]);
+
+  useEffect(() => {
+    applyInitialTab();
+  }, [applyInitialTab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      applyInitialTab();
+    }, [applyInitialTab]),
+  );
 
   useEffect(() => {
     checkPermissionAndLoad();

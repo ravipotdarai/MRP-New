@@ -50,6 +50,7 @@ export function PhotoGallery() {
   const [activeTab, setActiveTab] = useState<'ALL' | 'WRONG_UNLOCK' | 'WRONG_PASSWORD' | 'TEST'>('ALL');
   const [sortBy, setSortBy] = useState<SortOption>('NEWEST');
   const [capturingTest, setCapturingTest] = useState(false);
+  const [controlsExpanded, setControlsExpanded] = useState(false);
 
   const formatPhotoEventName = (filename: string) => {
     const upper = (filename || '').toUpperCase();
@@ -264,58 +265,71 @@ export function PhotoGallery() {
   return (
     <View style={styles.container}>
       <Card>
-        <Text style={styles.headerLabel}>CONTROLS</Text>
-        <View style={styles.buttonRow}>
-          <TouchableOpacity
-            style={[styles.controlButton, capturingTest && styles.controlButtonDisabled]}
-            disabled={capturingTest}
-            onPress={triggerTestSelfie}>
-            <Text style={styles.controlButtonText}>
-              {capturingTest ? 'Taking...' : '📸 Test Capture'}
+        <TouchableOpacity
+          style={styles.controlsHeader}
+          onPress={() => setControlsExpanded(v => !v)}
+          activeOpacity={0.7}>
+          <View style={{flex: 1}}>
+            <Text style={styles.headerLabel}>CONTROLS</Text>
+            <Text style={styles.subheader}>
+              {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
+              {!controlsExpanded ? ' · Tap to expand filters' : ''}
             </Text>
-          </TouchableOpacity>
-          {photos.length > 0 && (
-            <TouchableOpacity style={styles.controlButton} onPress={deleteAllPhotos}>
-              <Text style={styles.controlButtonText}>🗑️ Delete All Photos</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+          </View>
+          <Text style={styles.chevron}>{controlsExpanded ? '▾' : '▸'}</Text>
+        </TouchableOpacity>
 
-        <Text style={styles.subheader}>
-          {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
-        </Text>
-
-        <View style={styles.controlSection}>
-          <Text style={styles.controlLabel}>Filter by Type</Text>
-          <View style={styles.chipRow}>
-            {FILTER_CHIPS.map(chip => (
+        {controlsExpanded && (
+          <>
+            <View style={styles.buttonRow}>
               <TouchableOpacity
-                key={chip.key}
-                style={[styles.chip, activeTab === chip.key && styles.chipActive]}
-                onPress={() => setActiveTab(chip.key)}>
-                <Text style={[styles.chipText, activeTab === chip.key && styles.chipTextActive]}>
-                  {chip.label}
+                style={[styles.controlButton, capturingTest && styles.controlButtonDisabled]}
+                disabled={capturingTest}
+                onPress={triggerTestSelfie}>
+                <Text style={styles.controlButtonText}>
+                  {capturingTest ? 'Taking...' : '📸 Test Capture'}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+              {photos.length > 0 && (
+                <TouchableOpacity style={styles.controlButton} onPress={deleteAllPhotos}>
+                  <Text style={styles.controlButtonText}>🗑️ Delete All Photos</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
-        <View style={styles.controlSection}>
-          <Text style={styles.controlLabel}>Sort & Time Range</Text>
-          <View style={styles.chipRow}>
-            {SORT_CHIPS.map(chip => (
-              <TouchableOpacity
-                key={chip.key}
-                style={[styles.chip, sortBy === chip.key && styles.chipActive]}
-                onPress={() => setSortBy(chip.key)}>
-                <Text style={[styles.chipText, sortBy === chip.key && styles.chipTextActive]}>
-                  {chip.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+            <View style={styles.controlSection}>
+              <Text style={styles.controlLabel}>Filter by Type</Text>
+              <View style={styles.chipRow}>
+                {FILTER_CHIPS.map(chip => (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={[styles.chip, activeTab === chip.key && styles.chipActive]}
+                    onPress={() => setActiveTab(chip.key)}>
+                    <Text style={[styles.chipText, activeTab === chip.key && styles.chipTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.controlSection}>
+              <Text style={styles.controlLabel}>Sort & Time Range</Text>
+              <View style={styles.chipRow}>
+                {SORT_CHIPS.map(chip => (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={[styles.chip, sortBy === chip.key && styles.chipActive]}
+                    onPress={() => setSortBy(chip.key)}>
+                    <Text style={[styles.chipText, sortBy === chip.key && styles.chipTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </>
+        )}
       </Card>
 
       {displayedPhotos.length === 0 ? (
@@ -488,12 +502,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
+    marginBottom: 4,
+  },
+  controlsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  chevron: {
+    color: '#94a3b8',
+    fontSize: 18,
+    fontWeight: '700',
+    paddingLeft: 8,
   },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
     marginBottom: 16,
+    marginTop: 12,
   },
   controlButton: {
     flex: 1,

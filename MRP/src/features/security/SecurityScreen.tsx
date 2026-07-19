@@ -1,5 +1,6 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {colors, spacing, radius} from '../../shared/theme';
 import {MonitoringScreen} from '../monitoring/MonitoringScreen';
 import {TimelineScreen} from '../graph/TimelineScreen';
@@ -18,14 +19,22 @@ const TABS: {key: SecurityTab; label: string; icon: string}[] = [
 export function SecurityScreen({route}: {route?: any}) {
   const [active, setActive] = useState<SecurityTab>('MONITORING');
 
-  // Allow deep-linking from Home ("View All" → Timeline, "Manage" → Monitoring)
-  useEffect(() => {
+  const applyInitialTab = useCallback(() => {
     const initial = route?.params?.initialTab as SecurityTab | undefined;
     if (initial && TABS.some(t => t.key === initial)) {
       setActive(initial);
     }
   }, [route?.params?.initialTab]);
 
+  useEffect(() => {
+    applyInitialTab();
+  }, [applyInitialTab]);
+
+  useFocusEffect(
+    useCallback(() => {
+      applyInitialTab();
+    }, [applyInitialTab]),
+  );
   return (
     <View style={styles.container}>
       <View style={styles.tabHeader}>

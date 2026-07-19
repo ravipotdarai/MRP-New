@@ -16,6 +16,7 @@ import {colors, spacing, radius} from '../../shared/theme';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useSettings} from '../../shared/hooks/useSettings';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
+import {AppMenuDrawer, AppMenuTarget} from '../../shared/components/AppMenuDrawer';
 
 const USER_NAME = 'Ravi';
 
@@ -147,6 +148,7 @@ export function HomeScreen({
     usageStats: false,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
 
@@ -304,8 +306,36 @@ export function HomeScreen({
   };
 
   const goToSecurity = (tab?: string) => {
-    if (navigation?.navigate) {
-      navigation.navigate('Security', tab ? {initialTab: tab} : undefined);
+    if (!navigation?.navigate) return;
+    const key =
+      tab === 'Monitoring' || tab === 'MONITORING'
+        ? 'MONITORING'
+        : tab === 'Timeline' || tab === 'TIMELINE'
+          ? 'TIMELINE'
+          : tab === 'Photos' || tab === 'PHOTOS'
+            ? 'PHOTOS'
+            : tab === 'Permissions' || tab === 'PERMISSIONS'
+              ? 'PERMISSIONS'
+              : undefined;
+    navigation.navigate('Security', key ? {initialTab: key} : undefined);
+  };
+
+  const onMenuNavigate = (target: AppMenuTarget) => {
+    if (!navigation?.navigate) return;
+    if (target.screen === 'Home') {
+      navigation.navigate('Home');
+      return;
+    }
+    if (target.screen === 'About') {
+      navigation.navigate('About');
+      return;
+    }
+    if (target.screen === 'Security') {
+      navigation.navigate('Security', {initialTab: target.tab});
+      return;
+    }
+    if (target.screen === 'App Usage') {
+      navigation.navigate('App Usage', {initialTab: target.tab});
     }
   };
 
@@ -327,7 +357,7 @@ export function HomeScreen({
       }>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => goToSecurity('Monitoring')}>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setMenuOpen(true)}>
           <Text style={styles.headerIcon}>☰</Text>
         </TouchableOpacity>
         <Text style={styles.brandTitle}>MRP</Text>
@@ -340,6 +370,12 @@ export function HomeScreen({
           </TouchableOpacity>
         </View>
       </View>
+
+      <AppMenuDrawer
+        visible={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onNavigate={onMenuNavigate}
+      />
 
       {/* Greeting + protection status */}
       <View style={styles.greetingRow}>
