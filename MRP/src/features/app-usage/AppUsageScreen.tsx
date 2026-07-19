@@ -1,10 +1,12 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
 import {AppUsageReports} from './AppUsageReports';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 export type AppUsageSession = {
   packageName: string;
@@ -41,6 +43,8 @@ export function AppUsageScreen({route}: {route?: any}) {
   const [mrpBattery, setMrpBattery] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasPermission, setHasPermission] = useState(false);
+  const {colors} = useTheme();
+  const styles = useMemo(() => createAppUsageStyles(colors), [colors]);
 
   const applyInitialTab = useCallback(() => {
     const t = route?.params?.initialTab as AppUsageTab | undefined;
@@ -159,7 +163,7 @@ export function AppUsageScreen({route}: {route?: any}) {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#38bdf8" />
+        <ActivityIndicator size="large" color={colors.sky} />
         <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
@@ -214,45 +218,46 @@ export function AppUsageScreen({route}: {route?: any}) {
   );
 }
 
-const styles = StyleSheet.create({
+function createAppUsageStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
   },
   centerContainer: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   loadingText: {
-    color: '#94a3b8',
+    color: colors.textSecondary,
     fontSize: 14,
     marginTop: 16,
   },
   permissionContainer: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   permissionTitle: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 16,
   },
   permissionText: {
-    color: '#94a3b8',
+    color: colors.textSecondary,
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 32,
     lineHeight: 24,
   },
   permissionButton: {
-    backgroundColor: '#38bdf8',
+    backgroundColor: colors.sky,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 8,
@@ -261,7 +266,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   permissionButtonText: {
-    color: '#0f172a',
+    color: colors.bg,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -269,16 +274,16 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   refreshButtonText: {
-    color: '#38bdf8',
+    color: colors.sky,
     fontSize: 14,
     fontWeight: '600',
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
+    backgroundColor: colors.surface,
     paddingTop: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: colors.borderSubtle,
   },
   tab: {
     flex: 1,
@@ -288,17 +293,18 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   activeTab: {
-    borderBottomColor: '#38bdf8',
+    borderBottomColor: colors.sky,
   },
   tabText: {
-    color: '#94a3b8',
+    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: '600',
   },
   activeTabText: {
-    color: '#38bdf8',
+    color: colors.sky,
   },
   content: {
     flex: 1,
   },
 });
+}

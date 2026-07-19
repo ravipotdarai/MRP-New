@@ -1167,9 +1167,32 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
+    @ReactMethod
+    fun getUiThemeId(promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            promise.resolve(prefs.getString(KEY_THEME_ID, "slate") ?: "slate")
+        } catch (e: Exception) {
+            promise.resolve("slate")
+        }
+    }
+
+    @ReactMethod
+    fun setUiThemeId(themeId: String, promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_THEME_ID, themeId).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
     companion object {
         private const val TAG = "MrpNative"
         private const val PERM_REQUEST_CODE_BASE = 7100
+        private const val UI_PREFS = "mrp_ui"
+        private const val KEY_THEME_ID = "theme_id"
         const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
         const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
     }

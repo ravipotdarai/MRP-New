@@ -3,6 +3,8 @@ import {View, Text, StyleSheet, ScrollView, RefreshControl} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
 import {aggregateAppStats, formatAppName, formatDuration} from './AppUsageUtils';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -13,6 +15,9 @@ interface Props {
 }
 
 export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefresh}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   // Get Today's Start Time
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -111,7 +116,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
-      refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="#38bdf8" />}
+      refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.sky} />}
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>App Usage Overview</Text>
@@ -120,7 +125,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
       {/* MRP Battery Card */}
       {mrpBattery && (
         <LinearGradient
-          colors={['rgba(16, 185, 129, 0.15)', 'rgba(5, 150, 105, 0.1)']}
+          colors={[colors.emeraldSoft, colors.emeraldSoft]}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 1}}
           style={styles.mrpBatteryCard}>
@@ -133,7 +138,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
       {/* Apps Used Today Card (replaces the old "Total Battery" card — on-demand
           usage sessions carry no battery level, so an average was always 0). */}
       <LinearGradient
-        colors={['rgba(59, 130, 246, 0.15)', 'rgba(37, 99, 235, 0.1)']}
+        colors={[colors.skySoft, colors.skySoft]}
         start={{x: 0, y: 0}}
         end={{x: 1, y: 1}}
         style={styles.totalBatteryCard}>
@@ -182,156 +187,158 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  header: {
-    marginBottom: 16,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  widget: {
-    backgroundColor: '#1e293b',
-    width: '48%',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  widgetTitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  widgetValue: {
-    color: '#38bdf8',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  widgetSubtitle: {
-    color: '#64748b',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  section: {
-    marginTop: 16,
-  },
-  sectionTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  mrpBatteryCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    alignItems: 'center',
-  },
-  mrpBatteryTitle: {
-    color: '#10b981',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  mrpBatteryText: {
-    color: '#6ee7b7',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  mrpBatterySubtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  totalBatteryCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    alignItems: 'center',
-  },
-  totalBatteryTitle: {
-    color: '#3b82f6',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  totalBatteryText: {
-    color: '#60a5fa',
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  totalBatterySubtitle: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  appList: {
-    gap: 8,
-  },
-  appItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 10,
-  },
-  appRank: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#334155',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  appRankText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  appInfo: {
-    flex: 1,
-  },
-  appName: {
-    color: '#f8fafc',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  appStats: {
-    color: '#64748b',
-    fontSize: 12,
-  },
-  noteCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#f59e0b',
-  },
-  noteText: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    scrollContent: {
+      padding: 16,
+    },
+    header: {
+      marginBottom: 16,
+    },
+    headerTitle: {
+      color: colors.textPrimary,
+      fontSize: 20,
+      fontWeight: 'bold',
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+    },
+    widget: {
+      backgroundColor: colors.surface,
+      width: '48%',
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    widgetTitle: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+      marginBottom: 8,
+      textTransform: 'uppercase',
+    },
+    widgetValue: {
+      color: colors.sky,
+      fontSize: 20,
+      fontWeight: 'bold',
+    },
+    widgetSubtitle: {
+      color: colors.textMuted,
+      fontSize: 12,
+      marginTop: 4,
+    },
+    section: {
+      marginTop: 16,
+    },
+    sectionTitle: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontWeight: '600',
+      marginBottom: 12,
+    },
+    mrpBatteryCard: {
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.emeraldSoft,
+      alignItems: 'center',
+    },
+    mrpBatteryTitle: {
+      color: colors.emerald,
+      fontSize: 14,
+      fontWeight: '600',
+      marginBottom: 4,
+    },
+    mrpBatteryText: {
+      color: colors.emerald,
+      fontSize: 24,
+      fontWeight: 'bold',
+    },
+    mrpBatterySubtitle: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      marginTop: 4,
+    },
+    totalBatteryCard: {
+      padding: 16,
+      borderRadius: 12,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+      alignItems: 'center',
+    },
+    totalBatteryTitle: {
+      color: colors.sky,
+      fontSize: 14,
+      fontWeight: '600',
+      marginBottom: 4,
+    },
+    totalBatteryText: {
+      color: colors.skyDark,
+      fontSize: 28,
+      fontWeight: 'bold',
+    },
+    totalBatterySubtitle: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      marginTop: 4,
+    },
+    appList: {
+      gap: 8,
+    },
+    appItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      padding: 12,
+      borderRadius: 10,
+    },
+    appRank: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    appRankText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: 'bold',
+    },
+    appInfo: {
+      flex: 1,
+    },
+    appName: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    appStats: {
+      color: colors.textMuted,
+      fontSize: 12,
+    },
+    noteCard: {
+      backgroundColor: colors.surfaceAlt,
+      padding: 16,
+      borderRadius: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.amber,
+    },
+    noteText: {
+      color: colors.textBody,
+      fontSize: 14,
+      lineHeight: 20,
+    },
+  });
+}

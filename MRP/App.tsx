@@ -10,24 +10,26 @@ import {SecurityScreen} from './src/features/security/SecurityScreen';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
 import {AboutScreen} from './src/screens/AboutScreen';
 import {Text} from 'react-native';
+import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
 function TabNavigator({onLogout}: {onLogout: () => void}) {
+  const {colors} = useTheme();
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: '#0f172a',
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: colors.bg,
+          borderTopColor: colors.borderSoft,
           borderTopWidth: 1,
           height: 60,
           paddingBottom: 8,
           paddingTop: 8,
         },
-        tabBarActiveTintColor: '#38bdf8',
-        tabBarInactiveTintColor: '#64748b',
+        tabBarActiveTintColor: colors.sky,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {fontSize: 12, fontWeight: '600'},
       }}>
       <Tab.Screen
@@ -62,9 +64,11 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
   );
 }
 
-function App(): React.JSX.Element {
+function AppContent(): React.JSX.Element {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const {isPinSet, isVerifying, error, setPin, verifyPin} = usePinLock();
+  const {colors, themeId} = useTheme();
+  const isLight = themeId === 'light';
 
   useEffect(() => {
     const setupInitialPermissions = async () => {
@@ -142,12 +146,17 @@ function App(): React.JSX.Element {
     setIsUnlocked(false);
   };
 
+  const shellStyle = {flex: 1 as const, backgroundColor: colors.bg};
+
   // Loading state while checking PIN
   if (isPinSet === null) {
     return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
-        <ActivityIndicator size="large" color="#38bdf8" />
+      <View style={[shellStyle, styles.centered]}>
+        <StatusBar
+          barStyle={isLight ? 'dark-content' : 'light-content'}
+          backgroundColor={colors.bg}
+        />
+        <ActivityIndicator size="large" color={colors.sky} />
       </View>
     );
   }
@@ -155,8 +164,11 @@ function App(): React.JSX.Element {
   // If unlocked and PIN is set, show main app with tabs
   if (isUnlocked && isPinSet) {
     return (
-      <View style={styles.container}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      <View style={shellStyle}>
+        <StatusBar
+          barStyle={isLight ? 'dark-content' : 'light-content'}
+          backgroundColor={colors.bg}
+        />
         <NavigationContainer>
           <TabNavigator onLogout={handleLogout} />
         </NavigationContainer>
@@ -166,8 +178,11 @@ function App(): React.JSX.Element {
 
   // Show PIN lock screen (either setup or verify mode)
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+    <View style={shellStyle}>
+      <StatusBar
+        barStyle={isLight ? 'dark-content' : 'light-content'}
+        backgroundColor={colors.bg}
+      />
       <PinLockScreen
         isSetup={!isPinSet}
         onPinSet={handlePinSet}
@@ -179,14 +194,16 @@ function App(): React.JSX.Element {
   );
 }
 
+function App(): React.JSX.Element {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
+  );
+}
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#0f172a',
+  centered: {
     justifyContent: 'center',
     alignItems: 'center',
   },

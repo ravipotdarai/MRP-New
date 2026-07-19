@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import {colors, spacing, radius} from '../theme';
+import {ColorPalette, spacing, radius} from '../theme';
+import {useTheme} from '../ThemeContext';
 
 export type AppMenuTarget =
   | {screen: 'Home'}
@@ -56,6 +57,9 @@ const MENU: MenuRow[] = [
  * Full app menu opened from Home ☰.
  */
 export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   const go = (target: AppMenuTarget) => {
     onClose();
     // Defer navigate so the modal can dismiss first
@@ -72,7 +76,10 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={styles.drawer}>
           <View style={styles.drawerHeader}>
-            <TextBrand />
+            <View>
+              <Text style={styles.brand}>MRP</Text>
+              <Text style={styles.brandSub}>Menu</Text>
+            </View>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Text style={styles.close}>✕</Text>
             </TouchableOpacity>
@@ -116,110 +123,103 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
   );
 }
 
-function TextBrand() {
-  return (
-    <View>
-      <Text style={styles.brand}>MRP</Text>
-      <Text style={styles.brandSub}>Menu</Text>
-    </View>
-  );
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(2, 6, 23, 0.55)',
+    },
+    drawer: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: '78%',
+      maxWidth: 320,
+      backgroundColor: colors.surface,
+      borderRightWidth: 1,
+      borderRightColor: colors.borderSoft,
+      paddingTop: spacing.xl,
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: {width: 4, height: 0},
+    },
+    drawerHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    brand: {
+      color: colors.textPrimary,
+      fontSize: 22,
+      fontWeight: '800',
+      letterSpacing: 1,
+    },
+    brandSub: {
+      color: colors.textMuted,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    close: {
+      color: colors.textSecondary,
+      fontSize: 20,
+      fontWeight: '600',
+      padding: 4,
+    },
+    list: {
+      paddingVertical: spacing.md,
+      paddingBottom: spacing.xxl,
+    },
+    topItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: spacing.lg,
+    },
+    topLabel: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    icon: {
+      fontSize: 16,
+      marginRight: 10,
+    },
+    section: {
+      marginTop: spacing.sm,
+      paddingBottom: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: spacing.lg,
+    },
+    sectionLabel: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    childItem: {
+      paddingVertical: 11,
+      paddingLeft: 48,
+      paddingRight: spacing.lg,
+    },
+    childLabel: {
+      color: colors.textSecondary,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+  });
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(2, 6, 23, 0.55)',
-  },
-  drawer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: '78%',
-    maxWidth: 320,
-    backgroundColor: colors.surface,
-    borderRightWidth: 1,
-    borderRightColor: colors.borderSoft,
-    paddingTop: spacing.xl,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: {width: 4, height: 0},
-  },
-  drawerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-  },
-  brand: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  brandSub: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  close: {
-    color: colors.textSecondary,
-    fontSize: 20,
-    fontWeight: '600',
-    padding: 4,
-  },
-  list: {
-    paddingVertical: spacing.md,
-    paddingBottom: spacing.xxl,
-  },
-  topItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: spacing.lg,
-  },
-  topLabel: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  icon: {
-    fontSize: 16,
-    marginRight: 10,
-  },
-  section: {
-    marginTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: spacing.lg,
-  },
-  sectionLabel: {
-    color: colors.textPrimary,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  childItem: {
-    paddingVertical: 11,
-    paddingLeft: 48,
-    paddingRight: spacing.lg,
-  },
-  childLabel: {
-    color: colors.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});

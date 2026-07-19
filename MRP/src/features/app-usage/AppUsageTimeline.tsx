@@ -2,6 +2,8 @@ import React, {useMemo} from 'react';
 import {View, Text, StyleSheet, FlatList} from 'react-native';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
 import {formatAppName, formatDuration} from './AppUsageUtils';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -16,6 +18,9 @@ type TimelineItem =
 const MAX_ITEMS = 200;
 
 export function AppUsageTimeline({sessions, events}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   // Deduplicate sessions by packageName + startTime
   const uniqueSessions = useMemo(() => {
     const seen = new Set<string>();
@@ -87,7 +92,7 @@ export function AppUsageTimeline({sessions, events}: Props) {
             <Text style={styles.timeText}>{formatTime(s.startTime)}</Text>
           </View>
           <View style={styles.lineColumn}>
-            <View style={[styles.dot, {backgroundColor: '#3b82f6'}]} />
+            <View style={[styles.dot, {backgroundColor: colors.sky}]} />
             {!isLast && <View style={styles.line} />}
           </View>
           <View style={styles.contentColumn}>
@@ -106,7 +111,7 @@ export function AppUsageTimeline({sessions, events}: Props) {
             <Text style={styles.timeText}>{formatTime(e.timestamp)}</Text>
           </View>
           <View style={styles.lineColumn}>
-            <View style={[styles.dot, {backgroundColor: '#f59e0b'}]} />
+            <View style={[styles.dot, {backgroundColor: colors.amber}]} />
             {!isLast && <View style={styles.line} />}
           </View>
           <View style={styles.contentColumn}>
@@ -147,104 +152,106 @@ export function AppUsageTimeline({sessions, events}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  emptyText: {
-    color: '#94a3b8',
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 40,
-  },
-  timeline: {
-    flexDirection: 'column',
-  },
-  timelineItem: {
-    flexDirection: 'row',
-  },
-  timeColumn: {
-    width: 60,
-    alignItems: 'flex-end',
-    paddingRight: 12,
-    paddingTop: 2,
-  },
-  timeText: {
-    color: '#94a3b8',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  lineColumn: {
-    width: 20,
-    alignItems: 'center',
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 4,
-    zIndex: 10,
-  },
-  line: {
-    width: 2,
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    marginTop: -8,
-    marginBottom: -4,
-  },
-  contentColumn: {
-    flex: 1,
-    paddingLeft: 12,
-    paddingBottom: 24,
-  },
-  sessionCard: {
-    backgroundColor: '#1e293b',
-    padding: 12,
-    borderRadius: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  sessionName: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
-    paddingRight: 8,
-  },
-  sessionDuration: {
-    color: '#38bdf8',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  eventCard: {
-    backgroundColor: 'rgba(245, 158, 11, 0.1)',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-  },
-  eventName: {
-    color: '#fbbf24',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  eventDesc: {
-    color: '#94a3b8',
-    fontSize: 12,
-    marginTop: 4,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    title: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontWeight: 'bold',
+      marginBottom: 20,
+    },
+    emptyText: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: 40,
+    },
+    timeline: {
+      flexDirection: 'column',
+    },
+    timelineItem: {
+      flexDirection: 'row',
+    },
+    timeColumn: {
+      width: 60,
+      alignItems: 'flex-end',
+      paddingRight: 12,
+      paddingTop: 2,
+    },
+    timeText: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    lineColumn: {
+      width: 20,
+      alignItems: 'center',
+    },
+    dot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginTop: 4,
+      zIndex: 10,
+    },
+    line: {
+      width: 2,
+      flex: 1,
+      backgroundColor: colors.borderSoft,
+      marginTop: -8,
+      marginBottom: -4,
+    },
+    contentColumn: {
+      flex: 1,
+      paddingLeft: 12,
+      paddingBottom: 24,
+    },
+    sessionCard: {
+      backgroundColor: colors.surface,
+      padding: 12,
+      borderRadius: 8,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+    },
+    sessionName: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontWeight: '500',
+      flex: 1,
+      paddingRight: 8,
+    },
+    sessionDuration: {
+      color: colors.sky,
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    eventCard: {
+      backgroundColor: colors.amberSoft,
+      padding: 10,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.amberSoft,
+    },
+    eventName: {
+      color: colors.amber,
+      fontSize: 14,
+      fontWeight: 'bold',
+    },
+    eventDesc: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      marginTop: 4,
+    },
+  });
+}

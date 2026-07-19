@@ -83,6 +83,8 @@ export interface MrpNativeInterface {
     carrier: string;
     simSlot: number;
   }>;
+  getUiThemeId(): Promise<string>;
+  setUiThemeId(themeId: string): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

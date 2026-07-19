@@ -1,7 +1,9 @@
 import React, {useState, useMemo} from 'react';
 import {View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
 import {AppUsageSession} from './AppUsageScreen';
-import {aggregateAppStats, formatDuration} from './AppUsageUtils';
+import {formatDuration} from './AppUsageUtils';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -10,6 +12,8 @@ interface Props {
 type Timeframe = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 export function AppUsageReports({sessions}: Props) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [timeframe, setTimeframe] = useState<Timeframe>('DAILY');
 
   // Filter Data
@@ -163,78 +167,97 @@ export function AppUsageReports({sessions}: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0f172a' },
-  scrollContent: { padding: 16, paddingBottom: 40 },
-  filterRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 4,
-  },
-  filterBtn: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 6,
-  },
-  filterBtnActive: { backgroundColor: '#38bdf8' },
-  filterText: { color: '#94a3b8', fontWeight: '600', fontSize: 13 },
-  filterTextActive: { color: '#0f172a', fontWeight: 'bold' },
-  overviewCards: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  overviewCard: {
-    width: '48%',
-    backgroundColor: '#1e293b',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.2)',
-  },
-  overviewTitle: { color: '#94a3b8', fontSize: 12, fontWeight: '600', marginBottom: 4, textTransform: 'uppercase' },
-  overviewValue: { color: '#38bdf8', fontSize: 20, fontWeight: 'bold' },
-  section: {
-    marginBottom: 20,
-    backgroundColor: '#1e293b',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
-  chartContainer: {
-    flexDirection: 'row',
-    height: 120,
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingTop: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  barWrapper: {
-    flex: 1,
-    alignItems: 'center',
-    height: '100%',
-    justifyContent: 'flex-end',
-  },
-  bar: {
-    width: '60%',
-    backgroundColor: '#38bdf8',
-    borderRadius: 2,
-    minHeight: 2,
-  },
-  barLabel: { color: '#64748b', fontSize: 9, marginTop: 4, height: 14 },
-  categoryRow: { marginBottom: 12 },
-  categoryHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  categoryName: { color: '#e2e8f0', fontSize: 14, fontWeight: '500', flex: 1, paddingRight: 8 },
-  categoryDuration: { color: '#38bdf8', fontSize: 14, fontWeight: 'bold' },
-  progressBarBg: { height: 8, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 4, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#38bdf8', borderRadius: 4 },
-  appRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  appName: { color: '#cbd5e1', fontSize: 15, flex: 1, paddingRight: 8 },
-  appDuration: { color: '#38bdf8', fontSize: 15, fontWeight: '600' },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {flex: 1, backgroundColor: colors.bg},
+    scrollContent: {padding: 16, paddingBottom: 40},
+    filterRow: {
+      flexDirection: 'row',
+      marginBottom: 16,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      padding: 4,
+    },
+    filterBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 6,
+    },
+    filterBtnActive: {backgroundColor: colors.sky},
+    filterText: {color: colors.textSecondary, fontWeight: '600', fontSize: 13},
+    filterTextActive: {color: colors.bg, fontWeight: 'bold'},
+    overviewCards: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+    },
+    overviewCard: {
+      width: '48%',
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+    },
+    overviewTitle: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+      marginBottom: 4,
+      textTransform: 'uppercase',
+    },
+    overviewValue: {color: colors.sky, fontSize: 20, fontWeight: 'bold'},
+    section: {
+      marginBottom: 20,
+      backgroundColor: colors.surface,
+      padding: 16,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    sectionTitle: {color: colors.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16},
+    chartContainer: {
+      flexDirection: 'row',
+      height: 120,
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      paddingTop: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSoft,
+    },
+    barWrapper: {
+      flex: 1,
+      alignItems: 'center',
+      height: '100%',
+      justifyContent: 'flex-end',
+    },
+    bar: {
+      width: '60%',
+      backgroundColor: colors.sky,
+      borderRadius: 2,
+      minHeight: 2,
+    },
+    barLabel: {color: colors.textMuted, fontSize: 9, marginTop: 4, height: 14},
+    categoryRow: {marginBottom: 12},
+    categoryHeader: {flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4},
+    categoryName: {color: colors.textBody, fontSize: 14, fontWeight: '500', flex: 1, paddingRight: 8},
+    categoryDuration: {color: colors.sky, fontSize: 14, fontWeight: 'bold'},
+    progressBarBg: {
+      height: 8,
+      backgroundColor: colors.borderSoft,
+      borderRadius: 4,
+      overflow: 'hidden',
+    },
+    progressBarFill: {height: '100%', backgroundColor: colors.sky, borderRadius: 4},
+    appRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    appName: {color: colors.textBody, fontSize: 15, flex: 1, paddingRight: 8},
+    appDuration: {color: colors.sky, fontSize: 15, fontWeight: '600'},
+  });
+}

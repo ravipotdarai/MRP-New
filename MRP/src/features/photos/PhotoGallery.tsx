@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,14 @@ import {
   SafeAreaView,
   Linking,
   AppState,
+  RefreshControl,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {Photo} from '../../shared/hooks/useNativeBridge';
 import {findMatchingEventForPhoto} from '../../shared/utils/selfieMatcher';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 const {width} = Dimensions.get('window');
 const PHOTO_SIZE = (width - 48) / 2;
@@ -42,6 +45,8 @@ interface TimelineEntry {
 type SortOption = 'NEWEST' | 'OLDEST' | 'MONTH' | 'WEEK' | 'DAY';
 
 export function PhotoGallery() {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [timelineEvents, setTimelineEvents] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -353,8 +358,14 @@ export function PhotoGallery() {
           numColumns={2}
           contentContainerStyle={styles.gridContainer}
           columnWrapperStyle={styles.columnWrapper}
-          refreshing={refreshing}
-          onRefresh={() => loadData(true)}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadData(true)}
+              tintColor={colors.sky}
+              colors={[colors.sky]}
+            />
+          }
         />
       )}
 
@@ -461,10 +472,10 @@ export function PhotoGallery() {
 
                 <View style={styles.detailRow}>
                   <Text style={styles.detailLabel}>📁 Evidence File:</Text>
-                  <Text style={[styles.detailValue, {fontSize: 13, color: '#f8fafc'}]}>
+                  <Text style={[styles.detailValue, {fontSize: 13, color: colors.textPrimary}]}>
                     {selectedPhoto.name}
                   </Text>
-                  <Text style={[styles.detailValue, {fontSize: 11, color: '#64748b', marginTop: 4}]}>
+                  <Text style={[styles.detailValue, {fontSize: 11, color: colors.textMuted, marginTop: 4}]}>
                     {selectedPhoto.path}
                   </Text>
                 </View>
@@ -490,306 +501,308 @@ export function PhotoGallery() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-    padding: 16,
-  },
-  headerLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
-  },
-  controlsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  chevron: {
-    color: '#94a3b8',
-    fontSize: 18,
-    fontWeight: '700',
-    paddingLeft: 8,
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
-    marginTop: 12,
-  },
-  controlButton: {
-    flex: 1,
-    backgroundColor: '#0284c7',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  controlButtonDisabled: {
-    backgroundColor: '#1e3a5f',
-    opacity: 0.7,
-  },
-  controlButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  subheader: {
-    fontSize: 13,
-    color: '#94a3b8',
-    lineHeight: 18,
-    marginBottom: 16,
-  },
-  controlSection: {
-    marginBottom: 12,
-  },
-  controlLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  chip: {
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  chipActive: {
-    backgroundColor: '#0284c7',
-    borderColor: '#38bdf8',
-  },
-  chipText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  chipTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  gridContainer: {
-    paddingTop: 12,
-    paddingBottom: 24,
-  },
-  columnWrapper: {
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  photoContainer: {
-    width: PHOTO_SIZE,
-    height: PHOTO_SIZE * 1.25,
-    borderRadius: 14,
-    overflow: 'hidden',
-    backgroundColor: '#1e293b',
-    borderWidth: 1,
-    borderColor: '#334155',
-    elevation: 4,
-  },
-  photo: {
-    width: '100%',
-    height: '100%',
-  },
-  photoOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  photoTitle: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  photoTime: {
-    color: '#94a3b8',
-    fontSize: 10,
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyIcon: {
-    fontSize: 52,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#ffffff',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 13,
-    color: '#94a3b8',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  refreshEmptyBtn: {
-    marginTop: 18,
-    backgroundColor: '#0284c7',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  refreshEmptyBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.96)',
-  },
-  modalScroll: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#ffffff',
-    flex: 1,
-  },
-  closeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#334155',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  closeBtnText: {
-    fontSize: 18,
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
-  imageCard: {
-    height: 340,
-    borderRadius: 16,
-    backgroundColor: '#000000',
-    overflow: 'hidden',
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  fullImage: {
-    width: '100%',
-    height: '100%',
-  },
-  detailsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#334155',
-    paddingBottom: 10,
-  },
-  detailsTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#38bdf8',
-    flex: 1,
-  },
-  badge: {
-    backgroundColor: '#0284c7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginLeft: 8,
-  },
-  badgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  detailRow: {
-    marginBottom: 12,
-  },
-  detailLabel: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginBottom: 2,
-    fontWeight: '600',
-  },
-  detailValue: {
-    fontSize: 14,
-    color: '#f8fafc',
-    fontWeight: '500',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-  },
-  mapButton: {
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    marginTop: 8,
-    alignSelf: 'flex-end',
-  },
-  mapButtonText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  deleteBtn: {
-    flex: 1,
-    backgroundColor: '#ef4444',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  deleteBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-  doneBtn: {
-    flex: 1,
-    backgroundColor: '#0284c7',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  doneBtnText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      padding: 16,
+    },
+    headerLabel: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 4,
+    },
+    controlsHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    chevron: {
+      color: colors.textSecondary,
+      fontSize: 18,
+      fontWeight: '700',
+      paddingLeft: 8,
+    },
+    buttonRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 16,
+      marginTop: 12,
+    },
+    controlButton: {
+      flex: 1,
+      backgroundColor: colors.skyDark,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 48,
+    },
+    controlButtonDisabled: {
+      backgroundColor: colors.surfaceAlt,
+      opacity: 0.7,
+    },
+    controlButtonText: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+    subheader: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: 16,
+    },
+    controlSection: {
+      marginBottom: 12,
+    },
+    controlLabel: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 6,
+    },
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    chip: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 8,
+    },
+    chipActive: {
+      backgroundColor: colors.skyDark,
+      borderColor: colors.sky,
+    },
+    chipText: {
+      color: colors.textSecondary,
+      fontSize: 11,
+      fontWeight: '600',
+    },
+    chipTextActive: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+    },
+    gridContainer: {
+      paddingTop: 12,
+      paddingBottom: 24,
+    },
+    columnWrapper: {
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    photoContainer: {
+      width: PHOTO_SIZE,
+      height: PHOTO_SIZE * 1.25,
+      borderRadius: 14,
+      overflow: 'hidden',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      elevation: 4,
+    },
+    photo: {
+      width: '100%',
+      height: '100%',
+    },
+    photoOverlay: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    photoTitle: {
+      color: colors.textPrimary,
+      fontSize: 12,
+      fontWeight: '700',
+      marginBottom: 2,
+    },
+    photoTime: {
+      color: colors.textSecondary,
+      fontSize: 10,
+    },
+    emptyContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 32,
+    },
+    emptyIcon: {
+      fontSize: 52,
+      marginBottom: 16,
+    },
+    emptyTitle: {
+      fontSize: 18,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 8,
+    },
+    emptyText: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+    },
+    refreshEmptyBtn: {
+      marginTop: 18,
+      backgroundColor: colors.skyDark,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+      borderRadius: 10,
+    },
+    refreshEmptyBtnText: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      fontSize: 13,
+    },
+    modalContainer: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    modalScroll: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalHeaderTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      flex: 1,
+    },
+    closeBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 12,
+    },
+    closeBtnText: {
+      fontSize: 18,
+      color: colors.textPrimary,
+      fontWeight: 'bold',
+    },
+    imageCard: {
+      height: 340,
+      borderRadius: 16,
+      backgroundColor: '#000000',
+      overflow: 'hidden',
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    fullImage: {
+      width: '100%',
+      height: '100%',
+    },
+    detailsHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      paddingBottom: 10,
+    },
+    detailsTitle: {
+      fontSize: 17,
+      fontWeight: '700',
+      color: colors.sky,
+      flex: 1,
+    },
+    badge: {
+      backgroundColor: colors.skyDark,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      marginLeft: 8,
+    },
+    badgeText: {
+      color: colors.textPrimary,
+      fontSize: 10,
+      fontWeight: '700',
+    },
+    detailRow: {
+      marginBottom: 12,
+    },
+    detailLabel: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginBottom: 2,
+      fontWeight: '600',
+    },
+    detailValue: {
+      fontSize: 14,
+      color: colors.textPrimary,
+      fontWeight: '500',
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 16,
+    },
+    mapButton: {
+      backgroundColor: colors.skySoft,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 6,
+      marginTop: 8,
+      alignSelf: 'flex-end',
+    },
+    mapButtonText: {
+      color: colors.sky,
+      fontSize: 12,
+      fontWeight: '500',
+    },
+    deleteBtn: {
+      flex: 1,
+      backgroundColor: colors.red,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginRight: 8,
+    },
+    deleteBtnText: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+    doneBtn: {
+      flex: 1,
+      backgroundColor: colors.skyDark,
+      paddingVertical: 14,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+    doneBtnText: {
+      color: colors.textPrimary,
+      fontWeight: '700',
+      fontSize: 14,
+    },
+  });
+}

@@ -1,4 +1,4 @@
-import React, {useState, useCallback} from 'react';
+import React, {useState, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,13 @@ import {
   AppState,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {colors, spacing, radius} from '../../shared/theme';
+import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useSettings} from '../../shared/hooks/useSettings';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {AppMenuDrawer, AppMenuTarget} from '../../shared/components/AppMenuDrawer';
+import {ThemePickerModal} from '../../shared/components/ThemePickerModal';
 
 const USER_NAME = 'Ravi';
 
@@ -149,6 +151,9 @@ export function HomeScreen({
   });
   const [refreshing, setRefreshing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const {colors} = useTheme();
+  const styles = useMemo(() => createHomeStyles(colors), [colors]);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
 
@@ -362,6 +367,12 @@ export function HomeScreen({
         </TouchableOpacity>
         <Text style={styles.brandTitle}>MRP</Text>
         <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => setThemePickerOpen(true)}
+            accessibilityLabel="Color theme">
+            <Text style={styles.headerIcon}>🎨</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.headerIconBtn}>
             <Text style={styles.headerIcon}>🔔</Text>
           </TouchableOpacity>
@@ -375,6 +386,10 @@ export function HomeScreen({
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
         onNavigate={onMenuNavigate}
+      />
+      <ThemePickerModal
+        visible={themePickerOpen}
+        onClose={() => setThemePickerOpen(false)}
       />
 
       {/* Greeting + protection status */}
@@ -401,12 +416,14 @@ export function HomeScreen({
           label="Security Score"
           value={`${securityScore}%`}
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
+          styles={styles}
         />
         <StatCard
           icon="🔋"
           label="Battery"
           value={battery >= 0 ? `${battery}%` : '--'}
           accent={battery >= 50 ? colors.emerald : battery >= 20 ? colors.amber : colors.red}
+          styles={styles}
         />
         <StatCard
           icon="📶"
@@ -414,12 +431,14 @@ export function HomeScreen({
           value={network ? network.connectionType : '--'}
           sub={network && network.carrierName && network.carrierName !== 'Unknown' ? network.carrierName : undefined}
           accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
+          styles={styles}
         />
         <StatCard
           icon="📡"
           label="GPS"
           value={gps?.gpsActive ? 'Active' : gps?.isLocationAvailable ? 'Network' : 'Off'}
           accent={gps?.isLocationAvailable ? colors.emerald : colors.red}
+          styles={styles}
         />
       </View>
 
@@ -609,12 +628,14 @@ function StatCard({
   value,
   sub,
   accent,
+  styles,
 }: {
   icon: string;
   label: string;
   value: string;
   sub?: string;
   accent: string;
+  styles: ReturnType<typeof createHomeStyles>;
 }) {
   return (
     <View style={styles.statCard}>
@@ -636,7 +657,8 @@ function StatCard({
   );
 }
 
-const styles = StyleSheet.create({
+function createHomeStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.bg},
   scrollContent: {padding: spacing.lg, paddingBottom: 40},
   header: {
@@ -751,7 +773,7 @@ const styles = StyleSheet.create({
   mapPlaceholder: {
     height: 160,
     borderRadius: radius.md,
-    backgroundColor: '#0b1424',
+    backgroundColor: colors.surfaceAlt,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -818,7 +840,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(56, 189, 248, 0.15)',
     zIndex: -1,
   },
-  mapLabel: {fontSize: 12, color: '#e2e8f0', fontWeight: '600'},
+  mapLabel: {fontSize: 12, color: colors.textBody, fontWeight: '600'},
   locationInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -887,3 +909,4 @@ const styles = StyleSheet.create({
   },
   manageBtnText: {color: colors.sky, fontSize: 14, fontWeight: '700'},
 });
+}

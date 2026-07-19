@@ -1,19 +1,23 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
+import {ColorPalette} from '../shared/theme';
+import {useTheme} from '../shared/ThemeContext';
 
 export function AboutScreen() {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Header with Gradient */}
       <LinearGradient
-        colors={['#0f172a', '#1e293b', '#0f172a']}
+        colors={[colors.bg, colors.surface, colors.bg]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.headerGradient}>
@@ -46,7 +50,7 @@ export function AboutScreen() {
       {/* What is MRP */}
       <View style={styles.card}>
         <LinearGradient
-          colors={['#38bdf8', '#0ea5e9']}
+          colors={[colors.sky, colors.skyDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeaderGradient}>
@@ -79,7 +83,7 @@ export function AboutScreen() {
       {/* Your Privacy */}
       <View style={styles.card}>
         <LinearGradient
-          colors={['#10b981', '#059669']}
+          colors={[colors.emerald, colors.emeraldDark]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeaderGradient}>
@@ -118,7 +122,7 @@ export function AboutScreen() {
       {/* Permissions */}
       <View style={styles.card}>
         <LinearGradient
-          colors={['#8b5cf6', '#7c3aed']}
+          colors={[colors.violet, colors.violet]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeaderGradient}>
@@ -141,7 +145,7 @@ export function AboutScreen() {
       {/* Why Trust MRP */}
       <View style={styles.card}>
         <LinearGradient
-          colors={['#f59e0b', '#d97706']}
+          colors={[colors.amber, colors.amber]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeaderGradient}>
@@ -161,7 +165,7 @@ export function AboutScreen() {
       {/* Data Ownership */}
       <View style={styles.card}>
         <LinearGradient
-          colors={['#ec4899', '#db2777']}
+          colors={[colors.pink, colors.pink]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardHeaderGradient}>
@@ -220,257 +224,259 @@ const trustData = [
   { icon: '👤', text: 'Yours - Data belongs only to you' },
 ];
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  scrollContent: {
-    padding: 20,
-    paddingBottom: 80,
-  },
-  headerGradient: {
-    borderRadius: 24,
-    padding: 32,
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  headerContent: {
-    alignItems: 'center',
-  },
-  logoBox: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#10b981',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: '#10b981',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  logo: {
-    fontSize: 50,
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  appTagline: {
-    fontSize: 14,
-    color: '#38bdf8',
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  version: {
-    fontSize: 12,
-    color: '#64748b',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  statCard: {
-    flex: 1,
-    marginHorizontal: 8,
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.2)',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#38bdf8',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#64748b',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    textAlign: 'center',
-  },
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 24,
-    overflow: 'hidden',
-  },
-  cardHeaderGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  cardIcon: {
-    fontSize: 28,
-    marginRight: 12,
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    flex: 1,
-  },
-  cardText: {
-    color: '#cbd5e1',
-    fontSize: 15,
-    lineHeight: 26,
-    marginBottom: 16,
-  },
-  featureGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 8,
-  },
-  featureItem: {
-    flex: 1,
-    minWidth: '48%',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 12,
-    padding: 12,
-    alignItems: 'center',
-  },
-  featureIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  featureText: {
-    color: '#cbd5e1',
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  privacyList: {
-    gap: 16,
-  },
-  privacyItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  privacyBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#10b981',
-    marginTop: 8,
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  privacyText: {
-    color: '#cbd5e1',
-    fontSize: 15,
-    lineHeight: 24,
-    flex: 1,
-  },
-  permissionList: {
-    gap: 12,
-  },
-  permissionItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 12,
-    padding: 12,
-  },
-  permissionIcon: {
-    fontSize: 24,
-    marginRight: 12,
-  },
-  permissionInfo: {
-    flex: 1,
-  },
-  permissionName: {
-    color: '#f8fafc',
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  permissionDesc: {
-    color: '#94a3b8',
-    fontSize: 13,
-    lineHeight: 20,
-  },
-  trustList: {
-    gap: 16,
-  },
-  trustItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  trustIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
-  trustText: {
-    color: '#cbd5e1',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  dataTimeline: {
-    gap: 16,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#ec4899',
-    marginTop: 6,
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  timelineContent: {
-    flex: 1,
-  },
-  timelineTitle: {
-    color: '#f8fafc',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  timelineText: {
-    color: '#cbd5e1',
-    fontSize: 14,
-    lineHeight: 22,
-  },
-  footer: {
-    alignItems: 'center',
-    paddingTop: 40,
-    paddingBottom: 40,
-    marginTop: 20,
-  },
-  footerTitle: {
-    color: '#f8fafc',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  footerText: {
-    color: '#64748b',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    scrollContent: {
+      padding: 20,
+      paddingBottom: 80,
+    },
+    headerGradient: {
+      borderRadius: 24,
+      padding: 32,
+      alignItems: 'center',
+      marginBottom: 24,
+    },
+    headerContent: {
+      alignItems: 'center',
+    },
+    logoBox: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: colors.emerald,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+      shadowColor: colors.emerald,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
+      shadowRadius: 16,
+      elevation: 10,
+    },
+    logo: {
+      fontSize: 50,
+    },
+    appName: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    appTagline: {
+      fontSize: 14,
+      color: colors.sky,
+      fontWeight: '600',
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    version: {
+      fontSize: 12,
+      color: colors.textMuted,
+      backgroundColor: colors.borderSoft,
+      paddingHorizontal: 16,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    statsGrid: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 24,
+    },
+    statCard: {
+      flex: 1,
+      marginHorizontal: 8,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 20,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+    },
+    statValue: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: colors.sky,
+      marginBottom: 4,
+    },
+    statLabel: {
+      fontSize: 11,
+      color: colors.textMuted,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      textAlign: 'center',
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      padding: 24,
+      marginBottom: 24,
+      overflow: 'hidden',
+    },
+    cardHeaderGradient: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      marginBottom: 20,
+    },
+    cardIcon: {
+      fontSize: 28,
+      marginRight: 12,
+    },
+    cardTitle: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontWeight: '700',
+      flex: 1,
+    },
+    cardText: {
+      color: colors.textBody,
+      fontSize: 15,
+      lineHeight: 26,
+      marginBottom: 16,
+    },
+    featureGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+      marginTop: 8,
+    },
+    featureItem: {
+      flex: 1,
+      minWidth: '48%',
+      backgroundColor: colors.borderSubtle,
+      borderRadius: 12,
+      padding: 12,
+      alignItems: 'center',
+    },
+    featureIcon: {
+      fontSize: 24,
+      marginBottom: 8,
+    },
+    featureText: {
+      color: colors.textBody,
+      fontSize: 13,
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    privacyList: {
+      gap: 16,
+    },
+    privacyItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    privacyBullet: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.emerald,
+      marginTop: 8,
+      marginRight: 12,
+      flexShrink: 0,
+    },
+    privacyText: {
+      color: colors.textBody,
+      fontSize: 15,
+      lineHeight: 24,
+      flex: 1,
+    },
+    permissionList: {
+      gap: 12,
+    },
+    permissionItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      backgroundColor: colors.borderSubtle,
+      borderRadius: 12,
+      padding: 12,
+    },
+    permissionIcon: {
+      fontSize: 24,
+      marginRight: 12,
+    },
+    permissionInfo: {
+      flex: 1,
+    },
+    permissionName: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
+      marginBottom: 2,
+    },
+    permissionDesc: {
+      color: colors.textSecondary,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    trustList: {
+      gap: 16,
+    },
+    trustItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    trustIcon: {
+      fontSize: 20,
+      marginRight: 12,
+    },
+    trustText: {
+      color: colors.textBody,
+      fontSize: 15,
+      lineHeight: 22,
+    },
+    dataTimeline: {
+      gap: 16,
+    },
+    timelineItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    timelineDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.pink,
+      marginTop: 6,
+      marginRight: 12,
+      flexShrink: 0,
+    },
+    timelineContent: {
+      flex: 1,
+    },
+    timelineTitle: {
+      color: colors.textPrimary,
+      fontSize: 16,
+      fontWeight: '700',
+      marginBottom: 4,
+    },
+    timelineText: {
+      color: colors.textBody,
+      fontSize: 14,
+      lineHeight: 22,
+    },
+    footer: {
+      alignItems: 'center',
+      paddingTop: 40,
+      paddingBottom: 40,
+      marginTop: 20,
+    },
+    footerTitle: {
+      color: colors.textPrimary,
+      fontSize: 18,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+    footerText: {
+      color: colors.textMuted,
+      fontSize: 14,
+      textAlign: 'center',
+    },
+  });
+}

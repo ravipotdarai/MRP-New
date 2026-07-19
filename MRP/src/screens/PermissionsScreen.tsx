@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   PermissionsAndroid,
 } from 'react-native';
 import mrpmModule from '../shared/hooks/useNativeBridge';
+import {ColorPalette} from '../shared/theme';
+import {useTheme} from '../shared/ThemeContext';
 
 interface PermissionDetail {
   name: string;
@@ -23,6 +25,8 @@ interface PermissionDetail {
 }
 
 export function PermissionsScreen() {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean | null>(null);
   const [overlayPermission, setOverlayPermission] = useState<boolean | null>(null);
@@ -445,196 +449,198 @@ export function PermissionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f172a',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 80, // Extra padding for footer
-  },
-  header: {
-    marginBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#f8fafc',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
-    fontWeight: '600',
-  },
-  sectionCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#64748b',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  permissionItem: {
-    flexDirection: 'row',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  permissionIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  permissionIcon: {
-    fontSize: 22,
-  },
-  permissionTextContainer: {
-    flex: 1,
-  },
-  permissionName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#f1f5f9',
-    marginBottom: 4,
-  },
-  permissionDescription: {
-    fontSize: 12,
-    color: '#94a3b8',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  grantedStatus: {
-    marginBottom: 8,
-  },
-  grantedBadge: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  grantedText: {
-    color: '#10b981',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  deniedBadge: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  deniedText: {
-    color: '#ef4444',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  manualGrantSection: {
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  manualGrantTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#64748b',
-    marginBottom: 8,
-  },
-  stepText: {
-    fontSize: 12,
-    color: '#94a3b8',
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  openSettingsButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-    width: '100%',
-  },
-  openSettingsButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  instructionCard: {
-    backgroundColor: '#1e293b',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-  },
-  instructionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#f1f5f9',
-    marginBottom: 8,
-  },
-  instructionDescription: {
-    fontSize: 12,
-    color: '#94a3b8',
-    lineHeight: 18,
-    marginBottom: 8,
-  },
-  instructionSteps: {
-    fontSize: 11,
-    color: '#64748b',
-    lineHeight: 16,
-    backgroundColor: '#0f172a',
-    padding: 12,
-    borderRadius: 8,
-  },
-  requestButton: {
-    backgroundColor: '#8b5cf6',
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  requestButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  footer: {
-    alignItems: 'center',
-    paddingTop: 20,
-    paddingBottom: 20,
-  },
-  footerText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#f8fafc',
-  },
-  footerSubtext: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#94a3b8',
-    fontSize: 16,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    scrollContent: {
+      padding: 16,
+      paddingBottom: 80, // Extra padding for footer
+    },
+    header: {
+      marginBottom: 20,
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      fontWeight: '600',
+    },
+    sectionCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors.textMuted,
+      letterSpacing: 1,
+      marginBottom: 12,
+    },
+    permissionItem: {
+      flexDirection: 'row',
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    permissionIconBox: {
+      width: 44,
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: colors.bg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    permissionIcon: {
+      fontSize: 22,
+    },
+    permissionTextContainer: {
+      flex: 1,
+    },
+    permissionName: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    permissionDescription: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: 8,
+    },
+    grantedStatus: {
+      marginBottom: 8,
+    },
+    grantedBadge: {
+      backgroundColor: colors.emeraldSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    grantedText: {
+      color: colors.emerald,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    deniedBadge: {
+      backgroundColor: colors.redSoft,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    deniedText: {
+      color: colors.red,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    manualGrantSection: {
+      marginTop: 12,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSubtle,
+    },
+    manualGrantTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.textMuted,
+      marginBottom: 8,
+    },
+    stepText: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: 4,
+    },
+    openSettingsButton: {
+      backgroundColor: colors.sky,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+      borderRadius: 8,
+      alignItems: 'center',
+      marginTop: 8,
+      width: '100%',
+    },
+    openSettingsButtonText: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    instructionCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    instructionTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      marginBottom: 8,
+    },
+    instructionDescription: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: 8,
+    },
+    instructionSteps: {
+      fontSize: 11,
+      color: colors.textMuted,
+      lineHeight: 16,
+      backgroundColor: colors.bg,
+      padding: 12,
+      borderRadius: 8,
+    },
+    requestButton: {
+      backgroundColor: colors.violet,
+      paddingVertical: 10,
+      borderRadius: 8,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    requestButtonText: {
+      color: colors.textPrimary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    footer: {
+      alignItems: 'center',
+      paddingTop: 20,
+      paddingBottom: 20,
+    },
+    footerText: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors.textPrimary,
+    },
+    footerSubtext: {
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 4,
+    },
+    centerContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      color: colors.textSecondary,
+      fontSize: 16,
+    },
+  });
+}

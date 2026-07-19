@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   Linking,
 } from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 type Contact = {
   id: string;
@@ -57,6 +59,8 @@ async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T
  * Phone permission is optional (often permanently denied on Pixel); SMS is required for Test SMS.
  */
 export function SimRecoveryPanel() {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [status, setStatus] = useState<Status | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState('');
@@ -360,8 +364,8 @@ export function SimRecoveryPanel() {
           <Switch
             key={switchKey}
             value={!!status?.enabled}
-            trackColor={{false: '#334155', true: '#059669'}}
-            thumbColor={status?.enabled ? '#10b981' : '#94a3b8'}
+            trackColor={{false: colors.border, true: colors.emeraldDark}}
+            thumbColor={status?.enabled ? colors.emerald : colors.textSecondary}
           />
         </View>
       </TouchableOpacity>
@@ -375,7 +379,7 @@ export function SimRecoveryPanel() {
       ) : null}
 
       <View style={styles.stats}>
-        <Stat label="Carrier" value={status?.currentCarrier || '—'} />
+        <Stat label="Carrier" value={status?.currentCarrier || '—'} styles={styles} />
         <Stat
           label="SIM Number"
           value={
@@ -384,14 +388,16 @@ export function SimRecoveryPanel() {
               ? 'Phone blocked in Settings'
               : 'Not provided by carrier')
           }
+          styles={styles}
         />
-        <Stat label="Contacts" value={String(status?.contactCount ?? 0)} />
-        <Stat label="Last SMS" value={fmt(status?.lastSmsMs ?? 0)} />
+        <Stat label="Contacts" value={String(status?.contactCount ?? 0)} styles={styles} />
+        <Stat label="Last SMS" value={fmt(status?.lastSmsMs ?? 0)} styles={styles} />
         <Stat
           label="Baseline"
           value={status?.baselineEnrolled ? 'Enrolled' : 'Not set'}
+          styles={styles}
         />
-        <Stat label="SMS Perm" value={status?.enabled ? 'Required' : '—'} />
+        <Stat label="SMS Perm" value={status?.enabled ? 'Required' : '—'} styles={styles} />
       </View>
 
       <Text style={styles.section}>Recovery Contacts (max 3)</Text>
@@ -415,14 +421,14 @@ export function SimRecoveryPanel() {
           <TextInput
             style={styles.input}
             placeholder="Name"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textMuted}
             value={name}
             onChangeText={setName}
           />
           <TextInput
             style={styles.input}
             placeholder="Phone (+91…)"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textMuted}
             keyboardType="phone-pad"
             value={phone}
             onChangeText={setPhone}
@@ -430,7 +436,7 @@ export function SimRecoveryPanel() {
           <TextInput
             style={styles.input}
             placeholder="Relationship (Primary / Emergency)"
-            placeholderTextColor="#64748b"
+            placeholderTextColor={colors.textMuted}
             value={relationship}
             onChangeText={setRelationship}
           />
@@ -452,7 +458,17 @@ export function SimRecoveryPanel() {
   );
 }
 
-function Stat({label, value}: {label: string; value: string}) {
+type PanelStyles = ReturnType<typeof createStyles>;
+
+function Stat({
+  label,
+  value,
+  styles,
+}: {
+  label: string;
+  value: string;
+  styles: PanelStyles;
+}) {
   return (
     <View style={styles.stat}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -463,79 +479,87 @@ function Stat({label, value}: {label: string; value: string}) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#0f172a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-  },
-  title: {color: '#f8fafc', fontSize: 16, fontWeight: '700', marginBottom: 4},
-  subtitle: {color: '#94a3b8', fontSize: 13, lineHeight: 18, marginBottom: 12},
-  errorText: {color: '#fca5a5', fontSize: 12, marginBottom: 8},
-  warnBanner: {
-    backgroundColor: '#422006',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-  },
-  warnText: {color: '#fdba74', fontSize: 12, lineHeight: 16},
-  row: {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
-  rowTitle: {color: '#e2e8f0', fontSize: 15, fontWeight: '600'},
-  rowSub: {color: '#64748b', fontSize: 12, marginTop: 2, paddingRight: 8},
-  stats: {flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10},
-  stat: {
-    width: '47%',
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 10,
-    marginRight: '3%',
-    marginBottom: 8,
-  },
-  statLabel: {color: '#64748b', fontSize: 11, textTransform: 'uppercase'},
-  statValue: {color: '#38bdf8', fontSize: 13, fontWeight: '600', marginTop: 2},
-  section: {color: '#cbd5e1', fontSize: 14, fontWeight: '700', marginBottom: 8, marginTop: 4},
-  contactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  contactName: {color: '#f1f5f9', fontWeight: '600'},
-  contactPhone: {color: '#38bdf8', fontFamily: 'monospace', marginTop: 2},
-  contactRel: {color: '#64748b', fontSize: 12},
-  delete: {color: '#ef4444', fontWeight: '600', padding: 8},
-  form: {marginTop: 8},
-  input: {
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: '#f8fafc',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: 8,
-  },
-  btn: {
-    backgroundColor: '#38bdf8',
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  btnText: {color: '#0f172a', fontWeight: '700'},
-  actions: {flexDirection: 'row', marginTop: 12},
-  btnSecondary: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.4)',
-    marginRight: 8,
-  },
-  btnSecondaryText: {color: '#38bdf8', fontWeight: '600', fontSize: 13},
-});
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.bg,
+      borderRadius: 12,
+      padding: 12,
+      marginBottom: 4,
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+    },
+    title: {color: colors.textPrimary, fontSize: 16, fontWeight: '700', marginBottom: 4},
+    subtitle: {color: colors.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: 12},
+    errorText: {color: colors.red, fontSize: 12, marginBottom: 8},
+    warnBanner: {
+      backgroundColor: colors.amberSoft,
+      borderRadius: 8,
+      padding: 10,
+      marginBottom: 10,
+    },
+    warnText: {color: colors.amber, fontSize: 12, lineHeight: 16},
+    row: {flexDirection: 'row', alignItems: 'center', marginBottom: 12},
+    rowTitle: {color: colors.textBody, fontSize: 15, fontWeight: '600'},
+    rowSub: {color: colors.textMuted, fontSize: 12, marginTop: 2, paddingRight: 8},
+    stats: {flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10},
+    stat: {
+      width: '47%',
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      padding: 10,
+      marginRight: '3%',
+      marginBottom: 8,
+    },
+    statLabel: {color: colors.textMuted, fontSize: 11, textTransform: 'uppercase'},
+    statValue: {color: colors.sky, fontSize: 13, fontWeight: '600', marginTop: 2},
+    section: {
+      color: colors.textBody,
+      fontSize: 14,
+      fontWeight: '700',
+      marginBottom: 8,
+      marginTop: 4,
+    },
+    contactRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+    },
+    contactName: {color: colors.textPrimary, fontWeight: '600'},
+    contactPhone: {color: colors.sky, fontFamily: 'monospace', marginTop: 2},
+    contactRel: {color: colors.textMuted, fontSize: 12},
+    delete: {color: colors.red, fontWeight: '600', padding: 8},
+    form: {marginTop: 8},
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      color: colors.textPrimary,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      marginBottom: 8,
+    },
+    btn: {
+      backgroundColor: colors.sky,
+      borderRadius: 8,
+      paddingVertical: 12,
+      alignItems: 'center',
+      marginTop: 4,
+    },
+    btnText: {color: colors.bg, fontWeight: '700'},
+    actions: {flexDirection: 'row', marginTop: 12},
+    btnSecondary: {
+      flex: 1,
+      borderRadius: 8,
+      paddingVertical: 10,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.skySoft,
+      marginRight: 8,
+    },
+    btnSecondaryText: {color: colors.sky, fontWeight: '600', fontSize: 13},
+  });
+}

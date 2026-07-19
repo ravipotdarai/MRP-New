@@ -1,7 +1,8 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import {colors, spacing, radius} from '../../shared/theme';
+import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 import {MonitoringScreen} from '../monitoring/MonitoringScreen';
 import {TimelineScreen} from '../graph/TimelineScreen';
 import {PhotoGallery} from '../photos/PhotoGallery';
@@ -18,6 +19,8 @@ const TABS: {key: SecurityTab; label: string; icon: string}[] = [
 
 export function SecurityScreen({route}: {route?: any}) {
   const [active, setActive] = useState<SecurityTab>('MONITORING');
+  const {colors} = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const applyInitialTab = useCallback(() => {
     const initial = route?.params?.initialTab as SecurityTab | undefined;
@@ -70,38 +73,39 @@ export function SecurityScreen({route}: {route?: any}) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: colors.bg},
-  tabHeader: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSoft,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: radius.pill,
-    backgroundColor: colors.bg,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-  },
-  activeTab: {
-    backgroundColor: colors.skySoft,
-    borderColor: colors.sky,
-  },
-  tabIcon: {fontSize: 14, marginRight: 6},
-  tabText: {fontSize: 13, color: colors.textSecondary, fontWeight: '600'},
-  activeTabText: {color: colors.sky, fontWeight: '700'},
-  content: {flex: 1},
-});
-
+function createStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: {flex: 1, backgroundColor: colors.bg},
+    tabHeader: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSoft,
+    },
+    tabBar: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      alignItems: 'center',
+    },
+    tab: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.bg,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    activeTab: {
+      backgroundColor: colors.skySoft,
+      borderColor: colors.sky,
+    },
+    tabIcon: {fontSize: 14, marginRight: 6},
+    tabText: {fontSize: 13, color: colors.textSecondary, fontWeight: '600'},
+    activeTabText: {color: colors.sky, fontWeight: '700'},
+    content: {flex: 1},
+  });
+}

@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
+import {ColorPalette} from '../../shared/theme';
+import {useTheme} from '../../shared/ThemeContext';
 
 type PermOutcome = 'granted' | 'denied' | 'blocked';
 
@@ -143,6 +145,7 @@ function PermissionSwitch({
   onRequestEnable: () => Promise<boolean>;
   onRequestDisable: () => void;
 }) {
+  const {colors} = useTheme();
   const [switchKey, setSwitchKey] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -174,8 +177,8 @@ function PermissionSwitch({
         <Switch
           key={switchKey}
           value={value}
-          trackColor={{false: '#334155', true: '#059669'}}
-          thumbColor={value ? '#10b981' : '#94a3b8'}
+          trackColor={{false: colors.border, true: colors.emeraldDark}}
+          thumbColor={value ? colors.emerald : colors.textSecondary}
         />
       </View>
     </TouchableOpacity>
@@ -199,6 +202,9 @@ function SettingItem({
   onValueChange,
   isLast = false,
 }: SettingItemProps) {
+  const {colors} = useTheme();
+  const styles = useMemo(() => createMonitoringStyles(colors), [colors]);
+
   const handleValueChange = async (val: boolean) => {
     if (onValueChange) {
       try {
@@ -222,8 +228,8 @@ function SettingItem({
       <Switch
         value={value}
         onValueChange={handleValueChange}
-        trackColor={{false: '#334155', true: '#059669'}}
-        thumbColor={value ? '#10b981' : '#94a3b8'}
+        trackColor={{false: colors.border, true: colors.emeraldDark}}
+        thumbColor={value ? colors.emerald : colors.textSecondary}
       />
     </View>
   );
@@ -231,6 +237,8 @@ function SettingItem({
 
 export function MonitoringScreen() {
   const {settings, loading, updateSetting} = useSettings();
+  const {colors} = useTheme();
+  const styles = useMemo(() => createMonitoringStyles(colors), [colors]);
   const [isDeviceAdminEnabled, setIsDeviceAdminEnabled] = useState(false);
   const [hasCameraPerm, setHasCameraPerm] = useState(false);
   const [hasLocationPerm, setHasLocationPerm] = useState(false);
@@ -294,8 +302,10 @@ export function MonitoringScreen() {
         <Switch
           value={settings.isMonitoringEnabled}
           onValueChange={v => updateSetting('isMonitoringEnabled', v)}
-          trackColor={{false: '#334155', true: '#059669'}}
-          thumbColor={settings.isMonitoringEnabled ? '#10b981' : '#94a3b8'}
+          trackColor={{false: colors.border, true: colors.emeraldDark}}
+          thumbColor={
+            settings.isMonitoringEnabled ? colors.emerald : colors.textSecondary
+          }
         />
       </View>
 
@@ -570,10 +580,11 @@ export function MonitoringScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createMonitoringStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
   },
   scrollContent: {
     padding: 16,
@@ -581,23 +592,23 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
   },
   loadingText: {
-    color: '#38bdf8',
+    color: colors.sky,
     fontSize: 15,
     fontWeight: '600',
   },
   simRecoveryHint: {
-    color: '#94a3b8',
+    color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 10,
   },
   masterBanner: {
-    backgroundColor: '#1e293b',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     flexDirection: 'row',
@@ -605,7 +616,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   bannerLeft: {
     flexDirection: 'row',
@@ -625,21 +636,21 @@ const styles = StyleSheet.create({
   bannerTitle: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#f8fafc',
+    color: colors.textPrimary,
   },
   bannerStatus: {
     fontSize: 12,
-    color: '#10b981',
+    color: colors.emerald,
     fontWeight: '600',
     marginTop: 2,
   },
   sectionCard: {
-    backgroundColor: '#1e293b',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: colors.border,
   },
   sectionHeader: {
     marginBottom: 12,
@@ -647,11 +658,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#64748b',
+    color: colors.textMuted,
     letterSpacing: 1,
   },
   grantAllButton: {
-    backgroundColor: '#b91c1c',
+    backgroundColor: colors.redDark,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
@@ -663,13 +674,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   managePermissionsButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.skyDark,
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
+    borderColor: colors.skySoft,
   },
   managePermissionsButtonText: {
     color: '#ffffff',
@@ -678,7 +689,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   managePermissionsButtonSubtitle: {
-    color: '#93c5fd',
+    color: colors.textBody,
     fontSize: 11,
     textAlign: 'center',
   },
@@ -689,13 +700,13 @@ const styles = StyleSheet.create({
   },
   itemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+    borderBottomColor: colors.borderSubtle,
   },
   iconBox: {
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.bg,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -710,11 +721,12 @@ const styles = StyleSheet.create({
   itemTitle: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#f1f5f9',
+    color: colors.textPrimary,
   },
   itemSubtitle: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: colors.textSecondary,
     marginTop: 2,
   },
 });
+}
