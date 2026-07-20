@@ -1,7 +1,11 @@
 import React, {useMemo} from 'react';
 import {View, Text, StyleSheet, FlatList} from 'react-native';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
-import {formatAppName, formatDuration} from './AppUsageUtils';
+import {
+  formatAppLabel,
+  formatDuration,
+  mergeOverlappingSessions,
+} from './AppUsageUtils';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -14,38 +18,85 @@ type TimelineItem =
   | {type: 'SESSION'; data: AppUsageSession; timestamp: number}
   | {type: 'EVENT'; data: UnifiedEvent; timestamp: number};
 
-// Cap the number of items rendered to keep the JS thread responsive.
 const MAX_ITEMS = 200;
 
+/**
+ * Chronological interleaved timeline (recent apps + security events),
+ * with overlapping/duplicate app sessions merged so the same app
+ * does not appear as repeated rows for one continuous use.
+ */
 export function AppUsageTimeline({sessions, events}: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  // Deduplicate sessions by packageName + startTime
-  const uniqueSessions = useMemo(() => {
-    const seen = new Set<string>();
-    const unique: AppUsageSession[] = [];
-    sessions.forEach(s => {
-      const key = `${s.packageName}_${s.startTime}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(s);
-      }
-    });
-    return unique;
-  }, [sessions]);
+  // Group duplicate / overlapping sessions per package before listing
+  const uniqueSessions = useMemo(
+    () => mergeOverlappingSessions(sessions),
+    [sessions],
+  );
 
-  // Merge and sort (newest first), capped to MAX_ITEMS
   const items: TimelineItem[] = useMemo(() => {
+    const seenEvents = new Set<string>();
+    const uniqueEvents = events.filter(e => {
+      const key = e.id || `${e.type}_${e.timestamp}`;
+      if (seenEvents.has(key)) return false;
+      seenEvents.add(key);
+      return true;
+    });
+
     const merged: TimelineItem[] = [
-      ...uniqueSessions.map(s => ({type: 'SESSION' as const, data: s, timestamp: s.startTime})),
-      ...events.map(e => ({type: 'EVENT' as const, data: e, timestamp: e.timestamp})),
+      ...uniqueSessions.map(s => ({
+        type: 'SESSION' as const,
+        data: s,
+        timestamp: s.startTime,
+      })),
+      ...uniqueEvents.map(e => ({
+        type: 'EVENT' as const,
+        data: e,
+        timestamp: e.timestamp,
+      })),
     ].sort((a, b) => b.timestamp - a.timestamp);
+
     return merged.slice(0, MAX_ITEMS);
   }, [uniqueSessions, events]);
 
   const formatTime = (ts: number) => {
-    return new Date(ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+    try {
+      return new Date(ts).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      return '--:--';
+    }
+  };
+
+  const formatDay = (ts: number, prevTs?: number) => {
+    try {
+      const d = new Date(ts);
+      if (prevTs != null) {
+        const p = new Date(prevTs);
+        if (
+          d.getFullYear() === p.getFullYear() &&
+          d.getMonth() === p.getMonth() &&
+          d.getDate() === p.getDate()
+        ) {
+          return null;
+        }
+      }
+      const today = new Date();
+      if (
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate()
+      ) {
+        return 'Today';
+      }
+      return d.toLocaleDateString([], {month: 'short', day: 'numeric'});
+    } catch {
+      return null;
+    }
   };
 
   const getEventIcon = (type: string) => {
@@ -84,45 +135,59 @@ export function AppUsageTimeline({sessions, events}: Props) {
 
   const renderItem = ({item, index}: {item: TimelineItem; index: number}) => {
     const isLast = index === items.length - 1;
+    const prevTs = index > 0 ? items[index - 1].timestamp : undefined;
+    const dayLabel = formatDay(item.timestamp, prevTs);
+
+    const timeRail = (ts: number) => (
+      <View style={styles.timeColumn}>
+        {dayLabel ? <Text style={styles.dayText}>{dayLabel}</Text> : null}
+        <Text style={styles.timeText} numberOfLines={1}>
+          {formatTime(ts)}
+        </Text>
+      </View>
+    );
+
     if (item.type === 'SESSION') {
       const s = item.data;
       return (
-        <View key={`s_${s.startTime}_${index}`} style={styles.timelineItem}>
-          <View style={styles.timeColumn}>
-            <Text style={styles.timeText}>{formatTime(s.startTime)}</Text>
-          </View>
+        <View style={styles.timelineItem}>
+          {timeRail(s.startTime)}
           <View style={styles.lineColumn}>
             <View style={[styles.dot, {backgroundColor: colors.sky}]} />
             {!isLast && <View style={styles.line} />}
           </View>
           <View style={styles.contentColumn}>
             <View style={styles.sessionCard}>
-              <Text style={styles.sessionName} numberOfLines={1}>📱 {formatAppName(s.appName)}</Text>
-              <Text style={styles.sessionDuration}>{formatDuration(s.durationSeconds)}</Text>
-            </View>
-          </View>
-        </View>
-      );
-    } else {
-      const e = item.data;
-      return (
-        <View key={`e_${e.id}_${index}`} style={styles.timelineItem}>
-          <View style={styles.timeColumn}>
-            <Text style={styles.timeText}>{formatTime(e.timestamp)}</Text>
-          </View>
-          <View style={styles.lineColumn}>
-            <View style={[styles.dot, {backgroundColor: colors.amber}]} />
-            {!isLast && <View style={styles.line} />}
-          </View>
-          <View style={styles.contentColumn}>
-            <View style={styles.eventCard}>
-              <Text style={styles.eventName}>{getEventIcon(e.type)} {e.type ? e.type.replace(/_/g, ' ') : 'Event'}</Text>
-              {e.description ? <Text style={styles.eventDesc}>{e.description}</Text> : null}
+              <Text style={styles.sessionName} numberOfLines={1}>
+                📱 {formatAppLabel(s.appName, s.packageName)}
+              </Text>
+              <Text style={styles.sessionDuration}>
+                {formatDuration(s.durationSeconds)}
+              </Text>
             </View>
           </View>
         </View>
       );
     }
+
+    const e = item.data;
+    return (
+      <View style={styles.timelineItem}>
+        {timeRail(e.timestamp)}
+        <View style={styles.lineColumn}>
+          <View style={[styles.dot, {backgroundColor: colors.amber}]} />
+          {!isLast && <View style={styles.line} />}
+        </View>
+        <View style={styles.contentColumn}>
+          <View style={styles.eventCard}>
+            <Text style={styles.eventName}>
+              {getEventIcon(e.type)} {e.type ? e.type.replace(/_/g, ' ') : 'Event'}
+            </Text>
+            {e.description ? <Text style={styles.eventDesc}>{e.description}</Text> : null}
+          </View>
+        </View>
+      </View>
+    );
   };
 
   return (
@@ -132,13 +197,14 @@ export function AppUsageTimeline({sessions, events}: Props) {
       data={items}
       keyExtractor={(item, index) =>
         item.type === 'SESSION'
-          ? `s_${(item.data as AppUsageSession).startTime}_${index}`
-          : `e_${(item.data as UnifiedEvent).id}_${index}`
+          ? `s_${(item.data as AppUsageSession).packageName}_${(item.data as AppUsageSession).startTime}_${(item.data as AppUsageSession).endTime}`
+          : `e_${(item.data as UnifiedEvent).id || (item.data as UnifiedEvent).timestamp}_${index}`
       }
       renderItem={renderItem}
       ListHeaderComponent={
         <Text style={styles.title}>
-          Interleaved Timeline{items.length >= MAX_ITEMS ? ` (showing latest ${MAX_ITEMS})` : ''}
+          Interleaved Timeline
+          {items.length >= MAX_ITEMS ? ` (showing latest ${MAX_ITEMS})` : ''}
         </Text>
       }
       ListEmptyComponent={
@@ -174,45 +240,53 @@ function createStyles(colors: ColorPalette) {
       textAlign: 'center',
       marginTop: 40,
     },
-    timeline: {
-      flexDirection: 'column',
-    },
     timelineItem: {
       flexDirection: 'row',
+      alignItems: 'stretch',
     },
     timeColumn: {
-      width: 60,
-      alignItems: 'flex-end',
-      paddingRight: 12,
+      width: 78,
+      alignItems: 'flex-start',
+      paddingRight: 8,
       paddingTop: 2,
     },
+    dayText: {
+      color: colors.textMuted,
+      fontSize: 10,
+      fontWeight: '700',
+      marginBottom: 2,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
+    },
     timeText: {
-      color: colors.textSecondary,
+      color: colors.sky,
       fontSize: 12,
-      fontWeight: '600',
+      fontWeight: '700',
+      fontVariant: ['tabular-nums'],
     },
     lineColumn: {
-      width: 20,
+      width: 18,
       alignItems: 'center',
     },
     dot: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      marginTop: 4,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginTop: 6,
       zIndex: 10,
     },
     line: {
       width: 2,
       flex: 1,
       backgroundColor: colors.borderSoft,
-      marginTop: -8,
+      marginTop: -6,
       marginBottom: -4,
     },
     contentColumn: {
       flex: 1,
-      paddingLeft: 12,
-      paddingBottom: 24,
+      paddingLeft: 10,
+      paddingBottom: 20,
+      minWidth: 0,
     },
     sessionCard: {
       backgroundColor: colors.surface,

@@ -1,7 +1,12 @@
 import React, {useState, useMemo} from 'react';
 import {View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
 import {AppUsageSession} from './AppUsageScreen';
-import {formatDuration} from './AppUsageUtils';
+import {
+  consolidateSessionsByApp,
+  dedupeSessions,
+  formatAppLabel,
+  formatDuration,
+} from './AppUsageUtils';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -16,82 +21,101 @@ export function AppUsageReports({sessions}: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [timeframe, setTimeframe] = useState<Timeframe>('DAILY');
 
-  // Filter Data
   const filteredSessions = useMemo(() => {
     const now = Date.now();
     const msInDay = 24 * 60 * 60 * 1000;
-
     let cutoff = 0;
     if (timeframe === 'DAILY') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       cutoff = today.getTime();
     } else if (timeframe === 'WEEKLY') {
-      cutoff = now - (7 * msInDay);
-    } else if (timeframe === 'MONTHLY') {
-      cutoff = now - (30 * msInDay);
+      cutoff = now - 7 * msInDay;
+    } else {
+      cutoff = now - 30 * msInDay;
     }
-
-    return sessions.filter(s => s.startTime >= cutoff);
+    return dedupeSessions(sessions.filter(s => s.startTime >= cutoff));
   }, [sessions, timeframe]);
 
-  // General Stats
-  let totalUsage = 0;
-  filteredSessions.forEach(s => totalUsage += s.durationSeconds);
+  const totalUsage = useMemo(
+    () => filteredSessions.reduce((sum, s) => sum + Math.max(0, s.durationSeconds || 0), 0),
+    [filteredSessions],
+  );
 
-  const daysInPeriod = timeframe === 'DAILY' ? 1 : (timeframe === 'WEEKLY' ? 7 : 30);
-  const avgDailyUsage = totalUsage / daysInPeriod;
+  // Average over days that actually have activity (not empty calendar days)
+  const avgDailyUsage = useMemo(() => {
+    if (filteredSessions.length === 0) return 0;
+    const days = new Set(
+      filteredSessions.map(s => {
+        const d = new Date(s.startTime);
+        return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      }),
+    );
+    return totalUsage / Math.max(1, days.size);
+  }, [filteredSessions, totalUsage]);
 
-  // Group by category
-  const categoryStats: Record<string, number> = {};
-  filteredSessions.forEach(s => {
-    const cat = s.category || 'Other';
-    if (!categoryStats[cat]) categoryStats[cat] = 0;
-    categoryStats[cat] += s.durationSeconds;
-  });
-  const sortedCategories = Object.entries(categoryStats).sort((a, b) => b[1] - a[1]);
-
-  // Aggregate by app for Most/Least Used (not raw sessions)
-  const aggregatedApps = useMemo(() => {
-    const byPkg: Record<string, {appName: string; durationSeconds: number; startTime: number}> = {};
+  const categoryStats = useMemo(() => {
+    const map: Record<string, number> = {};
     filteredSessions.forEach(s => {
-      if (!byPkg[s.packageName]) {
-        byPkg[s.packageName] = {
-          appName: s.appName,
-          durationSeconds: 0,
-          startTime: s.startTime,
-        };
-      }
-      byPkg[s.packageName].durationSeconds += s.durationSeconds;
-      if (s.startTime > byPkg[s.packageName].startTime) {
-        byPkg[s.packageName].startTime = s.startTime;
-      }
+      const cat = s.category && s.category !== 'Other' ? s.category : guessCategory(s);
+      map[cat] = (map[cat] || 0) + Math.max(0, s.durationSeconds || 0);
     });
-    return Object.values(byPkg).sort((a, b) => b.durationSeconds - a.durationSeconds);
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [filteredSessions]);
 
-  const topApps = aggregatedApps.slice(0, 5);
-  const bottomApps = [...aggregatedApps].reverse().slice(0, 5);
+  const aggregatedApps = useMemo(
+    () => consolidateSessionsByApp(filteredSessions),
+    [filteredSessions],
+  );
 
-  // Hourly Usage Array
-  const hourlyStats = new Array(24).fill(0);
-  filteredSessions.forEach(s => {
-    const hour = new Date(s.startTime).getHours();
-    hourlyStats[hour] += s.durationSeconds;
-  });
+  const topApps = aggregatedApps.slice(0, 5);
+  const bottomApps = useMemo(() => {
+    const topPkgs = new Set(topApps.map(a => a.packageName));
+    const rest = aggregatedApps.filter(
+      a => !topPkgs.has(a.packageName) && a.durationSeconds >= 5,
+    );
+    // If everything is in top 5, show the shortest of the top set instead of clones
+    const pool = rest.length > 0 ? rest : [...aggregatedApps].reverse();
+    return pool.slice(-5).reverse().slice(0, 5);
+  }, [aggregatedApps, topApps]);
+
+  const hourlyStats = useMemo(() => {
+    const hours = new Array(24).fill(0);
+    filteredSessions.forEach(s => {
+      const start = s.startTime;
+      const end = Math.max(s.endTime || start, start);
+      const duration = Math.max(0, s.durationSeconds || (end - start) / 1000);
+      if (duration <= 0) return;
+      // Split duration across hours proportionally (not all into start hour)
+      let remaining = duration;
+      let cursor = start;
+      while (remaining > 0 && cursor < end) {
+        const hourEnd = new Date(cursor);
+        hourEnd.setMinutes(59, 59, 999);
+        const sliceEnd = Math.min(end, hourEnd.getTime() + 1);
+        const sliceSec = Math.max(0, (sliceEnd - cursor) / 1000);
+        const take = Math.min(remaining, sliceSec || remaining);
+        hours[new Date(cursor).getHours()] += take;
+        remaining -= take;
+        cursor = sliceEnd;
+        if (sliceSec <= 0) break;
+      }
+    });
+    return hours;
+  }, [filteredSessions]);
   const maxHourly = Math.max(...hourlyStats, 1);
+  const chartHeight = 100;
+
+  const showLeastUsed = aggregatedApps.length >= 8;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      
-      {/* Timeframe Selector */}
       <View style={styles.filterRow}>
         {(['DAILY', 'WEEKLY', 'MONTHLY'] as Timeframe[]).map(tf => (
-          <TouchableOpacity 
+          <TouchableOpacity
             key={tf}
             style={[styles.filterBtn, timeframe === tf && styles.filterBtnActive]}
-            onPress={() => setTimeframe(tf)}
-          >
+            onPress={() => setTimeframe(tf)}>
             <Text style={[styles.filterText, timeframe === tf && styles.filterTextActive]}>
               {tf.charAt(0) + tf.slice(1).toLowerCase()}
             </Text>
@@ -107,64 +131,98 @@ export function AppUsageReports({sessions}: Props) {
         <View style={styles.overviewCard}>
           <Text style={styles.overviewTitle}>Daily Average</Text>
           <Text style={styles.overviewValue}>{formatDuration(avgDailyUsage)}</Text>
+          <Text style={styles.overviewHint}>Active days only</Text>
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Hourly Usage</Text>
-        <View style={styles.chartContainer}>
-          {hourlyStats.map((val, index) => {
-            const h = (val / maxHourly) * 100;
-            return (
-              <View key={index} style={styles.barWrapper}>
-                <View style={[styles.bar, {height: `${h}%`}]} />
-                <Text style={styles.barLabel}>{index % 4 === 0 ? `${index}h` : ''}</Text>
-              </View>
-            );
-          })}
-        </View>
+        {totalUsage === 0 ? (
+          <Text style={styles.emptyInline}>No usage in this period.</Text>
+        ) : (
+          <View style={[styles.chartContainer, {height: chartHeight + 18}]}>
+            {hourlyStats.map((val, index) => {
+              const barH = Math.max(val > 0 ? 4 : 2, (val / maxHourly) * chartHeight);
+              return (
+                <View key={index} style={styles.barWrapper}>
+                  <View style={[styles.bar, {height: barH}]} />
+                  <Text style={styles.barLabel}>{index % 4 === 0 ? `${index}h` : ''}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Usage by Category</Text>
-        {sortedCategories.map(([cat, duration]) => {
-          const percentage = totalUsage > 0 ? (duration / totalUsage) * 100 : 0;
-          return (
-            <View key={cat} style={styles.categoryRow}>
-              <View style={styles.categoryHeader}>
-                <Text style={styles.categoryName} numberOfLines={1}>{cat}</Text>
-                <Text style={styles.categoryDuration}>{formatDuration(duration)}</Text>
+        {categoryStats.length === 0 ? (
+          <Text style={styles.emptyInline}>No category data yet.</Text>
+        ) : (
+          categoryStats.map(([cat, duration]) => {
+            const percentage = totalUsage > 0 ? (duration / totalUsage) * 100 : 0;
+            return (
+              <View key={cat} style={styles.categoryRow}>
+                <View style={styles.categoryHeader}>
+                  <Text style={styles.categoryName} numberOfLines={1}>
+                    {cat}
+                  </Text>
+                  <Text style={styles.categoryDuration}>{formatDuration(duration)}</Text>
+                </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, {width: `${Math.min(100, percentage)}%`}]} />
+                </View>
               </View>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBarFill, {width: `${percentage}%`}]} />
-              </View>
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Most Used Apps</Text>
-        {topApps.map((app, index) => (
-          <View key={index} style={styles.appRow}>
-            <Text style={styles.appName} numberOfLines={1}>{index + 1}. {app.appName}</Text>
-            <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
-          </View>
-        ))}
+        {topApps.length === 0 ? (
+          <Text style={styles.emptyInline}>No apps in this period.</Text>
+        ) : (
+          topApps.map((app, index) => (
+            <View key={app.packageName} style={styles.appRow}>
+              <Text style={styles.appName} numberOfLines={1}>
+                {index + 1}. {formatAppLabel(app.appName, app.packageName)}
+              </Text>
+              <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
+            </View>
+          ))
+        )}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Least Used Apps</Text>
-        {bottomApps.map((app, index) => (
-          <View key={index} style={styles.appRow}>
-            <Text style={styles.appName} numberOfLines={1}>{app.appName}</Text>
-            <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
-          </View>
-        ))}
-      </View>
-
+      {showLeastUsed ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Least Used Apps</Text>
+          {bottomApps.map(app => (
+            <View key={`least_${app.packageName}`} style={styles.appRow}>
+              <Text style={styles.appName} numberOfLines={1}>
+                {formatAppLabel(app.appName, app.packageName)}
+              </Text>
+              <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </ScrollView>
   );
+}
+
+function guessCategory(s: AppUsageSession): string {
+  const n = `${s.appName || ''} ${s.packageName || ''}`.toLowerCase();
+  if (/whatsapp|telegram|instagram|facebook|twitter|snapchat|discord|signal/.test(n)) {
+    return 'Social';
+  }
+  if (/youtube|netflix|hotstar|prime|spotify|music|video/.test(n)) return 'Media';
+  if (/chrome|firefox|brave|browser|safari/.test(n)) return 'Browser';
+  if (/gmail|outlook|slack|teams|docs|office|notion|mail/.test(n)) return 'Productivity';
+  if (/maps|uber|ola|rapido|navi/.test(n)) return 'Maps';
+  if (/game|pubg|freefire|candy|clash/.test(n)) return 'Game';
+  if (/camera|gallery|photos|image/.test(n)) return 'Image';
+  return s.category || 'Other';
 }
 
 function createStyles(colors: ColorPalette) {
@@ -186,7 +244,7 @@ function createStyles(colors: ColorPalette) {
     },
     filterBtnActive: {backgroundColor: colors.sky},
     filterText: {color: colors.textSecondary, fontWeight: '600', fontSize: 13},
-    filterTextActive: {color: colors.bg, fontWeight: 'bold'},
+    filterTextActive: {color: '#ffffff', fontWeight: 'bold'},
     overviewCards: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -208,6 +266,7 @@ function createStyles(colors: ColorPalette) {
       textTransform: 'uppercase',
     },
     overviewValue: {color: colors.sky, fontSize: 20, fontWeight: 'bold'},
+    overviewHint: {color: colors.textMuted, fontSize: 10, marginTop: 4},
     section: {
       marginBottom: 20,
       backgroundColor: colors.surface,
@@ -217,26 +276,24 @@ function createStyles(colors: ColorPalette) {
       borderColor: colors.borderSubtle,
     },
     sectionTitle: {color: colors.textPrimary, fontSize: 18, fontWeight: 'bold', marginBottom: 16},
+    emptyInline: {color: colors.textSecondary, fontSize: 13},
     chartContainer: {
       flexDirection: 'row',
-      height: 120,
       alignItems: 'flex-end',
       justifyContent: 'space-between',
-      paddingTop: 10,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSoft,
     },
     barWrapper: {
       flex: 1,
       alignItems: 'center',
-      height: '100%',
       justifyContent: 'flex-end',
+      height: '100%',
     },
     bar: {
       width: '60%',
       backgroundColor: colors.sky,
       borderRadius: 2,
-      minHeight: 2,
     },
     barLabel: {color: colors.textMuted, fontSize: 9, marginTop: 4, height: 14},
     categoryRow: {marginBottom: 12},

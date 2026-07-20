@@ -7,8 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Pressable,
+  SafeAreaView,
 } from 'react-native';
-import {ColorPalette, spacing, radius} from '../theme';
+import {ColorPalette, spacing} from '../theme';
 import {useTheme} from '../ThemeContext';
 
 export type AppMenuTarget =
@@ -57,12 +58,11 @@ const MENU: MenuRow[] = [
  * Full app menu opened from Home ☰.
  */
 export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
-  const {colors} = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const {colors, themeId} = useTheme();
+  const styles = useMemo(() => createStyles(colors, themeId === 'light'), [colors, themeId]);
 
   const go = (target: AppMenuTarget) => {
     onClose();
-    // Defer navigate so the modal can dismiss first
     setTimeout(() => onNavigate(target), 50);
   };
 
@@ -74,13 +74,13 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
       onRequestClose={onClose}>
       <View style={styles.root}>
         <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.drawer}>
+        <SafeAreaView style={styles.drawer}>
           <View style={styles.drawerHeader}>
             <View>
               <Text style={styles.brand}>MRP</Text>
-              <Text style={styles.brandSub}>Menu</Text>
+              <Text style={styles.brandSub}>Navigation</Text>
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={12}>
+            <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={12}>
               <Text style={styles.close}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -93,7 +93,9 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
                     style={styles.topItem}
                     onPress={() => go(row.target)}
                     activeOpacity={0.7}>
-                    {row.icon ? <Text style={styles.icon}>{row.icon}</Text> : null}
+                    <View style={styles.iconWrap}>
+                      {row.icon ? <Text style={styles.icon}>{row.icon}</Text> : null}
+                    </View>
                     <Text style={styles.topLabel}>{row.label}</Text>
                   </TouchableOpacity>
                 );
@@ -101,7 +103,9 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
               return (
                 <View key={row.label} style={styles.section}>
                   <View style={styles.sectionHeader}>
-                    {row.icon ? <Text style={styles.icon}>{row.icon}</Text> : null}
+                    <View style={styles.iconWrap}>
+                      {row.icon ? <Text style={styles.icon}>{row.icon}</Text> : null}
+                    </View>
                     <Text style={styles.sectionLabel}>{row.label}</Text>
                   </View>
                   {row.children.map(child => (
@@ -117,36 +121,35 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
               );
             })}
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </View>
     </Modal>
   );
 }
 
-function createStyles(colors: ColorPalette) {
+function createStyles(colors: ColorPalette, isLight: boolean) {
   return StyleSheet.create({
     root: {
       flex: 1,
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(2, 6, 23, 0.55)',
+      backgroundColor: isLight ? 'rgba(15, 23, 42, 0.45)' : 'rgba(2, 6, 23, 0.62)',
     },
     drawer: {
       position: 'absolute',
       left: 0,
       top: 0,
       bottom: 0,
-      width: '78%',
+      width: '80%',
       maxWidth: 320,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.bg,
       borderRightWidth: 1,
-      borderRightColor: colors.borderSoft,
-      paddingTop: spacing.xl,
-      elevation: 8,
+      borderRightColor: colors.border,
+      elevation: 10,
       shadowColor: '#000',
-      shadowOpacity: 0.35,
-      shadowRadius: 12,
+      shadowOpacity: isLight ? 0.18 : 0.4,
+      shadowRadius: 14,
       shadowOffset: {width: 4, height: 0},
     },
     drawerHeader: {
@@ -154,9 +157,11 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
       paddingBottom: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.surface,
     },
     brand: {
       color: colors.textPrimary,
@@ -165,15 +170,25 @@ function createStyles(colors: ColorPalette) {
       letterSpacing: 1,
     },
     brandSub: {
-      color: colors.textMuted,
+      color: colors.sky,
       fontSize: 12,
       marginTop: 2,
+      fontWeight: '600',
+    },
+    closeBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.skySoft,
+      borderWidth: 1,
+      borderColor: colors.sky,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     close: {
-      color: colors.textSecondary,
-      fontSize: 20,
-      fontWeight: '600',
-      padding: 4,
+      color: colors.sky,
+      fontSize: 16,
+      fontWeight: '700',
     },
     list: {
       paddingVertical: spacing.md,
@@ -184,40 +199,64 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center',
       paddingVertical: 14,
       paddingHorizontal: spacing.lg,
+      marginHorizontal: spacing.sm,
+      marginBottom: 4,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
     },
     topLabel: {
       color: colors.textPrimary,
       fontSize: 16,
       fontWeight: '700',
     },
-    icon: {
-      fontSize: 16,
+    iconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      backgroundColor: colors.skySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
       marginRight: 10,
     },
+    icon: {
+      fontSize: 15,
+    },
     section: {
-      marginTop: spacing.sm,
+      marginTop: spacing.md,
+      marginHorizontal: spacing.sm,
+      marginBottom: spacing.sm,
       paddingBottom: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      overflow: 'hidden',
     },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: 10,
-      paddingHorizontal: spacing.lg,
+      paddingVertical: 12,
+      paddingHorizontal: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.surfaceAlt,
     },
     sectionLabel: {
       color: colors.textPrimary,
-      fontSize: 16,
-      fontWeight: '700',
+      fontSize: 15,
+      fontWeight: '800',
     },
     childItem: {
-      paddingVertical: 11,
-      paddingLeft: 48,
+      paddingVertical: 13,
+      paddingLeft: 54,
       paddingRight: spacing.lg,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderSubtle,
     },
     childLabel: {
-      color: colors.textSecondary,
+      color: colors.textBody,
       fontSize: 15,
       fontWeight: '600',
     },

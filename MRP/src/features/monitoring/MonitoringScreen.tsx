@@ -320,7 +320,8 @@ export function MonitoringScreen() {
           style={styles.managePermissionsButton}
           onPress={async () => {
             await mrpmModule.openAppSettings();
-          }}>
+          }}
+          activeOpacity={0.75}>
           <Text style={styles.managePermissionsButtonText}>🔒 Manage All Permissions</Text>
           <Text style={styles.managePermissionsButtonSubtitle}>
             View full permissions details, app purpose, and grant instructions
@@ -674,24 +675,25 @@ function createMonitoringStyles(colors: ColorPalette) {
     fontWeight: '700',
   },
   managePermissionsButton: {
-    backgroundColor: colors.skyDark,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
+    backgroundColor: colors.skySoft,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    alignItems: 'flex-start',
     marginBottom: 14,
-    borderWidth: 1,
-    borderColor: colors.skySoft,
+    borderWidth: 1.5,
+    borderColor: colors.sky,
   },
   managePermissionsButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
+    color: colors.sky,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 6,
   },
   managePermissionsButtonSubtitle: {
-    color: colors.textBody,
-    fontSize: 11,
-    textAlign: 'center',
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
   itemContainer: {
     flexDirection: 'row',

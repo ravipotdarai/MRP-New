@@ -362,8 +362,11 @@ export function HomeScreen({
       }>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => setMenuOpen(true)}>
-          <Text style={styles.headerIcon}>☰</Text>
+        <TouchableOpacity
+          style={styles.headerIconBtn}
+          onPress={() => setMenuOpen(true)}
+          accessibilityLabel="Open menu">
+          <Text style={styles.headerMenuIcon}>☰</Text>
         </TouchableOpacity>
         <Text style={styles.brandTitle}>MRP</Text>
         <View style={styles.headerRight}>
@@ -373,7 +376,7 @@ export function HomeScreen({
             accessibilityLabel="Color theme">
             <Text style={styles.headerIcon}>🎨</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn}>
+          <TouchableOpacity style={styles.headerIconBtn} accessibilityLabel="Notifications">
             <Text style={styles.headerIcon}>🔔</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarBtn} onPress={handleAvatarPress}>
@@ -529,32 +532,15 @@ export function HomeScreen({
             loc.detailed_address !== 'Address Unavailable (Offline)'
               ? loc.detailed_address
               : null;
-          // Map centered on live coords; pin overlay at center = live location
-          const mapUri =
-            `https://staticmap.openstreetmap.de/staticmap.php` +
-            `?center=${loc.latitude},${loc.longitude}` +
-            `&zoom=16&size=600x320&maptype=mapnik` +
-            `&markers=${loc.latitude},${loc.longitude},red-pushpin`;
+          // Live map preview with provider fallbacks (OSM static endpoints are flaky)
           return (
             <>
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => openMaps(loc.latitude, loc.longitude)}
-                style={styles.mapPlaceholder}>
-                <Image
-                  source={{uri: mapUri}}
-                  style={styles.mapImage}
-                  resizeMode="cover"
-                />
-                {/* Live location pin — map is centered on GPS, so pin sits at center */}
-                <View style={styles.livePinWrap} pointerEvents="none">
-                  <Text style={styles.livePin}>📍</Text>
-                  <View style={styles.livePinDot} />
-                </View>
-                <View style={styles.mapOverlay}>
-                  <Text style={styles.mapLabel}>Live location · Tap for Google Maps</Text>
-                </View>
-              </TouchableOpacity>
+              <LiveMapPreview
+                latitude={loc.latitude}
+                longitude={loc.longitude}
+                styles={styles}
+                onOpenMaps={() => openMaps(loc.latitude, loc.longitude)}
+              />
               {address ? (
                 <Text style={styles.locationAddress} numberOfLines={3}>
                   📍 {address}
@@ -657,6 +643,75 @@ function StatCard({
   );
 }
 
+function buildMapUris(lat: number, lng: number): string[] {
+  return [
+    // Yandex static maps (usually reachable without API key)
+    `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=15&l=map&size=600,320&pt=${lng},${lat},pm2rdm`,
+    // OSM.de fallback
+    `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=600x320&maptype=mapnik&markers=${lat},${lng},red-pushpin`,
+  ];
+}
+
+function LiveMapPreview({
+  latitude,
+  longitude,
+  styles,
+  onOpenMaps,
+}: {
+  latitude: number;
+  longitude: number;
+  styles: ReturnType<typeof createHomeStyles>;
+  onOpenMaps: () => void;
+}) {
+  const uris = useMemo(() => buildMapUris(latitude, longitude), [latitude, longitude]);
+  const [uriIndex, setUriIndex] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  const onError = () => {
+    if (uriIndex + 1 < uris.length) {
+      setUriIndex(i => i + 1);
+      return;
+    }
+    setFailed(true);
+  };
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onOpenMaps}
+      style={styles.mapPlaceholder}>
+      {!failed ? (
+        <Image
+          key={uris[uriIndex]}
+          source={{uri: uris[uriIndex]}}
+          style={styles.mapImage}
+          resizeMode="cover"
+          onError={onError}
+        />
+      ) : (
+        <View style={styles.mapFallback}>
+          <Text style={styles.mapFallbackPin}>📍</Text>
+          <Text style={styles.mapFallbackTitle}>Map preview unavailable</Text>
+          <Text style={styles.mapFallbackCoords}>
+            {latitude.toFixed(5)}, {longitude.toFixed(5)}
+          </Text>
+        </View>
+      )}
+      {!failed ? (
+        <View style={styles.livePinWrap} pointerEvents="none">
+          <Text style={styles.livePin}>📍</Text>
+          <View style={styles.livePinDot} />
+        </View>
+      ) : null}
+      <View style={styles.mapOverlay}>
+        <Text style={styles.mapLabel}>
+          {failed ? 'Tap to open Google Maps' : 'Live location · Tap for Google Maps'}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 function createHomeStyles(colors: ColorPalette) {
   return StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.bg},
@@ -674,10 +729,19 @@ function createHomeStyles(colors: ColorPalette) {
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: colors.sky,
   },
-  headerIcon: {fontSize: 20},
+  headerMenuIcon: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.sky,
+    lineHeight: 24,
+  },
+  headerIcon: {
+    fontSize: 20,
+    color: colors.textPrimary,
+  },
   headerRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
   brandTitle: {fontSize: 22, fontWeight: '900', color: colors.textPrimary, letterSpacing: 1},
   avatarBtn: {
@@ -785,6 +849,26 @@ function createHomeStyles(colors: ColorPalette) {
     ...StyleSheet.absoluteFillObject,
     width: '100%',
     height: '100%',
+  },
+  mapFallback: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: 16,
+  },
+  mapFallbackPin: {fontSize: 34, marginBottom: 6},
+  mapFallbackTitle: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  mapFallbackCoords: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginTop: 4,
+    fontFamily: 'monospace',
   },
   mapOverlay: {
     position: 'absolute',

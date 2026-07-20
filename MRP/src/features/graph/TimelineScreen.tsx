@@ -13,6 +13,8 @@ import {
   Linking,
   ActivityIndicator,
   AppState,
+  useWindowDimensions,
+  SafeAreaView,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
@@ -79,6 +81,8 @@ interface PhotoItem {
 export function TimelineScreen() {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const {height: windowHeight} = useWindowDimensions();
+  const sheetHeight = Math.round(windowHeight * 0.9);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -227,21 +231,31 @@ export function TimelineScreen() {
               source={{uri: `file://${matchedPhoto.path}`}}
               style={styles.rowSelfieThumb}
             />
-          ) : (
-            <View
+          ) : null}
+          <View
+            style={[
+              styles.geofenceBadge,
+              {
+                backgroundColor: item.geofence_status?.inside_fence
+                  ? colors.emeraldSoft
+                  : colors.amberSoft,
+                borderColor: item.geofence_status?.inside_fence
+                  ? colors.emerald
+                  : colors.amber,
+              },
+            ]}>
+            <Text
               style={[
-                styles.geofenceBadge,
+                styles.geofenceText,
                 {
-                  backgroundColor: item.geofence_status?.inside_fence
+                  color: item.geofence_status?.inside_fence
                     ? colors.emerald
-                    : colors.textMuted,
+                    : colors.amber,
                 },
               ]}>
-              <Text style={styles.geofenceText}>
-                {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
-              </Text>
-            </View>
-          )}
+              {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
+            </Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -256,13 +270,23 @@ export function TimelineScreen() {
         transparent={true}
         onRequestClose={() => setDetailModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+          <SafeAreaView style={[styles.modalSheet, {height: sheetHeight}]}>
+            <View style={styles.modalGrabRow}>
+              <View style={styles.modalGrab} />
+            </View>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled>
               {selectedEntry && (
                 <>
                   {matchedPhoto && (
                     <View style={styles.selfieEvidenceCard}>
-                      <Text style={styles.selfieEvidenceTitle}>📸 SURVEILLANCE SELFIE EVIDENCE</Text>
+                      <Text style={styles.selfieEvidenceTitle}>
+                        📸 SURVEILLANCE SELFIE EVIDENCE
+                      </Text>
                       <Image
                         source={{uri: `file://${matchedPhoto.path}`}}
                         style={styles.modalSelfieImage}
@@ -278,88 +302,91 @@ export function TimelineScreen() {
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Event</Text>
                     <Text style={styles.detailValue}>
-                      {EVENT_ICONS[selectedEntry.event_type]} {formatEventType(selectedEntry.event_type)}
+                      {EVENT_ICONS[selectedEntry.event_type]}{' '}
+                      {formatEventType(selectedEntry.event_type)}
                     </Text>
                   </View>
 
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Status</Text>
-                  <Text style={styles.detailValue}>{selectedEntry.status}</Text>
-                </View>
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Timestamp</Text>
-                  <Text style={styles.detailValue}>{formatTimestamp(selectedEntry.timestamp)}</Text>
-                </View>
-
-                {selectedEntry.location && selectedEntry.location.latitude !== 0 && (
-                  <>
-                    <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Location</Text>
-                      <Text style={styles.detailValue}>
-                        {selectedEntry.location.detailed_address}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.mapButton}
-                        onPress={() => openLocation(selectedEntry.location.latitude, selectedEntry.location.longitude)}>
-                        <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Coordinates</Text>
-                      <Text style={styles.detailValue}>
-                        {selectedEntry.location.latitude.toFixed(6)}, {selectedEntry.location.longitude.toFixed(6)}
-                      </Text>
-                      <Text style={styles.detailSubvalue}>
-                        Accuracy: ±1m
-                      </Text>
-                    </View>
-                  </>
-                )}
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailLabel}>Geofence Status</Text>
-                  <Text style={styles.detailValue}>
-                    {selectedEntry.geofence_status?.inside_fence ? '🏠 Inside fence' : '📍 Outside fence'}
-                  </Text>
-                  {selectedEntry.geofence_status?.fence_id && (
-                    <Text style={styles.detailSubvalue}>
-                      Fence ID: {selectedEntry.geofence_status.fence_id}
-                    </Text>
-                  )}
-                </View>
-
-                {Object.keys(selectedEntry.metadata || {}).length > 0 && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailLabel}>Metadata</Text>
-                    {Object.entries(selectedEntry.metadata).map(([key, value]) => (
-                      <Text key={key} style={styles.detailSubvalue}>
-                        {key}: {String(value)}
-                      </Text>
-                    ))}
+                    <Text style={styles.detailLabel}>Status</Text>
+                    <Text style={styles.detailValue}>{selectedEntry.status}</Text>
                   </View>
-                )}
-              </>
-            )}
-          </ScrollView>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity
-              style={styles.closeButton}
-              onPress={() => setDetailModalVisible(false)}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => selectedEntry && deleteEntry(selectedEntry)}>
-              <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
-            </TouchableOpacity>
-          </View>
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Timestamp</Text>
+                    <Text style={styles.detailValue}>
+                      {formatTimestamp(selectedEntry.timestamp)}
+                    </Text>
+                  </View>
+
+                  {selectedEntry.location && selectedEntry.location.latitude !== 0 && (
+                    <>
+                      <View style={styles.detailSection}>
+                        <Text style={styles.detailLabel}>Location</Text>
+                        <Text style={styles.detailValue}>
+                          {selectedEntry.location.detailed_address}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.mapButton}
+                          onPress={() =>
+                            openLocation(
+                              selectedEntry.location.latitude,
+                              selectedEntry.location.longitude,
+                            )
+                          }>
+                          <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.detailSection}>
+                        <Text style={styles.detailLabel}>Coordinates</Text>
+                        <Text style={styles.detailValue}>
+                          {selectedEntry.location.latitude.toFixed(6)},{' '}
+                          {selectedEntry.location.longitude.toFixed(6)}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailLabel}>Geofence Status</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedEntry.geofence_status?.inside_fence
+                        ? '🏠 Inside fence'
+                        : '📍 Outside fence'}
+                    </Text>
+                  </View>
+
+                  {Object.keys(selectedEntry.metadata || {}).length > 0 && (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>Metadata</Text>
+                      {Object.entries(selectedEntry.metadata).map(([key, value]) => (
+                        <Text key={key} style={styles.detailSubvalue}>
+                          {key}: {String(value)}
+                        </Text>
+                      ))}
+                    </View>
+                  )}
+                </>
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => setDetailModalVisible(false)}>
+                <Text style={styles.closeButtonText}>Close</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => selectedEntry && deleteEntry(selectedEntry)}>
+                <Text style={styles.deleteButtonText}>🗑️ Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
   };
 
   return (
@@ -525,44 +552,69 @@ function createStyles(colors: ColorPalette) {
     },
     entryRight: {
       justifyContent: 'center',
+      alignItems: 'flex-end',
+      gap: 8,
+      marginLeft: 8,
+      maxWidth: 88,
     },
     geofenceBadge: {
       paddingHorizontal: 10,
       paddingVertical: 6,
       borderRadius: 12,
+      borderWidth: 1,
     },
     geofenceText: {
-      color: colors.textPrimary,
       fontSize: 12,
-      fontWeight: '600',
+      fontWeight: '700',
     },
     modalOverlay: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.7)',
       justifyContent: 'flex-end',
     },
-    modalContent: {
+    modalSheet: {
       backgroundColor: colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
-      maxHeight: '85%',
-      padding: 20,
       borderTopWidth: 1,
       borderTopColor: colors.borderSoft,
+      overflow: 'hidden',
+    },
+    modalGrabRow: {
+      alignItems: 'center',
+      paddingTop: 10,
+      paddingBottom: 4,
+    },
+    modalGrab: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+    },
+    modalScroll: {
+      flex: 1,
+    },
+    modalScrollContent: {
+      paddingHorizontal: 20,
+      paddingTop: 8,
+      paddingBottom: 20,
     },
     detailSection: {
-      marginBottom: 20,
+      marginBottom: 18,
     },
     detailLabel: {
       fontSize: 12,
-      color: colors.textSecondary,
+      color: colors.textMuted,
       marginBottom: 4,
       textTransform: 'uppercase',
+      fontWeight: '700',
+      letterSpacing: 0.4,
     },
     detailValue: {
       fontSize: 16,
       color: colors.textPrimary,
-      fontWeight: '500',
+      fontWeight: '600',
+      lineHeight: 22,
     },
     detailSubvalue: {
       fontSize: 13,
@@ -576,44 +628,49 @@ function createStyles(colors: ColorPalette) {
       borderRadius: 8,
       marginTop: 10,
       alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: colors.sky,
     },
     mapButtonText: {
       color: colors.sky,
       fontSize: 14,
-      fontWeight: '500',
+      fontWeight: '700',
     },
     modalActions: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 16,
-      paddingTop: 16,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 12,
       borderTopWidth: 1,
       borderTopColor: colors.borderSoft,
+      backgroundColor: colors.surface,
+      gap: 10,
     },
     closeButton: {
       flex: 1,
       backgroundColor: colors.border,
       paddingVertical: 14,
-      borderRadius: 8,
-      marginRight: 8,
+      borderRadius: 10,
       alignItems: 'center',
     },
     closeButtonText: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.textPrimary,
     },
     deleteButton: {
       flex: 1,
       backgroundColor: colors.redSoft,
       paddingVertical: 14,
-      borderRadius: 8,
-      marginLeft: 8,
+      borderRadius: 10,
       alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.red,
     },
     deleteButtonText: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.red,
     },
     selfieBadgeRow: {
@@ -630,11 +687,12 @@ function createStyles(colors: ColorPalette) {
       fontWeight: '700',
     },
     rowSelfieThumb: {
-      width: 44,
-      height: 44,
+      width: 48,
+      height: 48,
       borderRadius: 8,
-      borderWidth: 1.5,
+      borderWidth: 2,
       borderColor: colors.sky,
+      backgroundColor: colors.bg,
     },
     selfieEvidenceCard: {
       backgroundColor: colors.bg,
@@ -647,29 +705,31 @@ function createStyles(colors: ColorPalette) {
     },
     selfieEvidenceTitle: {
       fontSize: 12,
-      fontWeight: '700',
+      fontWeight: '800',
       color: colors.sky,
       marginBottom: 8,
       letterSpacing: 0.5,
+      alignSelf: 'flex-start',
     },
     modalSelfieImage: {
       width: '100%',
-      height: 260,
+      height: 180,
       borderRadius: 10,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceAlt,
     },
     selfiePathLabel: {
       fontSize: 11,
-      color: colors.textSecondary,
+      color: colors.textMuted,
       marginTop: 10,
       marginBottom: 2,
       textTransform: 'uppercase',
       letterSpacing: 0.5,
       alignSelf: 'flex-start',
+      fontWeight: '700',
     },
     selfiePathValue: {
-      fontSize: 11,
-      color: colors.textMuted,
+      fontSize: 12,
+      color: colors.textPrimary,
       fontFamily: 'monospace',
       alignSelf: 'flex-start',
     },

@@ -617,24 +617,47 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                             val start: Long, val end: Long, val dur: Long)
             val sessions = mutableListOf<Sess>()
 
+            // On API 29+ both ACTIVITY_* and MOVE_TO_* fire for the same session,
+            // which duplicated entries in Timeline/Reports. Prefer ACTIVITY_* only.
+            val useActivityEvents = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             val moveToFg = android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
             val moveToBg = android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND
             val activityResumed = android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED
             val activityPaused = android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED
+            val selfPkg = reactContext.packageName
 
             val ev = android.app.usage.UsageEvents.Event()
             while (events.hasNextEvent()) {
                 events.getNextEvent(ev)
                 val pkg = ev.packageName ?: continue
-                when (ev.eventType) {
-                    moveToFg, activityResumed -> {
-                        openStart[pkg] = ev.timeStamp
-                    }
-                    moveToBg, activityPaused -> {
+                if (pkg == selfPkg) continue
+                val isStart = if (useActivityEvents) {
+                    ev.eventType == activityResumed
+                } else {
+                    ev.eventType == moveToFg
+                }
+                val isEnd = if (useActivityEvents) {
+                    ev.eventType == activityPaused
+                } else {
+                    ev.eventType == moveToBg
+                }
+                when {
+                    isStart -> openStart[pkg] = ev.timeStamp
+                    isEnd -> {
                         val start = openStart.remove(pkg)
                         if (start != null && ev.timeStamp > start) {
-                            sessions += Sess(pkg, appNameFor(pm, pkg), categoryFor(pm, pkg),
-                                start, ev.timeStamp, (ev.timeStamp - start) / 1000L)
+                            val durSec = (ev.timeStamp - start) / 1000L
+                            // Drop noise sub-second / tiny focus blips
+                            if (durSec >= 1L) {
+                                sessions += Sess(
+                                    pkg,
+                                    appNameFor(pm, pkg),
+                                    categoryFor(pm, pkg),
+                                    start,
+                                    ev.timeStamp,
+                                    durSec,
+                                )
+                            }
                         }
                     }
                 }

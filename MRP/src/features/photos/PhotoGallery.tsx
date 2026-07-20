@@ -269,19 +269,21 @@ export function PhotoGallery() {
 
   return (
     <View style={styles.container}>
-      <Card>
+      <Card style={{marginHorizontal: 0}}>
         <TouchableOpacity
           style={styles.controlsHeader}
           onPress={() => setControlsExpanded(v => !v)}
           activeOpacity={0.7}>
-          <View style={{flex: 1}}>
+          <View style={styles.controlsHeaderText}>
             <Text style={styles.headerLabel}>CONTROLS</Text>
             <Text style={styles.subheader}>
               {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
               {!controlsExpanded ? ' · Tap to expand filters' : ''}
             </Text>
           </View>
-          <Text style={styles.chevron}>{controlsExpanded ? '▾' : '▸'}</Text>
+          <View style={styles.chevronBtn}>
+            <Text style={styles.chevron}>{controlsExpanded ? '▾' : '▸'}</Text>
+          </View>
         </TouchableOpacity>
 
         {controlsExpanded && (
@@ -371,12 +373,12 @@ export function PhotoGallery() {
 
       <Modal
         visible={!!selectedPhoto}
-        transparent={true}
+        transparent={false}
         animationType="slide"
         onRequestClose={() => setSelectedPhoto(null)}>
         <SafeAreaView style={styles.modalContainer}>
           {selectedPhoto && (
-            <ScrollView contentContainerStyle={styles.modalScroll}>
+            <>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalHeaderTitle}>Security Event Evidence</Text>
                 <TouchableOpacity
@@ -386,48 +388,51 @@ export function PhotoGallery() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.imageCard}>
-                <Image
-                  source={{uri: `file://${selectedPhoto.path}`}}
-                  style={styles.fullImage}
-                  resizeMode="contain"
-                />
-              </View>
+              <ScrollView
+                style={styles.modalScrollFlex}
+                contentContainerStyle={styles.modalScroll}
+                showsVerticalScrollIndicator
+                keyboardShouldPersistTaps="handled">
+                <View style={styles.imageCard}>
+                  <Image
+                    source={{uri: `file://${selectedPhoto.path}`}}
+                    style={styles.fullImage}
+                    resizeMode="contain"
+                  />
+                </View>
 
-              <Card>
-                <View style={styles.detailsHeader}>
+                <View style={styles.detailsCard}>
                   <Text style={styles.detailsTitle}>
                     {formatPhotoEventName(selectedPhoto.name)}
                   </Text>
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>VERIFIED RECORD</Text>
+                    <Text style={styles.badgeText}>VERIFIED</Text>
                   </View>
-                </View>
 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>📅 Capture Timestamp:</Text>
-                  <Text style={styles.detailValue}>
-                    {new Date(selectedPhoto.timestamp).toLocaleDateString()}{' '}
-                    {new Date(selectedPhoto.timestamp).toLocaleTimeString()}
-                  </Text>
-                </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>📅 Capture Timestamp</Text>
+                    <Text style={styles.detailValue}>
+                      {new Date(selectedPhoto.timestamp).toLocaleDateString()}{' '}
+                      {new Date(selectedPhoto.timestamp).toLocaleTimeString()}
+                    </Text>
+                  </View>
 
-                {matchedEvent ? (
-                  <>
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>⚡ Security Trigger:</Text>
-                      <Text style={styles.detailValue}>
-                        {matchedEvent.event_type.replace(/_/g, ' ')} ({matchedEvent.status})
-                      </Text>
-                    </View>
+                  {matchedEvent ? (
+                    <>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>⚡ Security Trigger</Text>
+                        <Text style={styles.detailValue}>
+                          {matchedEvent.event_type.replace(/_/g, ' ')} ({matchedEvent.status})
+                        </Text>
+                      </View>
 
-                    {matchedEvent.location && matchedEvent.location.latitude !== 0 ? (
-                      <>
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>📍 Address:</Text>
-                          <View style={{flex: 1, alignItems: 'flex-end'}}>
+                      {matchedEvent.location && matchedEvent.location.latitude !== 0 ? (
+                        <>
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>📍 Address</Text>
                             <Text style={styles.detailValue}>
-                              {matchedEvent.location.detailed_address || 'Address lookup in progress'}
+                              {matchedEvent.location.detailed_address ||
+                                'Address lookup in progress'}
                             </Text>
                             <TouchableOpacity
                               style={styles.mapButton}
@@ -440,46 +445,50 @@ export function PhotoGallery() {
                               <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
                             </TouchableOpacity>
                           </View>
-                        </View>
+                          <View style={styles.detailRow}>
+                            <Text style={styles.detailLabel}>🌐 GPS Coordinates</Text>
+                            <Text style={styles.detailValue}>
+                              {matchedEvent.location.latitude.toFixed(5)},{' '}
+                              {matchedEvent.location.longitude.toFixed(5)} (±1m)
+                            </Text>
+                          </View>
+                        </>
+                      ) : (
                         <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>🌐 GPS Coordinates:</Text>
-                          <Text style={styles.detailValue} numberOfLines={1}>
-                            {matchedEvent.location.latitude.toFixed(5)},{' '}
-                            {matchedEvent.location.longitude.toFixed(5)} (±1m)
-                          </Text>
+                          <Text style={styles.detailLabel}>📍 Location</Text>
+                          <Text style={styles.detailValue}>No Location Data</Text>
                         </View>
-                      </>
-                    ) : (
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>📍 Location:</Text>
-                        <Text style={styles.detailValue}>No Location Data</Text>
-                      </View>
-                    )}
+                      )}
 
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>🏠 Geofence</Text>
+                        <Text style={styles.detailValue}>
+                          {matchedEvent.geofence_status?.inside_fence
+                            ? 'Inside fence'
+                            : 'Outside fence'}
+                        </Text>
+                      </View>
+                    </>
+                  ) : (
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>🏠 Geofence:</Text>
+                      <Text style={styles.detailLabel}>⚡ Trigger Source</Text>
                       <Text style={styles.detailValue}>
-                        {matchedEvent.geofence_status?.inside_fence ? 'Inside fence' : 'Outside fence'}
+                        Security Intruder Surveillance Event
                       </Text>
                     </View>
-                  </>
-                ) : (
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>⚡ Trigger Source:</Text>
-                    <Text style={styles.detailValue}>Security Intruder Surveillance Event</Text>
-                  </View>
-                )}
+                  )}
 
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>📁 Evidence File:</Text>
-                  <Text style={[styles.detailValue, {fontSize: 13, color: colors.textPrimary}]}>
-                    {selectedPhoto.name}
-                  </Text>
-                  <Text style={[styles.detailValue, {fontSize: 11, color: colors.textMuted, marginTop: 4}]}>
-                    {selectedPhoto.path}
-                  </Text>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>📁 Evidence File</Text>
+                    <Text style={styles.detailValue} selectable>
+                      {selectedPhoto.name}
+                    </Text>
+                    <Text style={styles.detailPath} selectable>
+                      {selectedPhoto.path}
+                    </Text>
+                  </View>
                 </View>
-              </Card>
+              </ScrollView>
 
               <View style={styles.modalActions}>
                 <TouchableOpacity
@@ -493,7 +502,7 @@ export function PhotoGallery() {
                   <Text style={styles.doneBtnText}>Close Viewer</Text>
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </>
           )}
         </SafeAreaView>
       </Modal>
@@ -519,13 +528,28 @@ function createStyles(colors: ColorPalette) {
     controlsHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 4,
+      justifyContent: 'space-between',
+      minHeight: 48,
+    },
+    controlsHeaderText: {
+      flex: 1,
+      paddingRight: 12,
+    },
+    chevronBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.skySoft,
+      borderWidth: 1,
+      borderColor: colors.sky,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     chevron: {
-      color: colors.textSecondary,
-      fontSize: 18,
-      fontWeight: '700',
-      paddingLeft: 8,
+      color: colors.sky,
+      fontSize: 16,
+      fontWeight: '800',
+      lineHeight: 18,
     },
     buttonRow: {
       flexDirection: 'row',
@@ -547,7 +571,7 @@ function createStyles(colors: ColorPalette) {
       opacity: 0.7,
     },
     controlButtonText: {
-      color: colors.textPrimary,
+      color: '#ffffff',
       fontSize: 14,
       fontWeight: '700',
       textAlign: 'center',
@@ -556,7 +580,7 @@ function createStyles(colors: ColorPalette) {
       fontSize: 13,
       color: colors.textSecondary,
       lineHeight: 18,
-      marginBottom: 16,
+      marginBottom: 0,
     },
     controlSection: {
       marginBottom: 12,
@@ -592,7 +616,7 @@ function createStyles(colors: ColorPalette) {
       fontWeight: '600',
     },
     chipTextActive: {
-      color: colors.textPrimary,
+      color: '#ffffff',
       fontWeight: '700',
     },
     gridContainer: {
@@ -622,20 +646,18 @@ function createStyles(colors: ColorPalette) {
       bottom: 0,
       left: 0,
       right: 0,
-      backgroundColor: 'rgba(0, 0, 0, 0.85)',
+      backgroundColor: 'rgba(0, 0, 0, 0.78)',
       paddingHorizontal: 10,
       paddingVertical: 8,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderSoft,
     },
     photoTitle: {
-      color: colors.textPrimary,
+      color: '#f8fafc',
       fontSize: 12,
       fontWeight: '700',
       marginBottom: 2,
     },
     photoTime: {
-      color: colors.textSecondary,
+      color: '#cbd5e1',
       fontSize: 10,
     },
     emptyContainer: {
@@ -676,19 +698,27 @@ function createStyles(colors: ColorPalette) {
       flex: 1,
       backgroundColor: colors.bg,
     },
+    modalScrollFlex: {
+      flex: 1,
+    },
     modalScroll: {
       padding: 16,
-      paddingBottom: 40,
+      paddingBottom: 24,
     },
     modalHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 16,
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      backgroundColor: colors.surface,
     },
     modalHeaderTitle: {
-      fontSize: 20,
-      fontWeight: '700',
+      fontSize: 18,
+      fontWeight: '800',
       color: colors.textPrimary,
       flex: 1,
     },
@@ -707,7 +737,7 @@ function createStyles(colors: ColorPalette) {
       fontWeight: 'bold',
     },
     imageCard: {
-      height: 340,
+      height: 220,
       borderRadius: 16,
       backgroundColor: '#000000',
       overflow: 'hidden',
@@ -719,64 +749,94 @@ function createStyles(colors: ColorPalette) {
       width: '100%',
       height: '100%',
     },
+    detailsCard: {
+      backgroundColor: colors.surface,
+      borderRadius: 14,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
     detailsHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       marginBottom: 14,
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
       paddingBottom: 10,
+      gap: 8,
     },
     detailsTitle: {
-      fontSize: 17,
-      fontWeight: '700',
-      color: colors.sky,
-      flex: 1,
+      fontSize: 18,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 10,
+      lineHeight: 24,
     },
     badge: {
-      backgroundColor: colors.skyDark,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-      marginLeft: 8,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.skySoft,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colors.sky,
+      marginBottom: 16,
     },
     badgeText: {
-      color: colors.textPrimary,
-      fontSize: 10,
-      fontWeight: '700',
+      color: colors.sky,
+      fontSize: 11,
+      fontWeight: '800',
     },
     detailRow: {
-      marginBottom: 12,
+      marginBottom: 16,
     },
     detailLabel: {
-      fontSize: 12,
-      color: colors.textSecondary,
-      marginBottom: 2,
-      fontWeight: '600',
+      fontSize: 11,
+      color: colors.textMuted,
+      marginBottom: 6,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
     },
     detailValue: {
-      fontSize: 14,
+      fontSize: 15,
       color: colors.textPrimary,
-      fontWeight: '500',
+      fontWeight: '600',
+      lineHeight: 22,
+    },
+    detailPath: {
+      fontSize: 12,
+      color: colors.textSecondary,
+      marginTop: 6,
+      fontFamily: 'monospace',
+      lineHeight: 17,
     },
     modalActions: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginTop: 16,
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+      backgroundColor: colors.surface,
+      gap: 10,
     },
     mapButton: {
       backgroundColor: colors.skySoft,
       paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 6,
+      paddingVertical: 8,
+      borderRadius: 8,
       marginTop: 8,
-      alignSelf: 'flex-end',
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: colors.sky,
     },
     mapButtonText: {
       color: colors.sky,
       fontSize: 12,
-      fontWeight: '500',
+      fontWeight: '700',
     },
     deleteBtn: {
       flex: 1,
