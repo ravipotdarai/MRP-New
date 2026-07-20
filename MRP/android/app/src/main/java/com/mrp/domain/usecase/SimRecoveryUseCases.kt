@@ -5,35 +5,21 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
-import android.location.LocationListener
-import android.location.LocationManager
 import android.os.Build
-import android.os.Bundle
-import android.os.Looper
 import android.provider.Settings
 import android.telephony.SmsManager
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.tasks.CancellationTokenSource
 import com.mrp.data.local.EventDao
 import com.mrp.data.local.SimRecoveryStorage
 import com.mrp.domain.model.GpsCapture
 import com.mrp.domain.model.GpsFixStatus
 import com.mrp.domain.model.SimIdentity
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
+import com.mrp.util.SmsGuard
 import java.util.Locale
 import java.util.TimeZone
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.coroutines.resume
 
 /**
  * Reads current SIM identity and compares against encrypted baseline.
@@ -187,42 +173,52 @@ class SimIdentityTracker(private val context: Context) {
 }
 
 /**
- * Offline-first GNSS capture with FixStatus.
- * Fresh (≤30s) → LocationManager GPS → last known → DB cached → NoFix
+ * Offline-first location capture for SIM recovery SMS.
+ * Uses [LocationResolver] cascade (cache → Wi‑Fi → cell → GPS last, capped 10–15s).
+ * Always returns a [GpsCapture]; NoFix still allows SMS to send.
  */
 class CaptureOfflineGnssUseCase(private val context: Context) {
 
-    private val fused = LocationServices.getFusedLocationProviderClient(context)
-    private val locationManager =
-        context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-
-    fun captureSync(maxWaitMs: Long = 30_000L): GpsCapture {
-        return runBlocking(Dispatchers.IO) {
-            capture(maxWaitMs)
-        }
+    /** Cap ignored above 15s — cascade already bounds GPS wait. */
+    fun captureSync(maxWaitMs: Long = 15_000L): GpsCapture {
+        return capture(maxWaitMs)
     }
 
-    suspend fun capture(maxWaitMs: Long = 30_000L): GpsCapture {
-        if (!hasPermission()) {
-            return cachedOrNoFix()
+    fun capture(maxWaitMs: Long = 15_000L): GpsCapture {
+        val resolved = try {
+            LocationResolver.resolveSync(context, LocationResolver.Severity.SIM_RECOVERY)
+        } catch (e: Exception) {
+            Log.w(TAG, "LocationResolver failed", e)
+            null
         }
 
-        // 1) Fresh fused high-accuracy
-        val fresh = withTimeoutOrNull(maxWaitMs) { requestFreshFused() }
-        if (fresh != null) {
-            return toCapture(fresh, if (isFresh(fresh)) GpsFixStatus.FreshFix else GpsFixStatus.WarmFix)
-        }
-
-        // 2) GPS provider via LocationManager
-        val gpsLoc = withTimeoutOrNull(8_000L) { requestGpsProvider() }
-        if (gpsLoc != null) {
-            return toCapture(gpsLoc, GpsFixStatus.WarmFix)
-        }
-
-        // 3) Last known fused / LM
-        val lastKnown = getLastKnown()
-        if (lastKnown != null) {
-            return toCapture(lastKnown, GpsFixStatus.LastKnown)
+        if (resolved != null) {
+            val loc = resolved.location
+            val status = when (resolved.tier) {
+                "cache" -> GpsFixStatus.FreshFix
+                "wifi", "cell" ->
+                    if (isFresh(loc)) GpsFixStatus.FreshFix else GpsFixStatus.WarmFix
+                "gps" -> GpsFixStatus.WarmFix
+                "last_known" -> GpsFixStatus.LastKnown
+                else -> GpsFixStatus.WarmFix
+            }
+            Log.i(
+                LocationResolver.TAG_BATTERY,
+                "sim_gnss tier=${resolved.tier} cacheHit=${resolved.cacheHit} " +
+                    "durationMs=${resolved.durationMs} provider=${resolved.provider} " +
+                    "maxWaitMs=$maxWaitMs fix=$status"
+            )
+            return GpsCapture(
+                latitude = loc.latitude,
+                longitude = loc.longitude,
+                accuracy = loc.accuracy,
+                altitude = loc.altitude,
+                bearing = loc.bearing,
+                speed = loc.speed,
+                provider = resolved.provider,
+                timestampMs = loc.time,
+                fixStatus = status
+            )
         }
 
         return cachedOrNoFix()
@@ -232,6 +228,7 @@ class CaptureOfflineGnssUseCase(private val context: Context) {
         return try {
             val cached = EventDao(context).getLastKnownLocation()
             if (cached != null) {
+                Log.i(LocationResolver.TAG_BATTERY, "sim_gnss tier=cached_db fix=Cached")
                 GpsCapture(
                     latitude = cached.first,
                     longitude = cached.second,
@@ -240,6 +237,7 @@ class CaptureOfflineGnssUseCase(private val context: Context) {
                     timestampMs = System.currentTimeMillis()
                 )
             } else {
+                Log.i(LocationResolver.TAG_BATTERY, "sim_gnss tier=none fix=NoFix")
                 GpsCapture(fixStatus = GpsFixStatus.NoFix)
             }
         } catch (_: Exception) {
@@ -247,93 +245,11 @@ class CaptureOfflineGnssUseCase(private val context: Context) {
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private suspend fun requestFreshFused(): Location? = suspendCancellableCoroutine { cont ->
-        val cts = CancellationTokenSource()
-        cont.invokeOnCancellation { cts.cancel() }
-        try {
-            fused.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
-                .addOnSuccessListener { loc -> if (cont.isActive) cont.resume(loc) }
-                .addOnFailureListener { if (cont.isActive) cont.resume(null) }
-        } catch (e: Exception) {
-            if (cont.isActive) cont.resume(null)
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private suspend fun requestGpsProvider(): Location? = suspendCancellableCoroutine { cont ->
-        if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-            cont.resume(null)
-            return@suspendCancellableCoroutine
-        }
-        val holder = AtomicReference<Location?>(null)
-        val listener = object : LocationListener {
-            override fun onLocationChanged(location: Location) {
-                holder.set(location)
-                try { locationManager.removeUpdates(this) } catch (_: Exception) {}
-                if (cont.isActive) cont.resume(location)
-            }
-            @Deprecated("Deprecated in Java")
-            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
-            override fun onProviderEnabled(provider: String) {}
-            override fun onProviderDisabled(provider: String) {}
-        }
-        cont.invokeOnCancellation {
-            try { locationManager.removeUpdates(listener) } catch (_: Exception) {}
-        }
-        try {
-            locationManager.requestLocationUpdates(
-                LocationManager.GPS_PROVIDER,
-                0L,
-                0f,
-                listener,
-                Looper.getMainLooper()
-            )
-        } catch (e: Exception) {
-            if (cont.isActive) cont.resume(null)
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun getLastKnown(): Location? {
-        return try {
-            val latch = CountDownLatch(1)
-            val ref = AtomicReference<Location?>(null)
-            fused.lastLocation
-                .addOnSuccessListener { loc ->
-                    ref.set(loc)
-                    latch.countDown()
-                }
-                .addOnFailureListener { latch.countDown() }
-            latch.await(2, TimeUnit.SECONDS)
-            ref.get()
-                ?: locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     private fun isFresh(loc: Location): Boolean =
         System.currentTimeMillis() - loc.time < 60_000L
 
-    private fun toCapture(loc: Location, status: GpsFixStatus) = GpsCapture(
-        latitude = loc.latitude,
-        longitude = loc.longitude,
-        accuracy = loc.accuracy,
-        altitude = loc.altitude,
-        bearing = loc.bearing,
-        speed = loc.speed,
-        provider = loc.provider ?: "unknown",
-        timestampMs = loc.time,
-        fixStatus = status
-    )
-
-    private fun hasPermission(): Boolean {
-        return ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED ||
-            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
+    companion object {
+        private const val TAG = "CaptureOfflineGnss"
     }
 }
 
@@ -386,41 +302,50 @@ class SendSimChangeSmsUseCase(private val context: Context) {
             """.trimIndent()
     }
 
-    fun sendToAll(message: String, phones: List<String>): Pair<Int, Int> {
-        var sent = 0
-        var failed = 0
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            Log.w(TAG, "SEND_SMS not granted")
+    fun sendToAll(message: String, phones: List<String>, purpose: SmsGuard.Purpose): Pair<Int, Int> {
+        if (!SmsGuard.beginSend(purpose)) {
             return 0 to phones.size
         }
-        val sms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            context.getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
-        } else {
-            @Suppress("DEPRECATION")
-            SmsManager.getDefault()
-        }
-        for (raw in phones) {
-            val phone = raw.trim()
-            if (phone.length < 8) {
-                failed++
-                continue
+        try {
+            var sent = 0
+            var failed = 0
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.w(TAG, "SEND_SMS not granted")
+                return 0 to phones.size
             }
-            try {
-                val parts = sms.divideMessage(message)
-                if (parts.size == 1) {
-                    sms.sendTextMessage(phone, null, message, null, null)
-                } else {
-                    sms.sendMultipartTextMessage(phone, null, parts, null, null)
+            SmsGuard.assertAllowed(purpose)
+            val sms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                context.getSystemService(SmsManager::class.java) ?: SmsManager.getDefault()
+            } else {
+                @Suppress("DEPRECATION")
+                SmsManager.getDefault()
+            }
+            for (raw in phones) {
+                val phone = raw.trim()
+                if (phone.length < 8) {
+                    failed++
+                    continue
                 }
-                sent++
-            } catch (e: Exception) {
-                Log.e(TAG, "SMS failed (number masked)", e)
-                failed++
+                try {
+                    SmsGuard.assertAllowed(purpose)
+                    val parts = sms.divideMessage(message)
+                    if (parts.size == 1) {
+                        sms.sendTextMessage(phone, null, message, null, null)
+                    } else {
+                        sms.sendMultipartTextMessage(phone, null, parts, null, null)
+                    }
+                    sent++
+                } catch (e: Exception) {
+                    Log.e(TAG, "SMS failed (number masked)", e)
+                    failed++
+                }
             }
+            return sent to failed
+        } finally {
+            SmsGuard.endSend()
         }
-        return sent to failed
     }
 
     companion object {

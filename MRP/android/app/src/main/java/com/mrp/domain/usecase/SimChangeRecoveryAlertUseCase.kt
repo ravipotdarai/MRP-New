@@ -18,6 +18,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.mrp.data.local.SimRecoveryStorage
+import com.mrp.util.SmsGuard
 import com.mrp.domain.model.EventTypes
 import com.mrp.domain.model.GpsCapture
 import com.mrp.domain.model.GpsFixStatus
@@ -93,7 +94,8 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
     ) {
         notifyUser("Waiting for GPS", "Acquiring location for SIM change alert…")
 
-        val gps = gnss.captureSync(30_000L)
+        // Cascade caps GPS at 15s; SMS always proceeds even on NoFix
+        val gps = gnss.captureSync(15_000L)
         when (gps.fixStatus) {
             GpsFixStatus.FreshFix, GpsFixStatus.WarmFix ->
                 eventLogger.logEvent("GPS_CAPTURED", StatusValues.ENABLED, mapOf(
@@ -110,6 +112,31 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
         if (gps.fixStatus == GpsFixStatus.NoFix) {
             // Also emit timeout-style event when fresh wait exhausted
             eventLogger.logEvent("GPS_TIMEOUT", StatusValues.DISABLED, emptyMap())
+        }
+
+        if (gps.fixStatus != GpsFixStatus.NoFix && (gps.latitude != 0.0 || gps.longitude != 0.0)) {
+            GeoSnapshotWriter.enqueue(
+                context = context,
+                location = android.location.Location("sim_recovery").apply {
+                    latitude = gps.latitude
+                    longitude = gps.longitude
+                    accuracy = gps.accuracy
+                    altitude = gps.altitude
+                    time = gps.timestampMs
+                },
+                locationTier = when (gps.fixStatus) {
+                    GpsFixStatus.FreshFix, GpsFixStatus.WarmFix -> "gps"
+                    GpsFixStatus.LastKnown -> "last_known"
+                    GpsFixStatus.Cached -> "cached_db"
+                    else -> "none"
+                },
+                provider = gps.provider,
+                triggerSource = "SIM_RECOVERY",
+                address = null,
+                insideGeofence = false,
+                geofenceId = null,
+                extraMeta = mapOf("fix_status" to gps.fixStatus.name)
+            )
         }
 
         val battery = readBattery()
@@ -140,7 +167,7 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
         val contacts = storage.getContacts()
         val phones = contacts.map { it.phoneNumber }
         val (sent, failed) = if (phones.isNotEmpty()) {
-            smsSender.sendToAll(message, phones)
+            smsSender.sendToAll(message, phones, SmsGuard.Purpose.SIM_RECOVERY_ALERT)
         } else {
             0 to 0
         }
@@ -230,7 +257,7 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
         val current = identityTracker.readCurrentIdentity()
         val resolvedPhone = resolvePhoneNumber(current)
         val gps = try {
-            gnss.captureSync(8_000L)
+            gnss.captureSync(12_000L)
         } catch (e: Exception) {
             Log.w(TAG, "GPS for test SMS failed", e)
             GpsCapture(fixStatus = GpsFixStatus.NoFix)
@@ -249,7 +276,11 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
             iccidMasked = SimRecoveryStorage.maskPhone(current.iccid.ifBlank { "0000" }),
             hasPhone = resolvedPhone.isNotBlank()
         )
-        val (sent, failed) = smsSender.sendToAll("[TEST]\n$msg", contacts.map { it.phoneNumber })
+        val (sent, failed) = smsSender.sendToAll(
+            "[TEST]\n$msg",
+            contacts.map { it.phoneNumber },
+            SmsGuard.Purpose.SIM_RECOVERY_TEST
+        )
         Log.i(TAG, "Test SMS result sent=$sent failed=$failed")
         if (sent > 0) {
             storage.setLastSmsMs(System.currentTimeMillis())

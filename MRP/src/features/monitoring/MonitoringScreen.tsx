@@ -15,6 +15,7 @@ import {
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
+import {PermissionSetupWizard} from '../setup/PermissionSetupWizard';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -243,6 +244,9 @@ export function MonitoringScreen() {
   const [hasCameraPerm, setHasCameraPerm] = useState(false);
   const [hasLocationPerm, setHasLocationPerm] = useState(false);
   const [hasOverlayPerm, setHasOverlayPerm] = useState(false);
+  const [hasAccessibility, setHasAccessibility] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [coreSetupComplete, setCoreSetupComplete] = useState(true);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -255,6 +259,12 @@ export function MonitoringScreen() {
       setHasCameraPerm(camCheck);
       setHasLocationPerm(locCheck);
       setHasOverlayPerm(overlayCheck);
+      const a11y = await mrpmModule.isAccessibilityEnabled?.().catch(() => false);
+      setHasAccessibility(!!a11y);
+      if (typeof (mrpmModule as any).getPermissionSetupStatus === 'function') {
+        const st = await (mrpmModule as any).getPermissionSetupStatus();
+        setCoreSetupComplete(!!st?.coreComplete);
+      }
     } catch (e) {
       console.error('[checkPermissions] Failed to check permissions:', e);
     }
@@ -285,6 +295,7 @@ export function MonitoringScreen() {
   const allPermsGranted = hasCameraPerm && hasLocationPerm && hasOverlayPerm && isDeviceAdminEnabled;
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       {/* Master Security Status Header */}
       <View style={styles.masterBanner}>
@@ -318,52 +329,21 @@ export function MonitoringScreen() {
         {/* Navigate to full permissions screen */}
         <TouchableOpacity
           style={styles.managePermissionsButton}
-          onPress={async () => {
-            await mrpmModule.openAppSettings();
-          }}
+          onPress={() => setShowSetupWizard(true)}
           activeOpacity={0.75}>
-          <Text style={styles.managePermissionsButtonText}>🔒 Manage All Permissions</Text>
+          <Text style={styles.managePermissionsButtonText}>
+            {coreSetupComplete ? '🔒 Review permissions setup' : '🔒 Grant All Access'}
+          </Text>
           <Text style={styles.managePermissionsButtonSubtitle}>
-            View full permissions details, app purpose, and grant instructions
+            Guided one-time flow — camera, location, overlay, device admin, battery
           </Text>
         </TouchableOpacity>
 
         {!allPermsGranted && (
           <TouchableOpacity
             style={styles.grantAllButton}
-            onPress={async () => {
-              if (!hasCameraPerm) {
-                const cam = await requestRuntimePermissions([
-                  PermissionsAndroid.PERMISSIONS.CAMERA,
-                ]);
-                setHasCameraPerm(cam === 'granted');
-                if (cam === 'blocked') {
-                  promptOpenSettings(
-                    'Camera permission blocked',
-                    'Enable Camera in App Settings.',
-                  );
-                }
-              }
-              if (!hasLocationPerm) {
-                const loc = await requestRuntimePermissions(locationPermissions());
-                setHasLocationPerm(loc === 'granted');
-                if (loc === 'blocked') {
-                  promptOpenSettings(
-                    'Location permission blocked',
-                    'Enable Location in App Settings.',
-                  );
-                }
-              }
-              if (!hasOverlayPerm) {
-                await mrpmModule.requestOverlayPermission();
-              }
-              const admin = await mrpmModule.isDeviceAdminEnabled();
-              if (!admin) {
-                await mrpmModule.requestDeviceAdminEnable();
-              }
-              setTimeout(checkPermissions, 1000);
-            }}>
-            <Text style={styles.grantAllButtonText}>⚠️ Grant Required Permissions</Text>
+            onPress={() => setShowSetupWizard(true)}>
+            <Text style={styles.grantAllButtonText}>⚠️ Grant All Access (guided)</Text>
           </TouchableOpacity>
         )}
 
@@ -477,15 +457,38 @@ export function MonitoringScreen() {
         <SettingItem
           icon="🔐"
           title="Device Admin Access"
-          subtitle="Detect wrong password & biometric unlock"
+          subtitle="Detect wrong password unlock attempts"
           value={isDeviceAdminEnabled}
-          isLast={true}
+          isLast={false}
           onValueChange={async val => {
             if (val) {
               await mrpmModule.requestDeviceAdminEnable();
             } else {
               await mrpmModule.disableDeviceAdmin();
               setIsDeviceAdminEnabled(false);
+            }
+            setTimeout(checkPermissions, 1000);
+          }}
+        />
+
+        <SettingItem
+          icon="♿"
+          title="Accessibility (optional)"
+          subtitle="Enhanced: failed fingerprint/face unlock detection"
+          value={hasAccessibility}
+          isLast={true}
+          onValueChange={async val => {
+            if (val) {
+              await mrpmModule.requestAccessibilityEnable();
+            } else {
+              Alert.alert(
+                'Disable in Settings',
+                'Turn off MRP under Settings → Accessibility if you no longer need biometric detection.',
+                [
+                  {text: 'OK'},
+                  {text: 'Open Settings', onPress: () => mrpmModule.requestAccessibilityEnable()},
+                ],
+              );
             }
             setTimeout(checkPermissions, 1000);
           }}
@@ -578,6 +581,18 @@ export function MonitoringScreen() {
         />
       </View>
     </ScrollView>
+    <PermissionSetupWizard
+      visible={showSetupWizard}
+      onClose={() => {
+        setShowSetupWizard(false);
+        checkPermissions();
+      }}
+      onComplete={() => {
+        setCoreSetupComplete(true);
+        checkPermissions();
+      }}
+    />
+    </>
   );
 }
 

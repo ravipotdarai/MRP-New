@@ -21,8 +21,8 @@ class CreateTimelineEntryUseCase(private val context: Context) {
         val id = UUID.randomUUID().toString()
         val timestamp = ISO8601_DATE_FORMAT.format(Date())
 
-        // Get current location
-        locationHelper.getCurrentLocation { locationData ->
+        val severity = LocationResolver.severityForEvent(eventType)
+        locationHelper.getCurrentLocation({ locationData ->
             if (locationData != null) {
                 locationHelper.reverseGeocode(
                     locationData.latitude,
@@ -48,7 +48,7 @@ class CreateTimelineEntryUseCase(private val context: Context) {
                             insideFence = geofenceResult.insideFence,
                             fenceId = geofenceResult.fenceId
                         ),
-                        metadata = metadata
+                        metadata = metadata + mapOf("location_provider" to locationData.provider)
                     )
 
                     timelineStorage.appendTimelineEntry(entry)
@@ -57,7 +57,6 @@ class CreateTimelineEntryUseCase(private val context: Context) {
                     onComplete(entry)
                 }
             } else {
-                // No location - create entry without location data
                 val entry = TimelineEntry(
                     id = id,
                     timestamp = timestamp,
@@ -81,7 +80,7 @@ class CreateTimelineEntryUseCase(private val context: Context) {
 
                 onComplete(entry)
             }
-        }
+        }, severity)
     }
 
     companion object {

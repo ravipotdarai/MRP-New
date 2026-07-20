@@ -6,24 +6,17 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.os.Build
-import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.location.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.*
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 /**
- * Enhanced LocationHelper using FusedLocationProviderClient for high-accuracy location
- * with geofencing support and reverse geocoding.
+ * Location + geofence + reverse-geocode helpers.
+ * Fresh fixes go through [LocationResolver] (Wi‑Fi → cell → GPS).
  */
 class LocationHelper(private val context: Context) {
-
-    private val fusedLocationClient: FusedLocationProviderClient =
-        LocationServices.getFusedLocationProviderClient(context)
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -43,11 +36,14 @@ class LocationHelper(private val context: Context) {
     }
 
     /**
-     * Get current location using FusedLocationProviderClient
-     * Falls back to last known location if fresh location is unavailable
+     * Get current location via Wi‑Fi → cell → GPS cascade.
+     * Default severity is [LocationResolver.Severity.UI] (Home / interactive).
      */
     @SuppressLint("MissingPermission")
-    fun getCurrentLocation(callback: (LocationData?) -> Unit) {
+    fun getCurrentLocation(
+        callback: (LocationData?) -> Unit,
+        severity: LocationResolver.Severity = LocationResolver.Severity.UI
+    ) {
         if (!hasLocationPermission()) {
             Log.w(TAG, "Location permission not granted")
             callback(null)
@@ -56,18 +52,18 @@ class LocationHelper(private val context: Context) {
 
         scope.launch {
             try {
-                // Give GPS up to 8 seconds to get a fresh lock (crucial when screen is off)
-                val location = kotlinx.coroutines.withTimeoutOrNull(8000L) {
-                    getLocationAsync()
-                }
-                Log.d(TAG, "getCurrentLocation: ${location?.latitude}, ${location?.longitude}")
-                val locationData = location?.let {
+                val resolved = LocationResolver.resolveSync(context, severity)
+                Log.d(
+                    TAG,
+                    "getCurrentLocation: ${resolved?.location?.latitude}, ${resolved?.location?.longitude} tier=${resolved?.tier}"
+                )
+                val locationData = resolved?.location?.let {
                     LocationData(
                         latitude = it.latitude,
                         longitude = it.longitude,
                         accuracy = it.accuracy,
                         altitude = it.altitude,
-                        provider = it.provider ?: "fused"
+                        provider = resolved.provider
                     )
                 }
                 callback(locationData)
@@ -78,123 +74,57 @@ class LocationHelper(private val context: Context) {
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private suspend fun getLocationAsync(): Location? = suspendCancellableCoroutine { cont ->
-
-        // Try last known location first
-        fusedLocationClient.lastLocation
-            .addOnSuccessListener { location ->
-                if (location != null && isLocationFresh(location)) {
-                    if (cont.isActive) cont.resume(location)
-                } else {
-                    // Request fresh location
-                    requestFreshLocation { freshLocation ->
-                        if (freshLocation != null) {
-                            if (cont.isActive) cont.resume(freshLocation)
-                        } else {
-                            // Fall back to last known even if old
-                            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
-                                if (cont.isActive) cont.resume(loc)
-                            }.addOnFailureListener {
-                                if (cont.isActive) cont.resume(null)
-                            }
-                        }
-                    }
-                }
-            }
-            .addOnFailureListener {
-                Log.e(TAG, "Last location failed", it)
-                if (cont.isActive) cont.resume(null)
-            }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun requestFreshLocation(callback: (Location?) -> Unit) {
-        val locationRequest = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            1000L
-        ).apply {
-            setMinUpdateIntervalMillis(500L)
-            setMaxUpdates(1)
-            setWaitForAccurateLocation(true)
-        }.build()
-
-        val isInvoked = java.util.concurrent.atomic.AtomicBoolean(false)
-
-        val locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                fusedLocationClient.removeLocationUpdates(this)
-                if (isInvoked.compareAndSet(false, true)) {
-                    callback(result.lastLocation)
-                }
-            }
-        }
-
-        try {
-            fusedLocationClient.requestLocationUpdates(
-                locationRequest,
-                locationCallback,
-                Looper.getMainLooper()
-            )
-
-            // Timeout after 10 seconds
-            scope.launch {
-                delay(10000)
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-                if (isInvoked.compareAndSet(false, true)) {
-                    callback(null)
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Security exception requesting location", e)
-            if (isInvoked.compareAndSet(false, true)) {
-                callback(null)
-            }
-        }
-    }
-
-    private fun isLocationFresh(location: Location): Boolean {
-        val age = System.currentTimeMillis() - location.time
-        return age < LOCATION_MAX_AGE_MS
+    /** Blocking resolve for receivers / sync paths. */
+    fun getCurrentLocationSync(
+        severity: LocationResolver.Severity = LocationResolver.Severity.INFORMATIONAL
+    ): LocationData? {
+        val resolved = LocationResolver.resolveSync(context, severity) ?: return null
+        val loc = resolved.location
+        return LocationData(
+            latitude = loc.latitude,
+            longitude = loc.longitude,
+            accuracy = loc.accuracy,
+            altitude = loc.altitude,
+            provider = resolved.provider
+        )
     }
 
     /**
-     * Reverse geocode coordinates to a human-readable address
+     * Reverse geocode coordinates to a human-readable address.
+     * Prefer Wi‑Fi; rate-limit on cellular; skip when offline (coords label only).
      */
     @Suppress("DEPRECATION")
     fun reverseGeocode(latitude: Double, longitude: Double, callback: (String?) -> Unit) {
         scope.launch {
-            try {
-                val address = withContext(Dispatchers.IO) {
-                    val geocoder = Geocoder(context, Locale.getDefault())
-
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        val latch = java.util.concurrent.CountDownLatch(1)
-                        var result: String? = null
-                        geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
-                            result = addresses.firstOrNull()?.getAddressLine(0)
-                            latch.countDown()
-                        }
-                        latch.await(2500, java.util.concurrent.TimeUnit.MILLISECONDS)
-                        result
-                    } else {
-                        val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-                        addresses?.firstOrNull()?.getAddressLine(0)
-                    }
-                }
-                callback(address)
-            } catch (e: Exception) {
-                Log.e(TAG, "Reverse geocoding failed", e)
-                callback(null)
-            }
+            callback(reverseGeocodeSyncOrNull(latitude, longitude))
         }
     }
 
     /**
-     * Synchronous reverse geocode for use in broadcast receivers
+     * Synchronous reverse geocode for use in broadcast receivers.
+     * Returns lat/lng label when offline or rate-limited on cellular.
      */
     @Suppress("DEPRECATION")
     fun reverseGeocodeSync(latitude: Double, longitude: Double): String {
+        return reverseGeocodeSyncOrNull(latitude, longitude)
+            ?: String.format(Locale.US, "Lat: %.5f, Long: %.5f", latitude, longitude)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun reverseGeocodeSyncOrNull(latitude: Double, longitude: Double): String? {
+        if (!LocationResolver.shouldGeocodeNow(context)) {
+            Log.i(LocationResolver.TAG_BATTERY, "geocode skipped offline")
+            return null
+        }
+        val now = SystemClock.elapsedRealtime()
+        val roundedLat = (latitude * 1000).toInt() / 1000.0
+        val roundedLng = (longitude * 1000).toInt() / 1000.0
+        if (lastGeocodeLat == roundedLat && lastGeocodeLng == roundedLng &&
+            now - lastGeocodeElapsed < DUPLICATE_GEOCODE_MS && lastGeocodeAddress != null
+        ) {
+            Log.i(LocationResolver.TAG_BATTERY, "geocode duplicate_coords skip")
+            return lastGeocodeAddress
+        }
         return try {
             val geocoder = Geocoder(context, Locale.getDefault())
             var result: String? = null
@@ -210,10 +140,21 @@ class LocationHelper(private val context: Context) {
                 val addresses = geocoder.getFromLocation(latitude, longitude, 1)
                 result = addresses?.firstOrNull()?.getAddressLine(0)
             }
-            result ?: String.format(Locale.US, "Lat: %.5f, Long: %.5f", latitude, longitude)
+            if (result != null) {
+                lastGeocodeElapsed = now
+                lastGeocodeLat = roundedLat
+                lastGeocodeLng = roundedLng
+                lastGeocodeAddress = result
+            }
+            val wifi = LocationResolver.isWifiConnected(context)
+            Log.i(
+                LocationResolver.TAG_BATTERY,
+                "geocode ok wifi=$wifi cellular_primary=${!wifi} address=${result != null}"
+            )
+            result
         } catch (e: Exception) {
             Log.e(TAG, "Reverse geocoding failed", e)
-            String.format(Locale.US, "Lat: %.5f, Long: %.5f", latitude, longitude)
+            null
         }
     }
 
@@ -277,6 +218,18 @@ class LocationHelper(private val context: Context) {
 
     companion object {
         private const val TAG = "LocationHelper"
-        private const val LOCATION_MAX_AGE_MS = 60000 // 1 minute
+        private const val DUPLICATE_GEOCODE_MS = 30_000L
+
+        @Volatile
+        private var lastGeocodeElapsed: Long = 0L
+
+        @Volatile
+        private var lastGeocodeLat: Double = 0.0
+
+        @Volatile
+        private var lastGeocodeLng: Double = 0.0
+
+        @Volatile
+        private var lastGeocodeAddress: String? = null
     }
 }

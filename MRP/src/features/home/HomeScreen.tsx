@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo} from 'react';
+import React, {useState, useCallback, useMemo, useEffect} from 'react';
 import {
   View,
   Text,
@@ -244,11 +244,13 @@ export function HomeScreen({
   };
 
   const securityScore = computeScore();
-  const isProtected =
-    settings.isMonitoringEnabled &&
-    permFlags.camera &&
-    permFlags.location &&
-    permFlags.overlay;
+  const protectionGaps: string[] = [];
+  if (!settings.isMonitoringEnabled) protectionGaps.push('Monitoring off');
+  if (!permFlags.camera) protectionGaps.push('Camera');
+  if (!permFlags.location) protectionGaps.push('Location');
+  if (!permFlags.overlay) protectionGaps.push('Display over other apps');
+  if (!permFlags.admin) protectionGaps.push('Device Admin');
+  const isProtected = protectionGaps.length === 0;
 
   const latestEvent = timeline[0] ?? null;
   const latestPhoto = latestEvent ? findMatchingPhoto(latestEvent) : null;
@@ -408,6 +410,11 @@ export function HomeScreen({
             ]}>
             {isProtected ? '✓ Your device is protected' : '⚠ Protection incomplete'}
           </Text>
+          {!isProtected ? (
+            <Text style={styles.syncedText} numberOfLines={2}>
+              Missing: {protectionGaps.join(', ')}
+            </Text>
+          ) : null}
           <Text style={styles.syncedText}>Last synced {lastSynced}</Text>
         </View>
       </View>
@@ -538,6 +545,12 @@ export function HomeScreen({
               <LiveMapPreview
                 latitude={loc.latitude}
                 longitude={loc.longitude}
+                hasNetwork={
+                  network?.isWifi === true ||
+                  network?.isMobile === true ||
+                  network?.connectionType === 'Mobile' ||
+                  network?.connectionType === 'WiFi'
+                }
                 styles={styles}
                 onOpenMaps={() => openMaps(loc.latitude, loc.longitude)}
               />
@@ -652,20 +665,36 @@ function buildMapUris(lat: number, lng: number): string[] {
   ];
 }
 
+const MAP_TILE_CACHE_MS = 10 * 60 * 1000;
+const mapTileCache = new Map<string, {uri: string; at: number}>();
+
+function roundCoord(n: number): string {
+  return n.toFixed(3);
+}
+
 function LiveMapPreview({
   latitude,
   longitude,
+  hasNetwork = true,
   styles,
   onOpenMaps,
 }: {
   latitude: number;
   longitude: number;
+  /** Wi‑Fi or mobile data — fetch static map tile (cached ~10 min). */
+  hasNetwork?: boolean;
   styles: ReturnType<typeof createHomeStyles>;
   onOpenMaps: () => void;
 }) {
   const uris = useMemo(() => buildMapUris(latitude, longitude), [latitude, longitude]);
+  const cacheKey = `${roundCoord(latitude)},${roundCoord(longitude)}`;
   const [uriIndex, setUriIndex] = useState(0);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState(!hasNetwork);
+
+  useEffect(() => {
+    setUriIndex(0);
+    setFailed(!hasNetwork);
+  }, [hasNetwork, latitude, longitude]);
 
   const onError = () => {
     if (uriIndex + 1 < uris.length) {
@@ -675,15 +704,33 @@ function LiveMapPreview({
     setFailed(true);
   };
 
+  const showImage = hasNetwork && !failed;
+  const activeUri = uris[uriIndex];
+  useEffect(() => {
+    if (showImage && activeUri) {
+      mapTileCache.set(cacheKey, {uri: activeUri, at: Date.now()});
+    }
+  }, [showImage, activeUri, cacheKey]);
+
+  const cached = mapTileCache.get(cacheKey);
+  const useCached =
+    !showImage &&
+    cached &&
+    Date.now() - cached.at < MAP_TILE_CACHE_MS &&
+    hasNetwork;
+
+  const displayImage = showImage || useCached;
+  const imageUri = showImage ? activeUri : cached?.uri;
+
   return (
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={onOpenMaps}
       style={styles.mapPlaceholder}>
-      {!failed ? (
+      {displayImage && imageUri ? (
         <Image
-          key={uris[uriIndex]}
-          source={{uri: uris[uriIndex]}}
+          key={imageUri}
+          source={{uri: imageUri}}
           style={styles.mapImage}
           resizeMode="cover"
           onError={onError}
@@ -691,13 +738,15 @@ function LiveMapPreview({
       ) : (
         <View style={styles.mapFallback}>
           <Text style={styles.mapFallbackPin}>📍</Text>
-          <Text style={styles.mapFallbackTitle}>Map preview unavailable</Text>
+          <Text style={styles.mapFallbackTitle}>
+            {hasNetwork ? 'Map preview unavailable' : 'Offline — open Google Maps'}
+          </Text>
           <Text style={styles.mapFallbackCoords}>
             {latitude.toFixed(5)}, {longitude.toFixed(5)}
           </Text>
         </View>
       )}
-      {!failed ? (
+      {displayImage ? (
         <View style={styles.livePinWrap} pointerEvents="none">
           <Text style={styles.livePin}>📍</Text>
           <View style={styles.livePinDot} />
@@ -705,7 +754,7 @@ function LiveMapPreview({
       ) : null}
       <View style={styles.mapOverlay}>
         <Text style={styles.mapLabel}>
-          {failed ? 'Tap to open Google Maps' : 'Live location · Tap for Google Maps'}
+          {displayImage ? 'Live location · Tap for Google Maps' : 'Tap to open Google Maps'}
         </Text>
       </View>
     </TouchableOpacity>

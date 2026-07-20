@@ -1,10 +1,6 @@
 package com.mrp.domain.usecase
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.location.Location
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.model.*
@@ -12,13 +8,12 @@ import kotlinx.coroutines.*
 
 /**
  * Centralized event logger that creates timeline entries with location and geofencing.
- * Thread-safe and handles all event types from the specification.
+ * Location uses [LocationResolver] Wi‑Fi → cell → GPS cascade with event severity.
  */
 class TimelineEventLogger(private val context: Context) {
 
     private val timelineStorage = TimelineStorage(context)
     private val locationHelper = LocationHelper(context)
-    private val mainHandler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     /**
@@ -58,9 +53,25 @@ class TimelineEventLogger(private val context: Context) {
             }
             Log.d(TAG, "Logging event: $eventType / $status")
 
-            val location = getLocationSync()
-            val address = location?.let { locationHelper.reverseGeocodeSync(it.latitude, it.longitude) }
-            val geofenceResult = location?.let { locationHelper.evaluateGeofence(it.latitude, it.longitude) }
+            val severity = LocationResolver.severityForEvent(eventType)
+            val resolved = LocationResolver.resolveSync(context, severity)
+            val location = resolved?.location
+            val address = location?.let {
+                locationHelper.reverseGeocodeSync(it.latitude, it.longitude)
+            }
+            val geofenceResult = location?.let {
+                locationHelper.evaluateGeofence(it.latitude, it.longitude)
+            }
+
+            val enrichedMeta = if (resolved != null) {
+                metadata + mapOf(
+                    "location_tier" to resolved.tier,
+                    "location_cache_hit" to resolved.cacheHit,
+                    "location_duration_ms" to resolved.durationMs
+                )
+            } else {
+                metadata
+            }
 
             val entry = TimelineEntry(
                 eventType = eventType,
@@ -75,157 +86,28 @@ class TimelineEventLogger(private val context: Context) {
                     insideFence = geofenceResult?.insideFence ?: false,
                     fenceId = geofenceResult?.fenceId
                 ),
-                metadata = metadata
+                metadata = enrichedMeta
             )
 
             timelineStorage.appendTimelineEntrySync(entry)
+            if (resolved != null && location != null) {
+                GeoSnapshotWriter.enqueueFromResolved(
+                    context = context,
+                    resolved = resolved,
+                    triggerSource = eventType,
+                    address = address,
+                    insideGeofence = geofenceResult?.insideFence ?: false,
+                    geofenceId = geofenceResult?.fenceId
+                )
+            }
             Log.d(TAG, "Logged event: $eventType / $status")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to log event", e)
         }
     }
 
-    private fun logEventWithLocation(
-        eventType: String,
-        status: String,
-        locationData: LocationHelper.LocationData,
-        metadata: Map<String, Any?>
-    ) {
-        locationHelper.reverseGeocode(locationData.latitude, locationData.longitude) { address ->
-            val geofenceResult = locationHelper.evaluateGeofence(locationData.latitude, locationData.longitude)
-
-            val entry = TimelineEntry(
-                eventType = eventType,
-                status = status,
-                location = LocationData(
-                    latitude = locationData.latitude,
-                    longitude = locationData.longitude,
-                    accuracyMeters = locationData.accuracy,
-                    detailedAddress = address ?: "Address Unavailable (Offline)"
-                ),
-                geofenceStatus = GeofenceStatus(
-                    insideFence = geofenceResult.insideFence,
-                    fenceId = geofenceResult.fenceId
-                ),
-                metadata = metadata
-            )
-
-            timelineStorage.appendTimelineEntrySync(entry)
-            Log.d(TAG, "Logged event with location: $eventType / $status at ${locationData.latitude},${locationData.longitude}")
-        }
-    }
-
-    private fun logEventWithoutLocation(
-        eventType: String,
-        status: String,
-        metadata: Map<String, Any?>
-    ) {
-        val entry = TimelineEntry(
-            eventType = eventType,
-            status = status,
-            location = LocationData(
-                latitude = 0.0,
-                longitude = 0.0,
-                accuracyMeters = 0f,
-                detailedAddress = "Address Unavailable (Offline)"
-            ),
-            geofenceStatus = GeofenceStatus(
-                insideFence = false,
-                fenceId = null
-            ),
-            metadata = metadata
-        )
-
-        timelineStorage.appendTimelineEntrySync(entry)
-        Log.d(TAG, "Logged event without location: $eventType / $status")
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun getLocationSync(): Location? {
-        try {
-            val hasPermission = android.content.pm.PackageManager.PERMISSION_GRANTED ==
-                context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ||
-                android.content.pm.PackageManager.PERMISSION_GRANTED ==
-                context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)
-            if (!hasPermission) {
-                Log.w(TAG, "Location permission not granted")
-                return null
-            }
-
-            // Try FusedLocationProviderClient first (async with timeout)
-            var result: Location? = null
-            val latch = java.util.concurrent.CountDownLatch(1)
-
-            try {
-                val fusedClient = com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context)
-                fusedClient.lastLocation
-                    .addOnSuccessListener { location ->
-                        if (location != null) {
-                            result = location
-                            latch.countDown()
-                        } else {
-                            fusedClient.getCurrentLocation(com.google.android.gms.location.Priority.PRIORITY_BALANCED_POWER_ACCURACY, null)
-                                .addOnSuccessListener { freshLoc ->
-                                    result = freshLoc
-                                    latch.countDown()
-                                }
-                                .addOnFailureListener {
-                                    latch.countDown()
-                                }
-                        }
-                    }
-                    .addOnFailureListener { e ->
-                        Log.w(TAG, "FusedLocation failed", e)
-                        latch.countDown()
-                    }
-
-                // Wait max 2 seconds for FusedLocation
-                latch.await(2, java.util.concurrent.TimeUnit.SECONDS)
-            } catch (e: Exception) {
-                Log.e(TAG, "FusedLocation error", e)
-            }
-
-            // Fallback to all LocationManager providers if FusedLocation returned null
-            if (result == null) {
-                Log.d(TAG, "Falling back to LocationManager")
-                val lm = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
-                val providers = lm.getProviders(true)
-
-                for (provider in providers) {
-                    try {
-                        val loc = lm.getLastKnownLocation(provider)
-                        if (loc != null && (result == null || loc.time > result!!.time)) {
-                            result = loc
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Provider $provider failed", e)
-                    }
-                }
-            }
-
-            if (result != null) {
-                lastValidLocation = result
-                Log.d(TAG, "Got location: ${result!!.latitude},${result!!.longitude}")
-                return result
-            }
-
-            // Fallback to cached location if still null
-            if (lastValidLocation != null) {
-                Log.d(TAG, "Returning cached lastValidLocation")
-                return lastValidLocation
-            }
-
-            return null
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get location sync", e)
-            return lastValidLocation
-        }
-    }
-
     companion object {
         private const val TAG = "TimelineEventLogger"
-        @Volatile
-        private var lastValidLocation: Location? = null
         private val lastEventTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
         private const val DEBOUNCE_MS = 1000L
 

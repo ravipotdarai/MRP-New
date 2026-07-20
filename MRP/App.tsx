@@ -1,5 +1,5 @@
 import React, {useState, useEffect} from 'react';
-import {StatusBar, View, ActivityIndicator, StyleSheet, PermissionsAndroid, Platform} from 'react-native';
+import {StatusBar, View, ActivityIndicator, StyleSheet, Platform} from 'react-native';
 import mrpmModule from './src/shared/hooks/useNativeBridge';
 import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
@@ -9,6 +9,7 @@ import {HomeScreen} from './src/features/home/HomeScreen';
 import {SecurityScreen} from './src/features/security/SecurityScreen';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
 import {AboutScreen} from './src/screens/AboutScreen';
+import {PermissionSetupWizard} from './src/features/setup/PermissionSetupWizard';
 import {Text} from 'react-native';
 import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
 
@@ -66,67 +67,33 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
 
 function AppContent(): React.JSX.Element {
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
   const {isPinSet, isVerifying, error, setPin, verifyPin} = usePinLock();
   const {colors, themeId} = useTheme();
   const isLight = themeId === 'light';
 
   useEffect(() => {
-    const setupInitialPermissions = async () => {
-      if (Platform.OS !== 'android') return;
+    if (!isUnlocked || !isPinSet || Platform.OS !== 'android') return;
+    (async () => {
       try {
-        // 1. Request Location Permission
-        const hasLocation = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-        if (!hasLocation) {
-          await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-            {
-              title: 'Location Access Required',
-              message: 'MRP requires location access to log GPS coordinates and addresses for security events.',
-              buttonPositive: 'Allow',
-            }
-          );
+        const bridge = mrpmModule as any;
+        if (typeof bridge.getPermissionSetupStatus !== 'function') return;
+        const st = await bridge.getPermissionSetupStatus();
+        if (st?.coreComplete) {
+          setShowSetupWizard(false);
+          return;
         }
-
-        // 2. Request Camera Permission
-        const hasCamera = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
-        if (!hasCamera) {
-          await PermissionsAndroid.request(
-            PermissionsAndroid.PERMISSIONS.CAMERA,
-            {
-              title: 'Camera Access Required',
-              message: 'MRP requires camera access to capture intruder selfies during unauthorized unlock attempts.',
-              buttonPositive: 'Allow',
-            }
-          );
+        // Do not spam on every launch if user already tapped Finish later
+        let dismissed = false;
+        if (typeof bridge.isPermissionWizardDismissed === 'function') {
+          dismissed = !!(await bridge.isPermissionWizardDismissed());
         }
-
-        // 3. Request Notification Permission (Android 13+)
-        if (Platform.Version >= 33) {
-          const hasNotif = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-          if (!hasNotif) {
-            await PermissionsAndroid.request(
-              PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
-              {
-                title: 'Notification Permission',
-                message: 'MRP requires notification access to run its background security service.',
-                buttonPositive: 'Allow',
-              }
-            );
-          }
-        }
-
-        // 4. Request Device Admin Access
-        const isAdmin = await mrpmModule.isDeviceAdminEnabled();
-        if (!isAdmin) {
-          await mrpmModule.requestDeviceAdminEnable();
-        }
-      } catch (e) {
-        console.warn('Error requesting initial permissions:', e);
+        if (!dismissed) setShowSetupWizard(true);
+      } catch {
+        // ignore
       }
-    };
-
-    setupInitialPermissions();
-  }, []);
+    })();
+  }, [isUnlocked, isPinSet]);
 
   const handlePinSet = async (pin: string) => {
     const success = await setPin(pin);
@@ -172,6 +139,11 @@ function AppContent(): React.JSX.Element {
         <NavigationContainer>
           <TabNavigator onLogout={handleLogout} />
         </NavigationContainer>
+        <PermissionSetupWizard
+          visible={showSetupWizard}
+          onClose={() => setShowSetupWizard(false)}
+          onComplete={() => setShowSetupWizard(false)}
+        />
       </View>
     );
   }

@@ -27,11 +27,14 @@ class MrpAccessibilityService : AccessibilityService() {
         settings = SettingsStorage(this)
 
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPES_ALL_MASK
+            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                AccessibilityEvent.TYPE_ANNOUNCEMENT or
+                AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                     AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-            notificationTimeout = 100
+            notificationTimeout = 300
         }
         setServiceInfo(info)
         Log.d(TAG, "Accessibility service connected")

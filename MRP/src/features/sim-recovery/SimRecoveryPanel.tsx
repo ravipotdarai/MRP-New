@@ -204,9 +204,40 @@ export function SimRecoveryPanel() {
 
     Alert.alert(
       'Enable SIM Change Recovery?',
-      'On SIM change, MRP SMS your recovery contacts with location (works offline).\n\nSMS permission is required. Phone permission is optional (for New Number).',
+      'On SIM change, MRP sends an SMS only to your recovery contacts with device location.\n\nMRP never reads your SMS inbox.',
       [
         {text: 'Cancel', style: 'cancel', onPress: () => setSwitchKey(k => k + 1)},
+        {
+          text: 'See sample message',
+          onPress: () =>
+            runBusy(async () => {
+              try {
+                const sample =
+                  (await bridge.getSampleRecoverySmsMessage?.()) ??
+                  'Sample: SIM change alert with location and maps link.';
+                Alert.alert(
+                  'Recovery SMS (emergency only)',
+                  `${sample}\n\nTap Enable to allow SEND_SMS for this purpose only.`,
+                  [
+                    {text: 'Cancel', style: 'cancel', onPress: () => setSwitchKey(k => k + 1)},
+                    {
+                      text: 'Enable',
+                      onPress: () =>
+                        runBusy(async () => {
+                          try {
+                            await enableProtection();
+                          } catch (e: any) {
+                            Alert.alert('Error', e?.message || 'Failed to enable');
+                          }
+                        }),
+                    },
+                  ],
+                );
+              } catch (e: any) {
+                Alert.alert('Error', e?.message || 'Could not load sample');
+              }
+            }),
+        },
         {
           text: 'Enable',
           onPress: () =>

@@ -34,6 +34,7 @@ export function PermissionsScreen() {
   const [usageStatsPermission, setUsageStatsPermission] = useState<boolean | null>(null);
   const [smsPermission, setSmsPermission] = useState<boolean | null>(null);
   const [phonePermission, setPhonePermission] = useState<boolean | null>(null);
+  const [accessibilityPermission, setAccessibilityPermission] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -67,6 +68,12 @@ export function PermissionsScreen() {
       } catch {
         phone = false;
       }
+      let a11y = false;
+      try {
+        a11y = await mrpmModule.isAccessibilityEnabled?.() ?? false;
+      } catch {
+        a11y = false;
+      }
 
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
@@ -85,6 +92,7 @@ export function PermissionsScreen() {
       setUsageStatsPermission(usageStats);
       setSmsPermission(sms);
       setPhonePermission(phone);
+      setAccessibilityPermission(a11y);
     } catch (e) {
       console.error('[PermissionsScreen] Failed to check permissions:', e);
       Alert.alert('Error', 'Failed to check permissions: ' + String(e));
@@ -287,7 +295,8 @@ export function PermissionsScreen() {
     {
       name: 'SMS / Messages',
       icon: '💬',
-      description: 'Required for SIM Change Recovery Alert. When a different SIM is inserted, MRP sends an SMS with the new number and GPS location to your trusted recovery contacts — even offline.',
+      description:
+        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read or receive your SMS inbox.',
       granted: smsPermission === true,
       grantSteps: [
         'Tap "Allow SMS" below to show the system dialog',
@@ -326,14 +335,15 @@ export function PermissionsScreen() {
       buttonLabel: 'Enable Device Admin',
     },
     {
-      name: 'Accessibility Service',
+      name: 'Accessibility Service (optional)',
       icon: '♿',
-      description: 'Required to detect screen lock/unlock events, app usage, and background activity. The service runs in the background to monitor security events.',
-      granted: true, // We already check this in monitoring screen
+      description:
+        'Optional enhanced protection: detect failed fingerprint or face unlock. Not required for basic monitoring (wrong PIN uses Device Admin).',
+      granted: accessibilityPermission === true,
       grantSteps: [
         'Go to: Settings → Accessibility',
-        'Tap on "Manage accessibility services"',
-        'Enable "MRP" in the list',
+        'Tap on "Installed apps" or "Downloaded services"',
+        'Enable "MRP"',
       ],
       onOpen: openAccessibilitySettings,
       buttonLabel: 'Open Accessibility Settings',

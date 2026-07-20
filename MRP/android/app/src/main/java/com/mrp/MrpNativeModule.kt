@@ -879,25 +879,115 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun getCurrentLocationWithAddress(promise: Promise) {
         try {
-            val helper = LocationHelper(reactContext)
-            helper.getCurrentLocation { loc ->
-                if (loc == null) {
-                    promise.resolve(null)
-                    return@getCurrentLocation
+            Thread {
+                try {
+                    val resolved = com.mrp.domain.usecase.LocationResolver.resolveSync(
+                        reactContext,
+                        com.mrp.domain.usecase.LocationResolver.Severity.UI
+                    )
+                    if (resolved == null) {
+                        promise.resolve(null)
+                        return@Thread
+                    }
+                    val loc = resolved.location
+                    val helper = LocationHelper(reactContext)
+                    val address = helper.reverseGeocodeSync(loc.latitude, loc.longitude)
+                    val geofence = helper.evaluateGeofence(loc.latitude, loc.longitude)
+                    com.mrp.domain.usecase.GeoSnapshotWriter.enqueueFromResolved(
+                        reactContext,
+                        resolved,
+                        "HOME_UI",
+                        address,
+                        geofence.insideFence,
+                        geofence.fenceId
+                    )
+                    val map = Arguments.createMap().apply {
+                        putDouble("latitude", loc.latitude)
+                        putDouble("longitude", loc.longitude)
+                        putDouble("accuracy_meters", loc.accuracy.toDouble())
+                        putString("detailed_address", address)
+                        putString("provider", resolved.provider)
+                        putString("location_tier", resolved.tier)
+                    }
+                    promise.resolve(map)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to get current location with address", e)
+                    promise.reject("LOCATION_ERROR", "Failed to get current location", e)
                 }
-                val address = helper.reverseGeocodeSync(loc.latitude, loc.longitude)
-                val map = Arguments.createMap().apply {
-                    putDouble("latitude", loc.latitude)
-                    putDouble("longitude", loc.longitude)
-                    putDouble("accuracy_meters", loc.accuracy.toDouble())
-                    putString("detailed_address", address)
-                    putString("provider", loc.provider)
-                }
-                promise.resolve(map)
-            }
+            }.start()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get current location with address", e)
             promise.reject("LOCATION_ERROR", "Failed to get current location", e)
+        }
+    }
+
+    @ReactMethod
+    fun getPermissionSetupStatus(promise: Promise) {
+        try {
+            val status = com.mrp.util.PermissionSetupStatus.get(reactContext)
+            val map = Arguments.createMap().apply {
+                putBoolean("camera", status.camera)
+                putBoolean("location", status.location)
+                putBoolean("notifications", status.notifications)
+                putBoolean("overlay", status.overlay)
+                putBoolean("deviceAdmin", status.deviceAdmin)
+                putBoolean("batteryExempt", status.batteryExempt)
+                putBoolean("accessibility", status.accessibility)
+                putBoolean("usageStats", status.usageStats)
+                putBoolean("coreComplete", status.coreComplete)
+                putString("manufacturer", status.manufacturer)
+                val missing = Arguments.createArray()
+                status.missingCore.forEach { missing.pushString(it) }
+                putArray("missingCore", missing)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("PERM_STATUS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun requestIgnoreBatteryOptimizations(promise: Promise) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                com.mrp.util.OemBatteryMitigation.requestIgnoreBatteryOptimizations(reactContext)
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("BATTERY_OPT", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun launchOemBatterySettings(promise: Promise) {
+        try {
+            com.mrp.util.OemBatteryMitigation.launchOemBatterySettings(reactContext)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("OEM_BATTERY", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getSampleRecoverySmsMessage(promise: Promise) {
+        try {
+            val sender = com.mrp.domain.usecase.SendSimChangeSmsUseCase(reactContext)
+            val androidId = Settings.Secure.getString(reactContext.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+            val sample = sender.buildMessage(
+                model = android.os.Build.MODEL ?: "Your device",
+                phoneNumber = "+91XXXXXXXXXX",
+                carrier = "Your carrier",
+                battery = 72,
+                timestamp = "2026-01-01 12:00:00 IST",
+                lat = 12.9716,
+                lng = 77.5946,
+                deviceId = androidId,
+                iccidMasked = "XXXX-1234",
+                hasPhone = true
+            )
+            promise.resolve("[SAMPLE — sent only on SIM change]\n$sample")
+        } catch (e: Exception) {
+            promise.reject("SMS_SAMPLE", e.message, e)
         }
     }
 
@@ -1211,11 +1301,53 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
+    @ReactMethod
+    fun isPermissionWizardDismissed(promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            promise.resolve(prefs.getBoolean(KEY_WIZARD_DISMISSED, false))
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun setPermissionWizardDismissed(dismissed: Boolean, promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putBoolean(KEY_WIZARD_DISMISSED, dismissed).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun openAppNotificationSettings(promise: Promise) {
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, reactContext.packageName)
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${reactContext.packageName}")
+                }
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("NOTIF_SETTINGS", e.message, e)
+        }
+    }
+
     companion object {
         private const val TAG = "MrpNative"
         private const val PERM_REQUEST_CODE_BASE = 7100
         private const val UI_PREFS = "mrp_ui"
         private const val KEY_THEME_ID = "theme_id"
+        private const val KEY_WIZARD_DISMISSED = "permission_wizard_dismissed"
         const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
         const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
     }

@@ -1,4 +1,4 @@
 <resources>
     <string name="app_name">MRP</string>
-    <string name="accessibility_service_description">MRP monitors lock and unlock events to capture photos when your device is accessed.</string>
+    <string name="accessibility_service_description">Optional: detect failed fingerprint or face unlock attempts for intruder alerts. Not required for basic monitoring.</string>
 </resources>

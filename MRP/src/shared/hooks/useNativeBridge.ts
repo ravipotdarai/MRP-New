@@ -85,6 +85,25 @@ export interface MrpNativeInterface {
   }>;
   getUiThemeId(): Promise<string>;
   setUiThemeId(themeId: string): Promise<boolean>;
+  getPermissionSetupStatus(): Promise<{
+    camera: boolean;
+    location: boolean;
+    notifications: boolean;
+    overlay: boolean;
+    deviceAdmin: boolean;
+    batteryExempt: boolean;
+    accessibility: boolean;
+    usageStats: boolean;
+    coreComplete: boolean;
+    manufacturer: string;
+    missingCore: string[];
+  }>;
+  requestIgnoreBatteryOptimizations(): Promise<boolean>;
+  launchOemBatterySettings(): Promise<boolean>;
+  getSampleRecoverySmsMessage(): Promise<string>;
+  isPermissionWizardDismissed(): Promise<boolean>;
+  setPermissionWizardDismissed(dismissed: boolean): Promise<boolean>;
+  openAppNotificationSettings(): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;
