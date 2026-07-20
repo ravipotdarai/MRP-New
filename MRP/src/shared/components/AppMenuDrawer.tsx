@@ -15,7 +15,7 @@ import {useTheme} from '../ThemeContext';
 export type AppMenuTarget =
   | {screen: 'Home'}
   | {screen: 'Security'; tab: 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS'}
-  | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS'}
+  | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY'}
   | {screen: 'About'};
 
 type Props = {
@@ -49,6 +49,7 @@ const MENU: MenuRow[] = [
       {label: 'Dashboard', target: {screen: 'App Usage', tab: 'DASHBOARD'}},
       {label: 'Timeline', target: {screen: 'App Usage', tab: 'TIMELINE'}},
       {label: 'Reports', target: {screen: 'App Usage', tab: 'REPORTS'}},
+      {label: 'App Safety', target: {screen: 'App Usage', tab: 'SAFETY'}},
     ],
   },
   {kind: 'item', label: 'About', icon: 'ℹ️', target: {screen: 'About'}},

@@ -14,7 +14,11 @@ export type EventType =
   | 'SIM_INSERTED'
   | 'FACTORY_RESET'
   | 'DEVICE_BOOT'
-  | 'USB_CONNECTED';
+  | 'USB_CONNECTED'
+  | 'APP_INSTALLED'
+  | 'APP_UPDATED'
+  | 'APP_MISUSE'
+  | 'POSTURE_ALERT';
 
 export interface LocationData {
   latitude: number;
@@ -48,6 +52,9 @@ export interface MonitoringSettings {
   captureOnSimChange: boolean;
   captureOnFactoryReset: boolean;
   captureOnUsb: boolean;
+  captureOnAppInstall: boolean;
+  captureOnRiskyAppInstall: boolean;
+  captureOnAppMisuse: boolean;
   maxFailedAttempts: number;
   lockAfterFailedAttempts: boolean;
   autoDeleteAfterDays: number;

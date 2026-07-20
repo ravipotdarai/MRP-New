@@ -37,6 +37,8 @@ const NO_SELFIE_EVENTS = new Set<string>([
   'SIM_LOCKED',
   'UNLOCK_FAILED',
   'SIM_CHANGE',
+  'APP_MISUSE',
+  'POSTURE_ALERT',
 ]);
 
 // event_type → expected photo filename prefix (only the exceptions need listing;

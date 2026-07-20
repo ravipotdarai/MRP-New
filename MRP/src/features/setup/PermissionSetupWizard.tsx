@@ -182,7 +182,11 @@ export function PermissionSetupWizard({
           await bridge.requestDeviceAdminEnable?.();
           break;
         case 'battery':
-          if (typeof bridge.requestIgnoreBatteryOptimizations === 'function') {
+          // Open Android App battery usage so the user can pick Unrestricted /
+          // Optimized / Restricted — does not change MRP monitoring code paths.
+          if (typeof bridge.openAppBatteryUsageSettings === 'function') {
+            await bridge.openAppBatteryUsageSettings();
+          } else if (typeof bridge.requestIgnoreBatteryOptimizations === 'function') {
             await bridge.requestIgnoreBatteryOptimizations();
           }
           break;
@@ -261,7 +265,7 @@ export function PermissionSetupWizard({
                 ) : (
                   <Text style={styles.primaryBtnText}>
                     {currentStep === 'battery'
-                      ? 'Allow unrestricted battery'
+                      ? 'Configure App Battery Usage'
                       : currentStep === 'overlay'
                         ? 'Open overlay settings'
                         : currentStep === 'device_admin'

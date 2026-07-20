@@ -48,6 +48,10 @@ const EVENT_ICONS: Record<string, string> = {
   BLUETOOTH_TOGGLE: '🎧',
   USB_CONNECTED: '💻',
   USB_DISCONNECTED: '🚫',
+  APP_INSTALLED: '📦',
+  APP_UPDATED: '📦',
+  APP_MISUSE: '📵',
+  POSTURE_ALERT: '🛡️',
 };
 
 interface TimelineEntry {
@@ -156,9 +160,12 @@ export function HomeScreen({
   const styles = useMemo(() => createHomeStyles(colors), [colors]);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
+  const [postureGrade, setPostureGrade] = useState<string>('Unknown');
+  const [highRiskCount, setHighRiskCount] = useState(0);
 
   const loadAll = useCallback(async () => {
-    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes] =
+    const bridge = mrpmModule as any;
+    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes, postureRes, riskRes] =
       await Promise.allSettled([
         mrpmModule.getTimeline(),
         mrpmModule.getPhotos(),
@@ -171,7 +178,9 @@ export function HomeScreen({
         mrpmModule.isDeviceAdminEnabled(),
         mrpmModule.hasUsageStatsPermission(),
         mrpmModule.getCurrentLocationWithAddress?.() ?? Promise.resolve(null),
-        (mrpmModule as any).getSimRecoveryStatus?.() ?? Promise.resolve(null),
+        bridge.getSimRecoveryStatus?.() ?? Promise.resolve(null),
+        bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
+        bridge.getAppRiskReport?.() ?? Promise.resolve([]),
       ]);
 
     if (tRes.status === 'fulfilled') setTimeline(Array.isArray(tRes.value) ? tRes.value : []);
@@ -185,6 +194,19 @@ export function HomeScreen({
     if (simRes.status === 'fulfilled' && simRes.value) {
       const st = simRes.value as {enabled?: boolean; hasContacts?: boolean};
       setRecoveryContactOk(!!(st.enabled && st.hasContacts));
+    }
+    if (postureRes.status === 'fulfilled' && postureRes.value) {
+      const g = (postureRes.value as {grade?: string}).grade;
+      setPostureGrade(g && g.length ? g : 'Unknown');
+    }
+    if (riskRes.status === 'fulfilled') {
+      const apps = Array.isArray(riskRes.value) ? riskRes.value : [];
+      setHighRiskCount(
+        apps.filter(
+          (a: {riskLevel?: string}) =>
+            a.riskLevel === 'HIGH' || a.riskLevel === 'CRITICAL',
+        ).length,
+      );
     }
     setPermFlags({
       camera: camRes.status === 'fulfilled' ? !!camRes.value : false,
@@ -277,31 +299,43 @@ export function HomeScreen({
       icon: '🛡️',
       label: 'Anti Theft',
       ok: settings.isMonitoringEnabled && (settings.captureOnWrongUnlock || settings.captureOnUsb),
+      status: undefined as string | undefined,
     },
     {
       icon: '🔄',
       label: 'SIM Monitoring',
       ok: settings.captureOnSimChange,
+      status: undefined as string | undefined,
     },
     {
       icon: '👤',
       label: 'Recovery Contact',
       ok: recoveryContactOk,
+      status: undefined as string | undefined,
     },
     {
-      icon: '☁️',
-      label: 'Google Drive Backup',
-      ok: false,
+      icon: '🔐',
+      label: 'Security Health',
+      ok: postureGrade === 'Healthy',
+      status: postureGrade === 'Unknown' ? '—' : postureGrade,
+    },
+    {
+      icon: '📦',
+      label: 'App Safety',
+      ok: highRiskCount === 0,
+      status: highRiskCount === 0 ? '✓' : String(highRiskCount),
     },
     {
       icon: '📍',
       label: 'Geofence',
       ok: permFlags.location,
+      status: undefined as string | undefined,
     },
     {
       icon: '📊',
       label: 'App Usage',
       ok: permFlags.usageStats,
+      status: undefined as string | undefined,
     },
   ];
 
@@ -602,15 +636,38 @@ export function HomeScreen({
         <Text style={styles.sectionTitle}>SECURITY OVERVIEW</Text>
         <View style={styles.overviewGrid}>
           {overview.map(item => (
-            <View key={item.label} style={styles.overviewItem}>
+            <TouchableOpacity
+              key={item.label}
+              style={styles.overviewItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (item.label === 'Security Health' || item.label === 'App Safety') {
+                  navigation?.navigate?.('App Usage', {initialTab: 'SAFETY'});
+                } else if (item.label === 'App Usage') {
+                  navigation?.navigate?.('App Usage');
+                } else {
+                  goToSecurity('Monitoring');
+                }
+              }}>
               <View style={styles.overviewLeft}>
                 <Text style={styles.overviewIcon}>{item.icon}</Text>
                 <Text style={styles.overviewLabel}>{item.label}</Text>
               </View>
-              <Text style={[styles.overviewStatus, {color: item.ok ? colors.emerald : colors.textMuted}]}>
-                {item.ok ? '✓' : '○'}
+              <Text
+                style={[
+                  styles.overviewStatus,
+                  {
+                    color: item.ok
+                      ? colors.emerald
+                      : item.status && item.status !== '—' && item.status !== '○'
+                        ? colors.amber
+                        : colors.textMuted,
+                    fontSize: item.status && item.status.length > 2 ? 11 : 18,
+                  },
+                ]}>
+                {item.status ?? (item.ok ? '✓' : '○')}
               </Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
         <TouchableOpacity style={styles.manageBtn} onPress={() => goToSecurity('Monitoring')}>

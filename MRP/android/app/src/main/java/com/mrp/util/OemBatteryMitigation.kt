@@ -61,6 +61,91 @@ object OemBatteryMitigation {
     }
 
     /**
+     * Open the system Battery Usage / power summary screen (per-app power stats).
+     * Falls back through known intents; returns false if nothing could be launched.
+     */
+    fun openSystemBatteryUsage(context: Context): Boolean {
+        val candidates = listOf(
+            Intent(Intent.ACTION_POWER_USAGE_SUMMARY),
+            Intent().setComponent(
+                ComponentName(
+                    "com.android.settings",
+                    "com.android.settings.fuelgauge.PowerUsageSummary"
+                )
+            ),
+            Intent().setComponent(
+                ComponentName(
+                    "com.android.settings",
+                    "com.android.settings.Settings\$PowerUsageSummaryActivity"
+                )
+            ),
+            Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+        )
+        for (intent in candidates) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    Log.d(TAG, "Opened system battery usage via $intent")
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Battery usage intent failed: $intent", e)
+            }
+        }
+        Log.e(TAG, "No system battery usage activity found")
+        return false
+    }
+
+    /**
+     * Open this app's Android "App battery usage" screen so the user can choose
+     * Unrestricted / Optimized / Restricted. Does not change MRP monitoring logic.
+     */
+    fun openAppBatteryUsageSettings(context: Context): Boolean {
+        val pkg = context.packageName
+        val pkgUri = Uri.parse("package:$pkg")
+        val candidates = mutableListOf<Intent>()
+
+        // Pixel / AOSP: Settings → Apps → MRP → App battery usage
+        candidates += Intent("android.settings.APP_BATTERY_SETTINGS").setData(pkgUri)
+        // Some OEMs use this action with package extra
+        candidates += Intent("android.settings.APP_BATTERY_SETTINGS").apply {
+            putExtra("android.intent.extra.PACKAGE_NAME", pkg)
+            putExtra("package", pkg)
+        }
+        // Samsung / generic power usage detail
+        candidates += Intent().setComponent(
+            ComponentName(
+                "com.android.settings",
+                "com.android.settings.fuelgauge.AdvancedPowerUsageDetail"
+            )
+        ).apply {
+            putExtra("package", pkg)
+            putExtra("extra_package_name", pkg)
+        }
+        // Fallback: app info (user taps Battery)
+        candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(pkgUri)
+        // Last resort: battery optimization allow-list
+        candidates += Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+
+        for (intent in candidates) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    Log.d(TAG, "Opened app battery usage via $intent")
+                    return true
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "App battery usage intent failed: $intent", e)
+            }
+        }
+        Log.e(TAG, "No app battery usage activity found")
+        return false
+    }
+
+    /**
      * Detect the OEM and launch appropriate battery/autostart settings
      */
     fun launchOemBatterySettings(context: Context) {

@@ -138,6 +138,10 @@ object EventTypes {
     const val HOTSPOT_TOGGLE = "HOTSPOT_TOGGLE"
     const val BLUETOOTH_TOGGLE = "BLUETOOTH_TOGGLE"
     const val USB_CONNECTED = "USB_CONNECTED"
+    const val APP_INSTALLED = "APP_INSTALLED"
+    const val APP_UPDATED = "APP_UPDATED"
+    const val APP_MISUSE = "APP_MISUSE"
+    const val POSTURE_ALERT = "POSTURE_ALERT"
 }
 
 object StatusValues {

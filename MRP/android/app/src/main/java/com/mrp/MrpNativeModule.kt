@@ -433,6 +433,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putBoolean("captureOnSimChange", settings.captureOnSimChange)
                 putBoolean("captureOnFactoryReset", settings.captureOnFactoryReset)
                 putBoolean("captureOnUsb", settings.captureOnUsb)
+                putBoolean("captureOnAppInstall", settings.captureOnAppInstall)
+                putBoolean("captureOnRiskyAppInstall", settings.captureOnRiskyAppInstall)
+                putBoolean("captureOnAppMisuse", settings.captureOnAppMisuse)
                 putInt("maxFailedAttempts", settings.maxFailedAttempts)
                 putBoolean("lockAfterFailedAttempts", settings.lockAfterFailedAttempts)
                 putInt("autoDeleteAfterDays", settings.autoDeleteAfterDays)
@@ -447,6 +450,8 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun saveSettings(settingsMap: ReadableMap, promise: Promise) {
         try {
+            fun optBool(key: String, default: Boolean): Boolean =
+                if (settingsMap.hasKey(key)) settingsMap.getBoolean(key) else default
             val settings = com.mrp.domain.model.MonitoringSettings(
                 isMonitoringEnabled = settingsMap.getBoolean("isMonitoringEnabled"),
                 captureOnWrongUnlock = settingsMap.getBoolean("captureOnWrongUnlock"),
@@ -458,6 +463,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 captureOnSimChange = settingsMap.getBoolean("captureOnSimChange"),
                 captureOnFactoryReset = settingsMap.getBoolean("captureOnFactoryReset"),
                 captureOnUsb = settingsMap.getBoolean("captureOnUsb"),
+                captureOnAppInstall = optBool("captureOnAppInstall", true),
+                captureOnRiskyAppInstall = optBool("captureOnRiskyAppInstall", true),
+                captureOnAppMisuse = optBool("captureOnAppMisuse", true),
                 maxFailedAttempts = settingsMap.getInt("maxFailedAttempts"),
                 lockAfterFailedAttempts = settingsMap.getBoolean("lockAfterFailedAttempts"),
                 autoDeleteAfterDays = settingsMap.getInt("autoDeleteAfterDays")
@@ -670,6 +678,21 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             }
             sessions.sortByDescending { it.start }
 
+            // Misuse rules (debounced) from this session set
+            try {
+                val slices = sessions.map {
+                    com.mrp.domain.usecase.MisuseRuleEngine.UsageSlice(
+                        packageName = it.pkg,
+                        appName = it.appName,
+                        startMs = it.start,
+                        durationSeconds = it.dur
+                    )
+                }
+                com.mrp.domain.usecase.MisuseRuleEngine(reactContext).evaluateSessions(slices)
+            } catch (e: Exception) {
+                Log.w(TAG, "Misuse evaluation failed", e)
+            }
+
             val list = Arguments.createArray()
             for (s in sessions) {
                 val map = Arguments.createMap().apply {
@@ -782,6 +805,29 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get battery level", e)
             promise.resolve(-1)
+        }
+    }
+
+    @ReactMethod
+    fun openSystemBatteryUsage(promise: Promise) {
+        try {
+            val ok = com.mrp.util.OemBatteryMitigation.openSystemBatteryUsage(reactContext)
+            promise.resolve(ok)
+        } catch (e: Exception) {
+            Log.e(TAG, "openSystemBatteryUsage failed", e)
+            promise.resolve(false)
+        }
+    }
+
+    /** Opens Android Settings → Apps → MRP → App battery usage (Unrestricted / Optimized / Restricted). */
+    @ReactMethod
+    fun openAppBatteryUsageSettings(promise: Promise) {
+        try {
+            val ok = com.mrp.util.OemBatteryMitigation.openAppBatteryUsageSettings(reactContext)
+            promise.resolve(ok)
+        } catch (e: Exception) {
+            Log.e(TAG, "openAppBatteryUsageSettings failed", e)
+            promise.resolve(false)
         }
     }
 
@@ -1277,6 +1323,106 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             promise.resolve(map)
         } catch (e: Exception) {
             promise.reject("SIM_PHONE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getAppRiskReport(promise: Promise) {
+        try {
+            val reports = com.mrp.domain.usecase.AppRiskScorer(reactContext).scanInstalledApps(80)
+            val arr = Arguments.createArray()
+            reports.forEach { r ->
+                arr.pushMap(Arguments.createMap().apply {
+                    putString("packageName", r.packageName)
+                    putString("appName", r.appName)
+                    putString("installer", r.installer)
+                    putBoolean("isSystemApp", r.isSystemApp)
+                    putString("riskLevel", r.riskLevel.name)
+                    putInt("score", r.score)
+                    putBoolean("hasDeviceAdmin", r.hasDeviceAdmin)
+                    putBoolean("hasAccessibility", r.hasAccessibility)
+                    putBoolean("hasOverlay", r.hasOverlay)
+                    putBoolean("hasSendSms", r.hasSendSms)
+                    val reasons = Arguments.createArray()
+                    r.reasons.forEach { reasons.pushString(it) }
+                    putArray("reasons", reasons)
+                })
+            }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("APP_RISK", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun runBreachPostureScan(promise: Promise) {
+        try {
+            val report = com.mrp.domain.usecase.BreachPostureScanner(reactContext).scan(emitAlerts = true)
+            val map = Arguments.createMap().apply {
+                putDouble("scannedAtMs", report.scannedAtMs.toDouble())
+                putString("grade", report.grade)
+                val checks = Arguments.createArray()
+                report.checks.forEach { c ->
+                    checks.pushMap(Arguments.createMap().apply {
+                        putString("id", c.id)
+                        putString("title", c.title)
+                        putBoolean("ok", c.ok)
+                        putString("detail", c.detail)
+                        putString("severity", c.severity)
+                    })
+                }
+                putArray("checks", checks)
+                val newly = Arguments.createArray()
+                report.newlyFailedIds.forEach { newly.pushString(it) }
+                putArray("newlyFailedIds", newly)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("POSTURE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getBreachPostureSummary(promise: Promise) {
+        try {
+            val scanner = com.mrp.domain.usecase.BreachPostureScanner(reactContext)
+            val map = Arguments.createMap().apply {
+                putString("grade", scanner.lastGrade())
+                putDouble("lastScanAtMs", scanner.lastScanAt().toDouble())
+                putString("lastJson", scanner.lastScanJson())
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("POSTURE_SUMMARY", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getMisuseRules(promise: Promise) {
+        try {
+            val rules = com.mrp.domain.usecase.MisuseRuleEngine(reactContext).listPresets()
+            val arr = Arguments.createArray()
+            rules.forEach { r ->
+                arr.pushMap(Arguments.createMap().apply {
+                    putString("id", r.id)
+                    putString("title", r.title)
+                    putString("description", r.description)
+                    putBoolean("enabled", r.enabled)
+                })
+            }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("MISUSE_RULES", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setMisuseRuleEnabled(ruleId: String, enabled: Boolean, promise: Promise) {
+        try {
+            com.mrp.domain.usecase.MisuseRuleEngine(reactContext).setEnabled(ruleId, enabled)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("MISUSE_SET", e.message, e)
         }
     }
 

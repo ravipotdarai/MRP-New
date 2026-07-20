@@ -20,6 +20,9 @@ class SettingsStorage(context: Context) {
             captureOnSimChange = prefs.getBoolean(KEY_SIM_CHANGE, true),
             captureOnFactoryReset = prefs.getBoolean(KEY_FACTORY_RESET, true),
             captureOnUsb = prefs.getBoolean(KEY_USB, true),
+            captureOnAppInstall = prefs.getBoolean(KEY_APP_INSTALL, true),
+            captureOnRiskyAppInstall = prefs.getBoolean(KEY_RISKY_INSTALL, true),
+            captureOnAppMisuse = prefs.getBoolean(KEY_APP_MISUSE, true),
             maxFailedAttempts = prefs.getInt(KEY_MAX_FAILED, 3),
             lockAfterFailedAttempts = prefs.getBoolean(KEY_LOCK_AFTER_FAIL, true),
             autoDeleteAfterDays = prefs.getInt(KEY_AUTO_DELETE, 30)
@@ -38,6 +41,9 @@ class SettingsStorage(context: Context) {
             putBoolean(KEY_SIM_CHANGE, settings.captureOnSimChange)
             putBoolean(KEY_FACTORY_RESET, settings.captureOnFactoryReset)
             putBoolean(KEY_USB, settings.captureOnUsb)
+            putBoolean(KEY_APP_INSTALL, settings.captureOnAppInstall)
+            putBoolean(KEY_RISKY_INSTALL, settings.captureOnRiskyAppInstall)
+            putBoolean(KEY_APP_MISUSE, settings.captureOnAppMisuse)
             putInt(KEY_MAX_FAILED, settings.maxFailedAttempts)
             putBoolean(KEY_LOCK_AFTER_FAIL, settings.lockAfterFailedAttempts)
             putInt(KEY_AUTO_DELETE, settings.autoDeleteAfterDays)
@@ -61,6 +67,9 @@ class SettingsStorage(context: Context) {
         private const val KEY_SIM_CHANGE = "capture_sim_change"
         private const val KEY_FACTORY_RESET = "capture_factory_reset"
         private const val KEY_USB = "capture_usb"
+        private const val KEY_APP_INSTALL = "capture_app_install"
+        private const val KEY_RISKY_INSTALL = "capture_risky_install"
+        private const val KEY_APP_MISUSE = "capture_app_misuse"
         private const val KEY_MAX_FAILED = "max_failed_attempts"
         private const val KEY_LOCK_AFTER_FAIL = "lock_after_failed"
         private const val KEY_AUTO_DELETE = "auto_delete_days"

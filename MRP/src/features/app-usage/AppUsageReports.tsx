@@ -1,12 +1,14 @@
 import React, {useState, useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView, TouchableOpacity} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert} from 'react-native';
 import {AppUsageSession} from './AppUsageScreen';
 import {
   consolidateSessionsByApp,
   dedupeSessions,
   formatAppLabel,
   formatDuration,
+  rankBatteryImpact,
 } from './AppUsageUtils';
+import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -108,6 +110,34 @@ export function AppUsageReports({sessions}: Props) {
 
   const showLeastUsed = aggregatedApps.length >= 8;
 
+  const batteryImpact = useMemo(() => {
+    const now = Date.now();
+    const msInDay = 24 * 60 * 60 * 1000;
+    let since = now - 30 * msInDay;
+    if (timeframe === 'DAILY') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      since = today.getTime();
+    } else if (timeframe === 'WEEKLY') {
+      since = now - 7 * msInDay;
+    }
+    return rankBatteryImpact(sessions, since, 8);
+  }, [sessions, timeframe]);
+
+  const openSystemBattery = async () => {
+    try {
+      const ok = await (mrpmModule as any).openSystemBatteryUsage?.();
+      if (!ok) {
+        Alert.alert(
+          'Could not open Battery',
+          'Open Settings → Battery → Battery usage to see official power stats.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not open system Battery Usage');
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.filterRow}>
@@ -176,6 +206,40 @@ export function AppUsageReports({sessions}: Props) {
             );
           })
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Battery Impact (estimated)</Text>
+        <Text style={styles.impactHint}>
+          Ranked by screen-time share — not mAh. Use system Battery for real power stats.
+        </Text>
+        {batteryImpact.apps.length === 0 ? (
+          <Text style={styles.emptyInline}>No apps in this period.</Text>
+        ) : (
+          batteryImpact.apps.map((app, index) => (
+            <View key={`batt_${app.packageName}`} style={styles.impactRow}>
+              <View style={styles.impactTop}>
+                <Text style={styles.appName} numberOfLines={1}>
+                  {index + 1}. {app.appName}
+                </Text>
+                <Text style={styles.impactPct}>{Math.round(app.impactPercent)}%</Text>
+              </View>
+              <Text style={styles.appDuration}>{formatDuration(app.durationSeconds)}</Text>
+              <View style={styles.progressBarBg}>
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    styles.impactFill,
+                    {width: `${Math.min(100, app.impactPercent)}%`},
+                  ]}
+                />
+              </View>
+            </View>
+          ))
+        )}
+        <TouchableOpacity style={styles.systemBtn} onPress={openSystemBattery}>
+          <Text style={styles.systemBtnText}>Open system Battery Usage</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -316,5 +380,30 @@ function createStyles(colors: ColorPalette) {
     },
     appName: {color: colors.textBody, fontSize: 15, flex: 1, paddingRight: 8},
     appDuration: {color: colors.sky, fontSize: 15, fontWeight: '600'},
+    impactHint: {
+      color: colors.textMuted,
+      fontSize: 12,
+      lineHeight: 17,
+      marginBottom: 12,
+      marginTop: -8,
+    },
+    impactRow: {marginBottom: 12},
+    impactTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    impactPct: {color: colors.amber, fontSize: 13, fontWeight: '800', marginLeft: 8},
+    impactFill: {backgroundColor: colors.amber},
+    systemBtn: {
+      marginTop: 8,
+      paddingVertical: 12,
+      borderRadius: 10,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      backgroundColor: colors.bg,
+    },
+    systemBtnText: {color: colors.sky, fontWeight: '700', fontSize: 14},
   });
 }

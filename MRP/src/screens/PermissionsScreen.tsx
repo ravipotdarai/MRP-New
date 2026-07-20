@@ -22,6 +22,8 @@ interface PermissionDetail {
   grantSteps: string[];
   onOpen: () => Promise<void>;
   buttonLabel: string;
+  /** When true, show Configure even if already granted (e.g. App battery usage). */
+  alwaysConfigurable?: boolean;
 }
 
 export function PermissionsScreen() {
@@ -35,6 +37,7 @@ export function PermissionsScreen() {
   const [smsPermission, setSmsPermission] = useState<boolean | null>(null);
   const [phonePermission, setPhonePermission] = useState<boolean | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<boolean | null>(null);
+  const [batteryUnrestricted, setBatteryUnrestricted] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,6 +77,13 @@ export function PermissionsScreen() {
       } catch {
         a11y = false;
       }
+      let batteryOk = false;
+      try {
+        const status = await (mrpmModule as any).getPermissionSetupStatus?.();
+        batteryOk = !!status?.batteryExempt;
+      } catch {
+        batteryOk = false;
+      }
 
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
@@ -83,6 +93,7 @@ export function PermissionsScreen() {
         usageStats: usageStats,
         sms: sms,
         phone: phone,
+        battery: batteryOk,
       });
 
       setCameraPermission(cam);
@@ -93,6 +104,7 @@ export function PermissionsScreen() {
       setSmsPermission(sms);
       setPhonePermission(phone);
       setAccessibilityPermission(a11y);
+      setBatteryUnrestricted(batteryOk);
     } catch (e) {
       console.error('[PermissionsScreen] Failed to check permissions:', e);
       Alert.alert('Error', 'Failed to check permissions: ' + String(e));
@@ -205,6 +217,31 @@ export function PermissionsScreen() {
       }
     } catch (e) {
       console.error('[PermissionsScreen] Phone permission error:', e);
+      await openAppDetails();
+    }
+  };
+
+  const openAppBatteryUsage = async () => {
+    try {
+      if (!mrpmModule) {
+        Alert.alert('Error', 'Native module not available.');
+        return;
+      }
+      const ok = await (mrpmModule as any).openAppBatteryUsageSettings?.();
+      if (!ok) {
+        Alert.alert(
+          'Open Battery settings',
+          'Go to Settings → Apps → MRP → App battery usage, then choose Unrestricted / Optimized / Restricted.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'App settings', onPress: openAppDetails},
+          ],
+        );
+      } else {
+        setTimeout(checkPermissions, 1200);
+      }
+    } catch (e) {
+      console.error('[PermissionsScreen] Error opening app battery usage:', e);
       await openAppDetails();
     }
   };
@@ -361,6 +398,21 @@ export function PermissionsScreen() {
       onOpen: openUsageAccessSettings,
       buttonLabel: 'Open Usage Access Settings',
     },
+    {
+      name: 'App Battery Usage',
+      icon: '🔋',
+      description:
+        'Android setting for how MRP runs in the background: Unrestricted, Optimized, or Restricted. Recommended: Unrestricted so monitoring is not killed. You can change this anytime in system settings — MRP does not lock this choice.',
+      granted: batteryUnrestricted === true,
+      grantSteps: [
+        'Open App battery usage below',
+        'Choose Unrestricted (recommended), Optimized, or Restricted',
+        'Return here and pull to refresh / re-open this screen',
+      ],
+      onOpen: openAppBatteryUsage,
+      buttonLabel: 'Configure App Battery Usage',
+      alwaysConfigurable: true,
+    },
   ];
 
   return (
@@ -390,18 +442,24 @@ export function PermissionsScreen() {
               <View style={styles.grantedStatus}>
                 {perm.granted ? (
                   <View style={styles.grantedBadge}>
-                    <Text style={styles.grantedText}>✓ Granted</Text>
+                    <Text style={styles.grantedText}>
+                      {perm.alwaysConfigurable ? '✓ Unrestricted' : '✓ Granted'}
+                    </Text>
                   </View>
                 ) : (
                   <View style={styles.deniedBadge}>
-                    <Text style={styles.deniedText}>✗ Denied</Text>
+                    <Text style={styles.deniedText}>
+                      {perm.alwaysConfigurable ? '○ Optimized / Restricted' : '✗ Denied'}
+                    </Text>
                   </View>
                 )}
               </View>
 
-              {!perm.granted && (
+              {(!perm.granted || perm.alwaysConfigurable) && (
                 <View style={styles.manualGrantSection}>
-                  <Text style={styles.manualGrantTitle}>How to enable:</Text>
+                  <Text style={styles.manualGrantTitle}>
+                    {perm.alwaysConfigurable ? 'Change in Android settings:' : 'How to enable:'}
+                  </Text>
                   {perm.grantSteps.map((step, i) => (
                     <Text key={i} style={styles.stepText}>
                       {step}

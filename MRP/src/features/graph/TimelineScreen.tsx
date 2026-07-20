@@ -52,6 +52,10 @@ const EVENT_ICONS: Record<string, string> = {
   AIRPLANE_MODE_DISABLED: '✈️',
   USB_CONNECTED: '💻',
   USB_DISCONNECTED: '🚫',
+  APP_INSTALLED: '📦',
+  APP_UPDATED: '📦',
+  APP_MISUSE: '📵',
+  POSTURE_ALERT: '🛡️',
 };
 
 interface TimelineEntry {

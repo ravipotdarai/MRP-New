@@ -128,6 +128,13 @@ export function AppUsageTimeline({sessions, events}: Props) {
         return '💻';
       case 'DEVICE_BOOT':
         return '🔄';
+      case 'APP_INSTALLED':
+      case 'APP_UPDATED':
+        return '📦';
+      case 'APP_MISUSE':
+        return '📵';
+      case 'POSTURE_ALERT':
+        return '🛡️';
       default:
         return '⚡';
     }

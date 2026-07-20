@@ -36,6 +36,9 @@ import com.mrp.domain.model.*
 import com.mrp.domain.usecase.LocationHelper
 import com.mrp.domain.usecase.TimelineEventLogger
 import com.mrp.domain.usecase.AppUsageTracker
+import com.mrp.domain.usecase.PackageChangeHandler
+import com.mrp.domain.usecase.BreachPostureScanner
+import java.util.Calendar
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.util.OemBatteryMitigation
 import java.io.File
@@ -62,6 +65,8 @@ class MrpMonitorService : Service() {
     private lateinit var eventLogger: TimelineEventLogger
     private lateinit var locationHelper: LocationHelper
     private lateinit var appUsageTracker: AppUsageTracker
+    private lateinit var packageChangeHandler: PackageChangeHandler
+    private var lastPostureScanDay: Int = -1
 
     // Track states for change detection
     private var lastScreenState: Boolean? = null
@@ -307,6 +312,7 @@ class MrpMonitorService : Service() {
         eventLogger = TimelineEventLogger(this)
         locationHelper = LocationHelper(this)
         appUsageTracker = AppUsageTracker(this)
+        packageChangeHandler = PackageChangeHandler(this)
 
         startBackgroundThread()
         createNotificationChannel()
@@ -447,6 +453,13 @@ class MrpMonitorService : Service() {
             }
             registerReceiver(unifiedReceiver, filter, flags)
 
+            val pkgFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Context.RECEIVER_NOT_EXPORTED
+            } else {
+                0
+            }
+            registerReceiver(packageChangeHandler.receiver, packageChangeHandler.intentFilter(), pkgFlags)
+
             val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             connectivityManager.registerDefaultNetworkCallback(networkCallback)
 
@@ -461,6 +474,10 @@ class MrpMonitorService : Service() {
         try {
             unregisterReceiver(unifiedReceiver)
         } catch (e: Exception) { Log.w(TAG, "unifiedReceiver not registered") }
+
+        try {
+            unregisterReceiver(packageChangeHandler.receiver)
+        } catch (e: Exception) { Log.w(TAG, "packageChangeHandler not registered") }
 
         try {
             val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -685,6 +702,17 @@ class MrpMonitorService : Service() {
             if (appUsageTracker.hasUsageStatsPermission()) {
                 appUsageTracker.trackUsage()
                 lastAppUsageCheckTime = currentTime
+            }
+        }
+
+        // Daily posture scan (once per calendar day)
+        val dayOfYear = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        if (dayOfYear != lastPostureScanDay) {
+            lastPostureScanDay = dayOfYear
+            try {
+                BreachPostureScanner(this).scan(emitAlerts = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "Daily posture scan failed", e)
             }
         }
     }

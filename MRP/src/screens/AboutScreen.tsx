@@ -1,228 +1,223 @@
-import React, {useMemo} from 'react';
+import React, {useEffect, useMemo, useRef} from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
+  Animated,
+  Easing,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
-import {ColorPalette} from '../shared/theme';
+import {ColorPalette, spacing, radius} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
+
+const VERSION = '1.0.0';
+
+/** Real situations MRP is built for — the product goal in plain language. */
+const MOMENTS = [
+  {
+    when: 'Wrong PIN at the lock screen',
+    then: 'MRP can capture a selfie and log where it happened — evidence on your phone, not a cloud dashboard.',
+    accent: 'sky' as const,
+  },
+  {
+    when: 'Someone swaps or removes the SIM',
+    then: 'Recovery contacts you chose can get an SMS with location — even when Wi‑Fi is gone.',
+    accent: 'amber' as const,
+  },
+  {
+    when: 'USB plugged in while locked',
+    then: 'A silent security event (and optional selfie) so you know if the phone was connected elsewhere.',
+    accent: 'emerald' as const,
+  },
+  {
+    when: 'A risky app shows up',
+    then: 'Local App Safety flags high-privilege installs and posture issues — heuristics on-device, not an antivirus cloud.',
+    accent: 'violet' as const,
+  },
+];
+
+const LAYERS = [
+  {
+    step: '01',
+    title: 'Watch',
+    body: 'Monitoring runs in the background for unlock, SIM, network, USB, and install events.',
+  },
+  {
+    step: '02',
+    title: 'Capture',
+    body: 'Selfies and timeline entries are written locally the moment something looks wrong.',
+  },
+  {
+    step: '03',
+    title: 'Alert',
+    body: 'Optional SIM recovery SMS reaches people you trust — you pick the numbers and consent.',
+  },
+  {
+    step: '04',
+    title: 'Review',
+    body: 'Home, Timeline, Photos, and App Safety show what happened so you decide what to do next.',
+  },
+];
+
+const TRUST = [
+  {
+    title: 'Built for protection, not surveillance of you',
+    body: 'MRP watches for tampering with your device. It does not read your chats, photos library, or SMS inbox.',
+  },
+  {
+    title: 'Your phone is the vault',
+    body: 'Security events stay on-device by default. No MRP account. No ad tracking. No silent upload to our servers.',
+  },
+  {
+    title: 'You choose how deep it goes',
+    body: 'Core protection needs camera, location, overlay, and device admin. SIM SMS, accessibility, and usage access are optional add-ons.',
+  },
+];
 
 export function AboutScreen() {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const fade = useRef(new Animated.Value(0)).current;
+  const rise = useRef(new Animated.Value(18)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(rise, {
+        toValue: 0,
+        duration: 560,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fade, rise]);
+
+  const accentColor = (key: 'sky' | 'amber' | 'emerald' | 'violet') => {
+    if (key === 'amber') return colors.amber;
+    if (key === 'emerald') return colors.emerald;
+    if (key === 'violet') return colors.violet;
+    return colors.sky;
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      {/* Header with Gradient */}
-      <LinearGradient
-        colors={[colors.bg, colors.surface, colors.bg]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.headerGradient}>
-        <View style={styles.headerContent}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logo}>🛡️</Text>
-          </View>
-          <Text style={styles.appName}>MRP Stay Sync</Text>
-          <Text style={styles.appTagline}>Your Security, Your Control</Text>
-          <Text style={styles.version}>Version 1.0.0</Text>
-        </View>
-      </LinearGradient>
-
-      {/* Quick Stats Grid */}
-      <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>100%</Text>
-          <Text style={styles.statLabel}>Local Storage</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>0s</Text>
-          <Text style={styles.statLabel}>Latency</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>Offline</Text>
-          <Text style={styles.statLabel}>First Class</Text>
-        </View>
-      </View>
-
-      {/* What is MRP */}
-      <View style={styles.card}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}>
+      <Animated.View style={{opacity: fade, transform: [{translateY: rise}]}}>
+        {/* Mission hero */}
         <LinearGradient
-          colors={[colors.sky, colors.skyDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardHeaderGradient}>
-          <Text style={styles.cardIcon}>🎯</Text>
-          <Text style={styles.cardTitle}>What is MRP?</Text>
+          colors={[colors.surface, colors.surfaceAlt, colors.bg]}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={styles.hero}>
+          <Text style={styles.eyebrow}>MOBILE RESILIENCE PLATFORM</Text>
+          <Text style={styles.heroTitle}>
+            If someone tampers with your phone,{'\n'}
+            <Text style={styles.heroTitleAccent}>you should know.</Text>
+          </Text>
+          <Text style={styles.heroSub}>
+            MRP exists for one job: keep you in control when the device leaves your
+            hands — wrong unlocks, SIM swaps, suspicious plugs, and risky apps —
+            with proof that stays on your phone.
+          </Text>
+          <View style={styles.heroMeta}>
+            <Text style={styles.brandMark}>MRP</Text>
+            <Text style={styles.heroMetaDot}>·</Text>
+            <Text style={styles.heroMetaText}>Stay Sync · Stay Connected</Text>
+            <Text style={styles.heroMetaDot}>·</Text>
+            <Text style={styles.heroMetaText}>v{VERSION}</Text>
+          </View>
         </LinearGradient>
-        <Text style={styles.cardText}>
-          MRP is your personal security companion that gives you complete control over your phone's security.
+
+        {/* Goal strip */}
+        <View style={styles.goalStrip}>
+          <Text style={styles.goalLabel}>THE GOAL</Text>
+          <Text style={styles.goalText}>
+            Turn silent phone threats into a clear story you can review — selfie,
+            place, time, and what changed — so recovery starts with facts, not guesswork.
+          </Text>
+        </View>
+
+        {/* Moments */}
+        <Text style={styles.sectionLabel}>WHEN IT MATTERS</Text>
+        <Text style={styles.sectionIntro}>
+          These are the moments MRP is designed for. Each one becomes a timeline
+          entry you can open later.
         </Text>
-        <View style={styles.featureGrid}>
-          <View style={styles.featureItem}>
-            <Text style={styles.featureIcon}>📸</Text>
-            <Text style={styles.featureText}>Intruder Selfies</Text>
+        {MOMENTS.map(m => (
+          <View key={m.when} style={styles.momentCard}>
+            <View
+              style={[styles.momentBar, {backgroundColor: accentColor(m.accent)}]}
+            />
+            <View style={styles.momentBody}>
+              <Text style={styles.momentWhen}>{m.when}</Text>
+              <Text style={styles.momentThen}>{m.then}</Text>
+            </View>
           </View>
-          <View style={styles.featureItem}>
-            <Text style={styles.featureIcon}>📍</Text>
-            <Text style={styles.featureText}>GPS Tracking</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <Text style={styles.featureIcon}>⚡</Text>
-            <Text style={styles.featureText}>Instant Alerts</Text>
-          </View>
-          <View style={styles.featureItem}>
-            <Text style={styles.featureIcon}>📊</Text>
-            <Text style={styles.featureText}>Activity Monitor</Text>
-          </View>
-        </View>
-      </View>
+        ))}
 
-      {/* Your Privacy */}
-      <View style={styles.card}>
-        <LinearGradient
-          colors={[colors.emerald, colors.emeraldDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardHeaderGradient}>
-          <Text style={styles.cardIcon}>🔒</Text>
-          <Text style={styles.cardTitle}>Your Privacy</Text>
-        </LinearGradient>
-        <Text style={styles.cardText}>Your data security is our priority:</Text>
-        <View style={styles.privacyList}>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>All data stored locally on device</Text>
-          </View>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>No data sent to cloud servers</Text>
-          </View>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>No third-party tracking or analytics</Text>
-          </View>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>Data never shared with advertisers</Text>
-          </View>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>No user accounts needed</Text>
-          </View>
-          <View style={styles.privacyItem}>
-            <View style={styles.privacyBullet} />
-            <Text style={styles.privacyText}>No internet connection required</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Permissions */}
-      <View style={styles.card}>
-        <LinearGradient
-          colors={[colors.violet, colors.violet]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardHeaderGradient}>
-          <Text style={styles.cardIcon}>📋</Text>
-          <Text style={styles.cardTitle}>Required Permissions</Text>
-        </LinearGradient>
-        <View style={styles.permissionList}>
-          {permissionData.map((perm) => (
-            <View key={perm.name} style={styles.permissionItem}>
-              <Text style={styles.permissionIcon}>{perm.icon}</Text>
-              <View style={styles.permissionInfo}>
-                <Text style={styles.permissionName}>{perm.name}</Text>
-                <Text style={styles.permissionDesc}>{perm.desc}</Text>
+        {/* How it works */}
+        <Text style={[styles.sectionLabel, {marginTop: spacing.xl}]}>
+          HOW PROTECTION FLOWS
+        </Text>
+        <Text style={styles.sectionIntro}>
+          Watch → Capture → Alert → Review. You stay in charge of every permission
+          along the way.
+        </Text>
+        <View style={styles.flowCard}>
+          {LAYERS.map((layer, i) => (
+            <View
+              key={layer.step}
+              style={[styles.flowRow, i === LAYERS.length - 1 && styles.flowRowLast]}>
+              <Text style={styles.flowStep}>{layer.step}</Text>
+              <View style={styles.flowCopy}>
+                <Text style={styles.flowTitle}>{layer.title}</Text>
+                <Text style={styles.flowBody}>{layer.body}</Text>
               </View>
             </View>
           ))}
         </View>
-      </View>
 
-      {/* Why Trust MRP */}
-      <View style={styles.card}>
+        {/* Trust */}
+        <Text style={[styles.sectionLabel, {marginTop: spacing.xl}]}>
+          WHY YOU CAN TRUST THE APPROACH
+        </Text>
+        {TRUST.map(t => (
+          <View key={t.title} style={styles.trustCard}>
+            <Text style={styles.trustTitle}>{t.title}</Text>
+            <Text style={styles.trustBody}>{t.body}</Text>
+          </View>
+        ))}
+
+        {/* Promise */}
         <LinearGradient
-          colors={[colors.amber, colors.amber]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardHeaderGradient}>
-          <Text style={styles.cardIcon}>✅</Text>
-          <Text style={styles.cardTitle}>Why Trust MRP?</Text>
+          colors={[colors.emeraldSoft, colors.skySoft]}
+          start={{x: 0, y: 0}}
+          end={{x: 1, y: 1}}
+          style={styles.promise}>
+          <Text style={styles.promiseLabel}>OUR PROMISE</Text>
+          <Text style={styles.promiseText}>
+            Your security events belong to you. Today they live on this device.
+            Tomorrow, optional backup would only go to{' '}
+            <Text style={styles.promiseEm}>your</Text> Google Drive — never an MRP
+            cloud we can browse. We will not sell or advertise with your data.
+          </Text>
         </LinearGradient>
-        <View style={styles.trustList}>
-          {trustData.map((item, index) => (
-            <View key={index} style={styles.trustItem}>
-              <Text style={styles.trustIcon}>{item.icon}</Text>
-              <Text style={styles.trustText}>{item.text}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
 
-      {/* Data Ownership */}
-      <View style={styles.card}>
-        <LinearGradient
-          colors={[colors.pink, colors.pink]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.cardHeaderGradient}>
-          <Text style={styles.cardIcon}>💎</Text>
-          <Text style={styles.cardTitle}>Your Data Belongs Only to You</Text>
-        </LinearGradient>
-        <View style={styles.dataTimeline}>
-          <View style={styles.timelineItem}>
-            <View style={styles.timelineDot} />
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineTitle}>Today</Text>
-              <Text style={styles.timelineText}>All data stored locally. No cloud, no servers.</Text>
-            </View>
-          </View>
-          <View style={styles.timelineItem}>
-            <View style={styles.timelineDot} />
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineTitle}>Future</Text>
-              <Text style={styles.timelineText}>Data syncs ONLY to YOUR Google Drive account.</Text>
-            </View>
-          </View>
-          <View style={styles.timelineItem}>
-            <View style={styles.timelineDot} />
-            <View style={styles.timelineContent}>
-              <Text style={styles.timelineTitle}>Never</Text>
-              <Text style={styles.timelineText}>We will never sell or share your data.</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerTitle}>Your security, your privacy, your peace of mind</Text>
-        <Text style={styles.footerText}>Made with 💚 for your protection</Text>
-      </View>
+        <Text style={styles.footer}>
+          Protect the phone. Keep the proof. Stay in control.
+        </Text>
+      </Animated.View>
     </ScrollView>
   );
 }
-
-const permissionData = [
-  { name: 'Camera Access', desc: 'Captures intruder selfies', icon: '📷' },
-  { name: 'Location Access', desc: 'Records GPS coordinates', icon: '📍' },
-  { name: 'Display Over Other Apps', desc: 'Shows camera preview', icon: '🖥️' },
-  { name: 'Device Admin', desc: 'Detects wrong password', icon: '🔐' },
-  { name: 'Accessibility Service', desc: 'Monitors screen activity', icon: '♿' },
-  { name: 'Usage Stats', desc: 'Tracks open apps', icon: '📊' },
-];
-
-const trustData = [
-  { icon: '👁️', text: 'Transparent - You control every permission' },
-  { icon: '🔧', text: 'Minimal - Only essential permissions' },
-  { icon: '🏠', text: 'Local-first - Data never leaves your phone' },
-  { icon: '📖', text: 'Open - Check everything in Settings' },
-  { icon: '🔒', text: 'Secure - Encryption for all local data' },
-  { icon: '👤', text: 'Yours - Data belongs only to you' },
-];
 
 function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
@@ -230,253 +225,216 @@ function createStyles(colors: ColorPalette) {
       flex: 1,
       backgroundColor: colors.bg,
     },
-    scrollContent: {
-      padding: 20,
-      paddingBottom: 80,
+    content: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: 56,
     },
-    headerGradient: {
-      borderRadius: 24,
-      padding: 32,
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    headerContent: {
-      alignItems: 'center',
-    },
-    logoBox: {
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      backgroundColor: colors.emerald,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: 20,
-      shadowColor: colors.emerald,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.5,
-      shadowRadius: 16,
-      elevation: 10,
-    },
-    logo: {
-      fontSize: 50,
-    },
-    appName: {
-      fontSize: 24,
-      fontWeight: '800',
-      color: colors.textPrimary,
-      textAlign: 'center',
-      marginBottom: 8,
-    },
-    appTagline: {
-      fontSize: 14,
-      color: colors.sky,
-      fontWeight: '600',
-      textAlign: 'center',
-      marginBottom: 12,
-    },
-    version: {
-      fontSize: 12,
-      color: colors.textMuted,
-      backgroundColor: colors.borderSoft,
-      paddingHorizontal: 16,
-      paddingVertical: 4,
-      borderRadius: 12,
-    },
-    statsGrid: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: 24,
-    },
-    statCard: {
-      flex: 1,
-      marginHorizontal: 8,
-      backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: 20,
-      alignItems: 'center',
+    hero: {
+      borderRadius: radius.xl,
+      padding: spacing.xl,
+      paddingTop: spacing.xxl,
+      paddingBottom: spacing.xxl,
       borderWidth: 1,
-      borderColor: colors.skySoft,
-    },
-    statValue: {
-      fontSize: 20,
-      fontWeight: '800',
-      color: colors.sky,
-      marginBottom: 4,
-    },
-    statLabel: {
-      fontSize: 11,
-      color: colors.textMuted,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      textAlign: 'center',
-    },
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: 20,
-      padding: 24,
-      marginBottom: 24,
+      borderColor: colors.borderSoft,
+      marginBottom: spacing.lg,
       overflow: 'hidden',
     },
-    cardHeaderGradient: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 16,
-      paddingHorizontal: 20,
-      marginBottom: 20,
+    eyebrow: {
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.4,
+      color: colors.emerald,
+      marginBottom: spacing.md,
     },
-    cardIcon: {
-      fontSize: 28,
-      marginRight: 12,
-    },
-    cardTitle: {
+    heroTitle: {
+      fontSize: 26,
+      fontWeight: '800',
       color: colors.textPrimary,
-      fontSize: 18,
-      fontWeight: '700',
-      flex: 1,
+      lineHeight: 34,
+      marginBottom: spacing.md,
     },
-    cardText: {
-      color: colors.textBody,
+    heroTitleAccent: {
+      color: colors.sky,
+    },
+    heroSub: {
       fontSize: 15,
-      lineHeight: 26,
-      marginBottom: 16,
+      lineHeight: 23,
+      color: colors.textBody,
+      marginBottom: spacing.lg,
     },
-    featureGrid: {
+    heroMeta: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
-      marginTop: 8,
-    },
-    featureItem: {
-      flex: 1,
-      minWidth: '48%',
-      backgroundColor: colors.borderSubtle,
-      borderRadius: 12,
-      padding: 12,
       alignItems: 'center',
+      gap: 6,
     },
-    featureIcon: {
-      fontSize: 24,
-      marginBottom: 8,
-    },
-    featureText: {
-      color: colors.textBody,
+    brandMark: {
       fontSize: 13,
-      fontWeight: '500',
-      textAlign: 'center',
-    },
-    privacyList: {
-      gap: 16,
-    },
-    privacyItem: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-    },
-    privacyBullet: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      backgroundColor: colors.emerald,
-      marginTop: 8,
-      marginRight: 12,
-      flexShrink: 0,
-    },
-    privacyText: {
-      color: colors.textBody,
-      fontSize: 15,
-      lineHeight: 24,
-      flex: 1,
-    },
-    permissionList: {
-      gap: 12,
-    },
-    permissionItem: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      backgroundColor: colors.borderSubtle,
-      borderRadius: 12,
-      padding: 12,
-    },
-    permissionIcon: {
-      fontSize: 24,
-      marginRight: 12,
-    },
-    permissionInfo: {
-      flex: 1,
-    },
-    permissionName: {
+      fontWeight: '800',
+      letterSpacing: 2,
       color: colors.textPrimary,
-      fontSize: 14,
-      fontWeight: '600',
-      marginBottom: 2,
     },
-    permissionDesc: {
+    heroMetaDot: {
+      color: colors.textMuted,
+      fontSize: 13,
+    },
+    heroMetaText: {
+      fontSize: 12,
       color: colors.textSecondary,
-      fontSize: 13,
-      lineHeight: 20,
+      fontWeight: '600',
     },
-    trustList: {
-      gap: 16,
+    goalStrip: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.emerald,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      padding: spacing.md,
+      marginBottom: spacing.xl,
     },
-    trustItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    goalLabel: {
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      color: colors.emerald,
+      marginBottom: 6,
     },
-    trustIcon: {
-      fontSize: 20,
-      marginRight: 12,
-    },
-    trustText: {
-      color: colors.textBody,
+    goalText: {
       fontSize: 15,
-      lineHeight: 22,
+      lineHeight: 23,
+      color: colors.textPrimary,
+      fontWeight: '600',
     },
-    dataTimeline: {
-      gap: 16,
+    sectionLabel: {
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 1.1,
+      color: colors.textMuted,
+      marginBottom: 6,
     },
-    timelineItem: {
+    sectionIntro: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.textSecondary,
+      marginBottom: spacing.md,
+    },
+    momentCard: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      marginBottom: spacing.sm,
+      overflow: 'hidden',
     },
-    timelineDot: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: colors.pink,
-      marginTop: 6,
-      marginRight: 12,
-      flexShrink: 0,
+    momentBar: {
+      width: 4,
     },
-    timelineContent: {
+    momentBody: {
+      flex: 1,
+      padding: spacing.md,
+    },
+    momentWhen: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 6,
+    },
+    momentThen: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.textBody,
+    },
+    flowCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 4,
+    },
+    flowRow: {
+      flexDirection: 'row',
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      gap: 12,
+    },
+    flowRowLast: {
+      borderBottomWidth: 0,
+    },
+    flowStep: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.sky,
+      width: 28,
+      paddingTop: 2,
+    },
+    flowCopy: {
       flex: 1,
     },
-    timelineTitle: {
-      color: colors.textPrimary,
+    flowTitle: {
       fontSize: 16,
-      fontWeight: '700',
+      fontWeight: '800',
+      color: colors.textPrimary,
       marginBottom: 4,
     },
-    timelineText: {
-      color: colors.textBody,
-      fontSize: 14,
-      lineHeight: 22,
+    flowBody: {
+      fontSize: 13,
+      lineHeight: 20,
+      color: colors.textSecondary,
     },
-    footer: {
-      alignItems: 'center',
-      paddingTop: 40,
-      paddingBottom: 40,
-      marginTop: 20,
+    trustCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      padding: spacing.md,
+      marginBottom: spacing.sm,
     },
-    footerTitle: {
+    trustTitle: {
+      fontSize: 15,
+      fontWeight: '800',
       color: colors.textPrimary,
-      fontSize: 18,
-      fontWeight: '700',
-      textAlign: 'center',
+      marginBottom: 6,
+    },
+    trustBody: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.textBody,
+    },
+    promise: {
+      marginTop: spacing.lg,
+      borderRadius: radius.xl,
+      padding: spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+    },
+    promiseLabel: {
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      color: colors.emerald,
       marginBottom: 8,
     },
-    footerText: {
-      color: colors.textMuted,
-      fontSize: 14,
+    promiseText: {
+      fontSize: 15,
+      lineHeight: 23,
+      color: colors.textPrimary,
+    },
+    promiseEm: {
+      fontWeight: '800',
+      color: colors.sky,
+    },
+    footer: {
+      marginTop: spacing.xl,
       textAlign: 'center',
+      fontSize: 14,
+      fontWeight: '700',
+      color: colors.textMuted,
+      letterSpacing: 0.2,
     },
   });
 }

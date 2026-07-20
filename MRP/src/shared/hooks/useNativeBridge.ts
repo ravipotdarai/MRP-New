@@ -41,6 +41,9 @@ export interface MrpNativeInterface {
   getMrpBatteryUsage(): Promise<any>;
   clearPermissionCache(): Promise<boolean>;
   getDeviceBatteryLevel(): Promise<number>;
+  openSystemBatteryUsage(): Promise<boolean>;
+  /** Opens Android App battery usage for MRP (Unrestricted / Optimized / Restricted). */
+  openAppBatteryUsageSettings(): Promise<boolean>;
   getNetworkInfo(): Promise<{
     carrierName: string;
     connectionType: string;
@@ -104,6 +107,11 @@ export interface MrpNativeInterface {
   isPermissionWizardDismissed(): Promise<boolean>;
   setPermissionWizardDismissed(dismissed: boolean): Promise<boolean>;
   openAppNotificationSettings(): Promise<boolean>;
+  getAppRiskReport(): Promise<any[]>;
+  runBreachPostureScan(): Promise<any>;
+  getBreachPostureSummary(): Promise<any>;
+  getMisuseRules(): Promise<any[]>;
+  setMisuseRuleEnabled(ruleId: string, enabled: boolean): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

@@ -5,6 +5,7 @@ import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
 import {AppUsageReports} from './AppUsageReports';
+import {AppSafetyScreen} from './AppSafetyScreen';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -33,7 +34,7 @@ export type UnifiedEvent = {
   photoPath?: string;
 };
 
-type AppUsageTab = 'DASHBOARD' | 'TIMELINE' | 'REPORTS';
+type AppUsageTab = 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY';
 
 export function AppUsageScreen({route}: {route?: any}) {
   const [activeTab, setActiveTab] = useState<AppUsageTab>('DASHBOARD');
@@ -48,7 +49,7 @@ export function AppUsageScreen({route}: {route?: any}) {
 
   const applyInitialTab = useCallback(() => {
     const t = route?.params?.initialTab as AppUsageTab | undefined;
-    if (t === 'DASHBOARD' || t === 'TIMELINE' || t === 'REPORTS') {
+    if (t === 'DASHBOARD' || t === 'TIMELINE' || t === 'REPORTS' || t === 'SAFETY') {
       setActiveTab(t);
     }
   }, [route?.params?.initialTab]);
@@ -169,18 +170,24 @@ export function AppUsageScreen({route}: {route?: any}) {
     );
   }
 
-  if (!hasPermission) {
+  if (!hasPermission && activeTab !== 'SAFETY') {
     return (
       <View style={styles.permissionContainer}>
         <Text style={styles.permissionTitle}>Usage Access Required</Text>
         <Text style={styles.permissionText}>
           To provide App Usage Analytics and Reports, MRP needs Usage Access permission.
+          You can still open the Safety tab for risk and posture checks.
         </Text>
         <TouchableOpacity style={styles.permissionButton} onPress={handleRequestPermission}>
           <Text style={styles.permissionButtonText}>Grant Permission in Settings</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.refreshButton} onPress={checkPermissionAndLoad}>
           <Text style={styles.refreshButtonText}>I already granted it (Refresh)</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.refreshButton, {marginTop: 12}]}
+          onPress={() => setActiveTab('SAFETY')}>
+          <Text style={styles.refreshButtonText}>Open App Safety instead</Text>
         </TouchableOpacity>
       </View>
     );
@@ -207,12 +214,19 @@ export function AppUsageScreen({route}: {route?: any}) {
         >
           <Text style={[styles.tabText, activeTab === 'REPORTS' && styles.activeTabText]}>Reports</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'SAFETY' && styles.activeTab]}
+          onPress={() => setActiveTab('SAFETY')}
+        >
+          <Text style={[styles.tabText, activeTab === 'SAFETY' && styles.activeTabText]}>Safety</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
         {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
         {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
         {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
+        {activeTab === 'SAFETY' && <AppSafetyScreen />}
       </View>
     </SafeAreaView>
   );
@@ -297,7 +311,7 @@ function createAppUsageStyles(colors: ColorPalette) {
   },
   tabText: {
     color: colors.textSecondary,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   activeTabText: {

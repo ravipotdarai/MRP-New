@@ -13,6 +13,9 @@ data class MonitoringSettings(
     val captureOnSimChange: Boolean = true,
     val captureOnFactoryReset: Boolean = true,
     val captureOnUsb: Boolean = true,
+    val captureOnAppInstall: Boolean = true,
+    val captureOnRiskyAppInstall: Boolean = true,
+    val captureOnAppMisuse: Boolean = true,
     val maxFailedAttempts: Int = 3,
     val lockAfterFailedAttempts: Boolean = true,
     val autoDeleteAfterDays: Int = 30

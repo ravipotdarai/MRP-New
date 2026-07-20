@@ -201,3 +201,41 @@ export const aggregateAppStats = (sessions: AppUsageSession[]) => {
     battery: 0,
   };
 };
+
+export type BatteryImpactApp = {
+  packageName: string;
+  appName: string;
+  durationSeconds: number;
+  /** Share of total foreground time in the window (0–100). */
+  impactPercent: number;
+};
+
+/**
+ * Rank apps by foreground duration as a battery-impact proxy.
+ * Does not estimate mAh — Android does not expose per-app power to normal apps.
+ */
+export function rankBatteryImpact(
+  sessions: AppUsageSession[],
+  sinceMs: number,
+  limit = 10,
+): {apps: BatteryImpactApp[]; totalSeconds: number} {
+  const windowed = sessions.filter(
+    s => (s.endTime || s.startTime) >= sinceMs || s.startTime >= sinceMs,
+  );
+  // Clip duration to the window so "today" isn't inflated by overnight sessions
+  const clipped = windowed.map(s => {
+    const start = Math.max(s.startTime, sinceMs);
+    const end = Math.max(s.endTime || s.startTime, start);
+    const durationSeconds = Math.max(0, (end - start) / 1000);
+    return {...s, startTime: start, endTime: end, durationSeconds};
+  });
+  const consolidated = consolidateSessionsByApp(clipped);
+  const totalSeconds = consolidated.reduce((sum, a) => sum + a.durationSeconds, 0);
+  const apps = consolidated.slice(0, limit).map(a => ({
+    packageName: a.packageName,
+    appName: formatAppLabel(a.appName, a.packageName),
+    durationSeconds: a.durationSeconds,
+    impactPercent: totalSeconds > 0 ? (a.durationSeconds / totalSeconds) * 100 : 0,
+  }));
+  return {apps, totalSeconds};
+}

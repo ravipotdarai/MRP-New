@@ -68,14 +68,20 @@ async function requestRuntimePermissions(
         return 'granted';
       }
       try {
-        const canAskAgain = await Promise.all(
-          unique.map(p =>
-            PermissionsAndroid.shouldShowRequestPermissionRationale(p),
-          ),
-        );
-        // After Deny, rationale=true means OS will show the dialog again next time
-        if (canAskAgain.some(Boolean)) {
-          return 'denied';
+        // RN typings omit this Android API; it exists at runtime.
+        const showRationale = (
+          PermissionsAndroid as unknown as {
+            shouldShowRequestPermissionRationale?: (
+              permission: Permission,
+            ) => Promise<boolean>;
+          }
+        ).shouldShowRequestPermissionRationale;
+        if (typeof showRationale === 'function') {
+          const canAskAgain = await Promise.all(unique.map(p => showRationale(p)));
+          // After Deny, rationale=true means OS will show the dialog again next time
+          if (canAskAgain.some(Boolean)) {
+            return 'denied';
+          }
         }
       } catch {
         /* ignore */
@@ -576,8 +582,32 @@ export function MonitoringScreen() {
           title="Factory Reset Protection"
           subtitle="Log alert on unauthorized device wipe attempts"
           value={settings.captureOnFactoryReset}
-          isLast={true}
+          isLast={false}
           onValueChange={v => updateSetting('captureOnFactoryReset', v)}
+        />
+        <SettingItem
+          icon="📦"
+          title="App install alerts"
+          subtitle="Log new / updated apps on Timeline"
+          value={settings.captureOnAppInstall ?? true}
+          isLast={false}
+          onValueChange={v => updateSetting('captureOnAppInstall', v)}
+        />
+        <SettingItem
+          icon="⚠️"
+          title="Selfie on risky installs"
+          subtitle="Capture when a HIGH/CRITICAL risk app is installed"
+          value={settings.captureOnRiskyAppInstall ?? true}
+          isLast={false}
+          onValueChange={v => updateSetting('captureOnRiskyAppInstall', v)}
+        />
+        <SettingItem
+          icon="📵"
+          title="App misuse alerts"
+          subtitle="Timeline alerts when misuse rules match (App Usage → Safety)"
+          value={settings.captureOnAppMisuse ?? true}
+          isLast={true}
+          onValueChange={v => updateSetting('captureOnAppMisuse', v)}
         />
       </View>
     </ScrollView>

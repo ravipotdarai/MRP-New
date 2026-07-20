@@ -1,8 +1,9 @@
-import React, {useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView, RefreshControl} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {View, Text, StyleSheet, ScrollView, RefreshControl, TouchableOpacity, Alert} from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
-import {aggregateAppStats, formatAppName, formatDuration} from './AppUsageUtils';
+import {aggregateAppStats, formatAppName, formatDuration, rankBatteryImpact} from './AppUsageUtils';
+import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -14,14 +15,18 @@ interface Props {
   onRefresh: () => void;
 }
 
+type ImpactPeriod = 'TODAY' | '7D';
+
 export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefresh}: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const [impactPeriod, setImpactPeriod] = useState<ImpactPeriod>('TODAY');
 
   // Get Today's Start Time
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayStartMs = todayStart.getTime();
+  const weekStartMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
   // Deduplicate sessions by packageName + startTime to prevent duplicates
   const uniqueSessions = useMemo(() => {
@@ -92,6 +97,25 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
 
   const {sortedApps, mostUsedApp, currentApp} = useMemo(() => aggregateAppStats(sessions), [sessions]);
 
+  const batteryImpact = useMemo(() => {
+    const since = impactPeriod === 'TODAY' ? todayStartMs : weekStartMs;
+    return rankBatteryImpact(sessions, since, 10);
+  }, [sessions, impactPeriod, todayStartMs, weekStartMs]);
+
+  const openSystemBattery = async () => {
+    try {
+      const ok = await (mrpmModule as any).openSystemBatteryUsage?.();
+      if (!ok) {
+        Alert.alert(
+          'Could not open Battery',
+          'Open Settings → Battery → Battery usage to see official power stats.',
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Could not open system Battery Usage');
+    }
+  };
+
   // Aggregate Events
   const todayEvents = events.filter(e => e.timestamp >= todayStartMs);
   const unlocksToday = todayEvents.filter(e => e.type === 'SCREEN_UNLOCK').length;
@@ -122,16 +146,16 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
         <Text style={styles.headerTitle}>App Usage Overview</Text>
       </View>
 
-      {/* MRP Battery Card */}
+      {/* MRP screen time (foreground only — not energy) */}
       {mrpBattery && (
         <LinearGradient
           colors={[colors.emeraldSoft, colors.emeraldSoft]}
           start={{x: 0, y: 0}}
           end={{x: 1, y: 1}}
           style={styles.mrpBatteryCard}>
-          <Text style={styles.mrpBatteryTitle}>MRP Battery Usage</Text>
+          <Text style={styles.mrpBatteryTitle}>MRP Screen Time</Text>
           <Text style={styles.mrpBatteryText}>{mrpBattery.batteryUsageText}</Text>
-          <Text style={styles.mrpBatterySubtitle}>During last 24 hours</Text>
+          <Text style={styles.mrpBatterySubtitle}>Foreground time · last 24 hours</Text>
         </LinearGradient>
       )}
 
@@ -156,6 +180,65 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
         {renderWidget("Distance", `${todayDistance.toFixed(2)} km`, "Estimated today")}
         {renderWidget("Photos", photosToday.toString(), "Captured today")}
         {renderWidget("Pending Sync", pendingSync.toString(), "Events waiting")}
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.impactHeader}>
+          <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Battery Impact</Text>
+          <View style={styles.impactToggle}>
+            {(['TODAY', '7D'] as ImpactPeriod[]).map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.impactChip, impactPeriod === p && styles.impactChipActive]}
+                onPress={() => setImpactPeriod(p)}>
+                <Text
+                  style={[
+                    styles.impactChipText,
+                    impactPeriod === p && styles.impactChipTextActive,
+                  ]}>
+                  {p === 'TODAY' ? 'Today' : '7 days'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+        <Text style={styles.impactDisclaimer}>
+          Estimated from screen time share — not mAh. Open system Battery for official power
+          use (including services).
+        </Text>
+        {batteryImpact.apps.length === 0 ? (
+          <Text style={styles.impactEmpty}>No app usage in this period.</Text>
+        ) : (
+          <View style={styles.appList}>
+            {batteryImpact.apps.map((app, index) => (
+              <View key={app.packageName} style={styles.impactRow}>
+                <View style={styles.appRank}>
+                  <Text style={styles.appRankText}>{index + 1}</Text>
+                </View>
+                <View style={styles.impactInfo}>
+                  <View style={styles.impactTop}>
+                    <Text style={styles.appName} numberOfLines={1}>
+                      {app.appName}
+                    </Text>
+                    <Text style={styles.impactPct}>{Math.round(app.impactPercent)}%</Text>
+                  </View>
+                  <Text style={styles.appStats}>{formatDuration(app.durationSeconds)}</Text>
+                  <View style={styles.impactBarBg}>
+                    <View
+                      style={[
+                        styles.impactBarFill,
+                        {width: `${Math.min(100, app.impactPercent)}%`},
+                      ]}
+                    />
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+        <TouchableOpacity style={styles.systemBatteryBtn} onPress={openSystemBattery}>
+          <Text style={styles.systemBatteryBtnText}>Open system Battery Usage</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -244,6 +327,68 @@ function createStyles(colors: ColorPalette) {
       fontWeight: '600',
       marginBottom: 12,
     },
+    impactHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    impactToggle: {flexDirection: 'row', gap: 6},
+    impactChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+    },
+    impactChipActive: {
+      backgroundColor: colors.amberSoft,
+      borderColor: colors.amber,
+    },
+    impactChipText: {fontSize: 12, fontWeight: '600', color: colors.textSecondary},
+    impactChipTextActive: {color: colors.amber},
+    impactDisclaimer: {
+      fontSize: 12,
+      color: colors.textMuted,
+      lineHeight: 17,
+      marginBottom: 12,
+    },
+    impactEmpty: {color: colors.textSecondary, fontSize: 13, marginBottom: 8},
+    impactRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 14,
+    },
+    impactInfo: {flex: 1},
+    impactTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    impactPct: {fontSize: 13, fontWeight: '800', color: colors.amber, marginLeft: 8},
+    impactBarBg: {
+      height: 6,
+      backgroundColor: colors.borderSubtle,
+      borderRadius: 3,
+      marginTop: 6,
+      overflow: 'hidden',
+    },
+    impactBarFill: {
+      height: '100%',
+      backgroundColor: colors.amber,
+      borderRadius: 3,
+    },
+    systemBatteryBtn: {
+      marginTop: 4,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      paddingVertical: 12,
+      borderRadius: 10,
+      alignItems: 'center',
+    },
+    systemBatteryBtnText: {color: colors.sky, fontWeight: '700', fontSize: 14},
     mrpBatteryCard: {
       padding: 16,
       borderRadius: 12,
