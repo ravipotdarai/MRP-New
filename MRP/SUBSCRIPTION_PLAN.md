@@ -2,7 +2,7 @@
 
 > **Status:** Documentation only — not implemented yet.  
 > **Audience:** Product + engineering when monetization work starts.  
-> **Related:** [Architecture.md](Architecture.md) (tier sketch), [BUGS_AND_MISSING_FEATURES.md](BUGS_AND_MISSING_FEATURES.md) §30.
+> **Related:** [PROJECT_IMPLEMENTATION_PLAN.md](../PROJECT_IMPLEMENTATION_PLAN.md) (master plan + test plans), [Architecture.md](Architecture.md), [BUGS_AND_MISSING_FEATURES.md](BUGS_AND_MISSING_FEATURES.md) §30.
 
 ---
 
@@ -39,14 +39,16 @@
 |---|---|---|
 | **Free** | Default | None |
 | **Premium** | In-app purchase | Auto-renewing Google Play subscription |
-| **Enterprise** | Support / volume deal | License key or admin token (no Play IAP required) |
+| **Family** | In-app purchase (owner) | `mrp_premium_family` — up to **6 members** |
+| **Enterprise** | Play IAP and/or admin grant | `mrp_enterprise` — **Circle live share** + fleet/admin |
 
 ### Play product IDs (proposed)
 
 | SKU | Base plan | Notes |
 |---|---|---|
-| `mrp_premium` | `monthly` | Auto-renew monthly |
-| `mrp_premium` | `yearly` | Auto-renew yearly (prefer for conversion) |
+| `mrp_premium` | `monthly` / `yearly` | Individual Premium |
+| `mrp_premium_family` | `monthly` / `yearly` | Family owner; members via invite |
+| `mrp_enterprise` | `monthly` / `yearly` | **Circle** (all categories) + web live + admin features |
 
 Exact list price is set in Play Console (localized). Placeholders for planning:
 
@@ -63,7 +65,7 @@ Enterprise: custom quote; key issued manually until an admin portal exists.
 
 Concrete caps so implementers can gate without inventing numbers later.
 
-| Capability | Free | Premium | Enterprise |
+| Capability | Free | Premium / Family | Enterprise |
 |---|---|---|---|
 | Local PIN lock / vault | Yes | Yes | Yes |
 | Background monitoring (unlock, USB, network, SIM events) | Yes | Yes | Yes |
@@ -75,9 +77,10 @@ Concrete caps so implementers can gate without inventing numbers later.
 | App Usage dashboard | Today + **7-day** history | Full history in retention | Full + export |
 | App Safety (on-device heuristics) | Basic flags | Full rules / history | Full + export |
 | Reports / CSV export | No | Yes | Yes |
+| **Circle live share** (all categories) | No | **No** | **Yes** |
 | Geofencing (when built) | No | Yes | Yes |
 | Push event alerts (when built) | No | Yes | Yes |
-| Cloud sync / multi-device (when built) | No | **Premium** (included) | Yes + fleet |
+| Cloud sync / multi-device (Drive) | No | **Premium** (included) | Yes + fleet |
 | Fleet / device admin / SLA | No | No | Yes |
 | Priority support | No | Email | Dedicated |
 
@@ -98,6 +101,12 @@ reports.export
 geofence
 push.alerts
 cloud.sync
+circle.one_to_one
+circle.friend
+circle.friends_group
+circle.family
+circle.peer
+circle.live.web
 enterprise.fleet
 ```
 
@@ -113,8 +122,8 @@ Stored in **EncryptedSharedPreferences** (same trust boundary as PIN hash):
 
 ```json
 {
-  "tier": "free | premium | enterprise",
-  "source": "none | play | enterprise_key",
+  "tier": "free | premium | family | enterprise",
+  "source": "none | play | family | enterprise_key | admin",
   "productId": "mrp_premium | null",
   "basePlanId": "monthly | yearly | null",
   "expiryEpochMs": 0,

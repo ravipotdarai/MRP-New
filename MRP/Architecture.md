@@ -1076,7 +1076,7 @@ Support offline grace period.
 
 
 
-Full design (not implemented): SUBSCRIPTION_PLAN.md
+Full design (not implemented): SUBSCRIPTION_PLAN.md — master plan: ../PROJECT_IMPLEMENTATION_PLAN.md
 
 
 
