@@ -22,8 +22,9 @@ import {findMatchingEventForPhoto} from '../../shared/utils/selfieMatcher';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
-const {width} = Dimensions.get('window');
+const {width, height: WINDOW_HEIGHT} = Dimensions.get('window');
 const PHOTO_SIZE = (width - 48) / 2;
+const MODAL_ACTIONS_HEIGHT = 76;
 
 interface TimelineEntry {
   id: string;
@@ -59,9 +60,11 @@ export function PhotoGallery() {
 
   const formatPhotoEventName = (filename: string) => {
     const upper = (filename || '').toUpperCase();
+    if (upper.includes('TEST_PHOTO') || upper.includes('TEST_CAPTURE') || upper.includes('TEST_BULLETPROOF') || upper.includes('TEST_SELFIE')) {
+      return 'Test Photo';
+    }
     if (upper.includes('WRONG_UNLOCK_ATTEMPT')) return 'Wrong Unlock Attempt';
     if (upper.includes('WRONG_PASSWORD')) return 'Wrong Password';
-    if (upper.includes('TEST_BULLETPROOF') || upper.includes('TEST_SELFIE')) return 'Test Selfie';
     if (upper.includes('WIFI_ENABLED')) return 'Wi-Fi Enabled Capture';
     const nameWithoutExt = (filename || '').replace(/\.jpe?g$/i, '');
     const parts = nameWithoutExt.split('_');
@@ -123,7 +126,7 @@ export function PhotoGallery() {
         'Testing Front Camera',
         'Requesting immediate front camera selfie capture for verification...',
       );
-      await mrpmModule.testPhotoCapture('WRONG_UNLOCK_ATTEMPT');
+      await mrpmModule.testPhotoCapture('TEST_PHOTO');
       setTimeout(() => {
         loadData(true);
         setCapturingTest(false);
@@ -216,10 +219,6 @@ export function PhotoGallery() {
     });
   })();
 
-  const findMatchingEvent = (photo: Photo): TimelineEntry | null => {
-    return findMatchingEventForPhoto(photo, timelineEvents);
-  };
-
   const renderPhotoItem = ({item}: {item: Photo}) => {
     const eventTitle = formatPhotoEventName(item.name);
 
@@ -250,7 +249,9 @@ export function PhotoGallery() {
     );
   };
 
-  const matchedEvent = selectedPhoto ? findMatchingEvent(selectedPhoto) : null;
+  const matchedEvent = selectedPhoto
+    ? findMatchingEventForPhoto(selectedPhoto, timelineEvents)
+    : null;
 
   const FILTER_CHIPS: {key: typeof activeTab; label: string}[] = [
     {key: 'ALL', label: `All (${photos.length})`},
@@ -375,136 +376,148 @@ export function PhotoGallery() {
         visible={!!selectedPhoto}
         transparent={false}
         animationType="slide"
-        onRequestClose={() => setSelectedPhoto(null)}>
-        <SafeAreaView style={styles.modalContainer}>
-          {selectedPhoto && (
-            <>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalHeaderTitle}>Security Event Evidence</Text>
-                <TouchableOpacity
-                  style={styles.closeBtn}
-                  onPress={() => setSelectedPhoto(null)}>
-                  <Text style={styles.closeBtnText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                style={styles.modalScrollFlex}
-                contentContainerStyle={styles.modalScroll}
-                showsVerticalScrollIndicator
-                keyboardShouldPersistTaps="handled">
-                <View style={styles.imageCard}>
-                  <Image
-                    source={{uri: `file://${selectedPhoto.path}`}}
-                    style={styles.fullImage}
-                    resizeMode="contain"
-                  />
+        onRequestClose={() => setSelectedPhoto(null)}
+        statusBarTranslucent>
+        <View style={styles.modalRoot}>
+          <SafeAreaView style={styles.modalContainer}>
+            {selectedPhoto ? (
+              <View style={styles.modalBody}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalHeaderTitle} numberOfLines={1}>
+                    Security Event Evidence
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.closeBtn}
+                    onPress={() => setSelectedPhoto(null)}>
+                    <Text style={styles.closeBtnText}>✕</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <View style={styles.detailsCard}>
-                  <Text style={styles.detailsTitle}>
-                    {formatPhotoEventName(selectedPhoto.name)}
-                  </Text>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>VERIFIED</Text>
+                <ScrollView
+                  style={styles.modalScrollFlex}
+                  contentContainerStyle={styles.modalScroll}
+                  showsVerticalScrollIndicator
+                  persistentScrollbar
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                  bounces={false}>
+                  <View style={styles.imageCard}>
+                    <Image
+                      source={{uri: `file://${selectedPhoto.path}`}}
+                      style={styles.fullImage}
+                      resizeMode="contain"
+                    />
                   </View>
 
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>📅 Capture Timestamp</Text>
-                    <Text style={styles.detailValue}>
-                      {new Date(selectedPhoto.timestamp).toLocaleDateString()}{' '}
-                      {new Date(selectedPhoto.timestamp).toLocaleTimeString()}
+                  <View style={styles.detailsCard}>
+                    <Text style={styles.detailsTitle}>
+                      {formatPhotoEventName(selectedPhoto.name)}
                     </Text>
-                  </View>
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeText}>VERIFIED</Text>
+                    </View>
 
-                  {matchedEvent ? (
-                    <>
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>⚡ Security Trigger</Text>
-                        <Text style={styles.detailValue}>
-                          {matchedEvent.event_type.replace(/_/g, ' ')} ({matchedEvent.status})
-                        </Text>
-                      </View>
-
-                      {matchedEvent.location && matchedEvent.location.latitude !== 0 ? (
-                        <>
-                          <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>📍 Address</Text>
-                            <Text style={styles.detailValue}>
-                              {matchedEvent.location.detailed_address ||
-                                'Address lookup in progress'}
-                            </Text>
-                            <TouchableOpacity
-                              style={styles.mapButton}
-                              onPress={() =>
-                                openLocation(
-                                  matchedEvent.location!.latitude,
-                                  matchedEvent.location!.longitude,
-                                )
-                              }>
-                              <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>🌐 GPS Coordinates</Text>
-                            <Text style={styles.detailValue}>
-                              {matchedEvent.location.latitude.toFixed(5)},{' '}
-                              {matchedEvent.location.longitude.toFixed(5)} (±1m)
-                            </Text>
-                          </View>
-                        </>
-                      ) : (
-                        <View style={styles.detailRow}>
-                          <Text style={styles.detailLabel}>📍 Location</Text>
-                          <Text style={styles.detailValue}>No Location Data</Text>
-                        </View>
-                      )}
-
-                      <View style={styles.detailRow}>
-                        <Text style={styles.detailLabel}>🏠 Geofence</Text>
-                        <Text style={styles.detailValue}>
-                          {matchedEvent.geofence_status?.inside_fence
-                            ? 'Inside fence'
-                            : 'Outside fence'}
-                        </Text>
-                      </View>
-                    </>
-                  ) : (
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>⚡ Trigger Source</Text>
+                      <Text style={styles.detailLabel}>📅 Capture Timestamp</Text>
                       <Text style={styles.detailValue}>
-                        Security Intruder Surveillance Event
+                        {new Date(selectedPhoto.timestamp).toLocaleDateString()}{' '}
+                        {new Date(selectedPhoto.timestamp).toLocaleTimeString()}
                       </Text>
                     </View>
-                  )}
 
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>📁 Evidence File</Text>
-                    <Text style={styles.detailValue} selectable>
-                      {selectedPhoto.name}
-                    </Text>
-                    <Text style={styles.detailPath} selectable>
-                      {selectedPhoto.path}
-                    </Text>
+                    {matchedEvent ? (
+                      <>
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>⚡ Security Trigger</Text>
+                          <Text style={styles.detailValue}>
+                            {String(matchedEvent.event_type || '').replace(/_/g, ' ')}
+                            {matchedEvent.status ? ` (${matchedEvent.status})` : ''}
+                          </Text>
+                        </View>
+
+                        {(() => {
+                          const loc = matchedEvent.location;
+                          const lat = Number(loc?.latitude);
+                          const lng = Number(loc?.longitude);
+                          const hasCoords =
+                            !!loc && Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0;
+                          if (!hasCoords) {
+                            return (
+                              <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>📍 Location</Text>
+                                <Text style={styles.detailValue}>No Location Data</Text>
+                              </View>
+                            );
+                          }
+                          return (
+                            <>
+                              <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>📍 Address</Text>
+                                <Text style={styles.detailValue}>
+                                  {loc!.detailed_address || 'Address lookup in progress'}
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.mapButton}
+                                  onPress={() => openLocation(lat, lng)}>
+                                  <Text style={styles.mapButtonText}>📍 Open in Maps</Text>
+                                </TouchableOpacity>
+                              </View>
+                              <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>🌐 GPS Coordinates</Text>
+                                <Text style={styles.detailValue}>
+                                  {lat.toFixed(5)}, {lng.toFixed(5)} (±1m)
+                                </Text>
+                              </View>
+                            </>
+                          );
+                        })()}
+
+                        <View style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>🏠 Geofence</Text>
+                          <Text style={styles.detailValue}>
+                            {matchedEvent.geofence_status?.inside_fence
+                              ? 'Inside fence'
+                              : 'Outside fence'}
+                          </Text>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>⚡ Trigger Source</Text>
+                        <Text style={styles.detailValue}>
+                          Security Intruder Surveillance Event
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={[styles.detailRow, styles.detailRowLast]}>
+                      <Text style={styles.detailLabel}>📁 Evidence File</Text>
+                      <Text style={styles.detailValue} selectable>
+                        {selectedPhoto.name}
+                      </Text>
+                      <Text style={styles.detailPath} selectable>
+                        {selectedPhoto.path}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              </ScrollView>
+                </ScrollView>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => deletePhoto(selectedPhoto)}>
-                  <Text style={styles.deleteBtnText}>🗑️ Delete Evidence</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.doneBtn}
-                  onPress={() => setSelectedPhoto(null)}>
-                  <Text style={styles.doneBtnText}>Close Viewer</Text>
-                </TouchableOpacity>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => deletePhoto(selectedPhoto)}>
+                    <Text style={styles.deleteBtnText}>🗑️ Delete Evidence</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.doneBtn}
+                    onPress={() => setSelectedPhoto(null)}>
+                    <Text style={styles.doneBtnText}>Close Viewer</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </>
-          )}
-        </SafeAreaView>
+            ) : null}
+          </SafeAreaView>
+        </View>
       </Modal>
     </View>
   );
@@ -694,16 +707,29 @@ function createStyles(colors: ColorPalette) {
       fontWeight: '700',
       fontSize: 13,
     },
+    modalRoot: {
+      flex: 1,
+      height: WINDOW_HEIGHT,
+      backgroundColor: colors.bg,
+    },
     modalContainer: {
       flex: 1,
       backgroundColor: colors.bg,
     },
-    modalScrollFlex: {
+    modalBody: {
       flex: 1,
+      flexDirection: 'column',
+      overflow: 'hidden',
+    },
+    modalScrollFlex: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 0,
     },
     modalScroll: {
-      padding: 16,
-      paddingBottom: 24,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 16,
     },
     modalHeader: {
       flexDirection: 'row',
@@ -715,6 +741,8 @@ function createStyles(colors: ColorPalette) {
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSubtle,
       backgroundColor: colors.surface,
+      flexGrow: 0,
+      flexShrink: 0,
     },
     modalHeaderTitle: {
       fontSize: 18,
@@ -737,7 +765,7 @@ function createStyles(colors: ColorPalette) {
       fontWeight: 'bold',
     },
     imageCard: {
-      height: 220,
+      height: 180,
       borderRadius: 16,
       backgroundColor: '#000000',
       overflow: 'hidden',
@@ -756,22 +784,11 @@ function createStyles(colors: ColorPalette) {
       borderWidth: 1,
       borderColor: colors.border,
     },
-    detailsHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'flex-start',
-      marginBottom: 14,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-      paddingBottom: 10,
-      gap: 8,
-    },
     detailsTitle: {
       fontSize: 18,
       fontWeight: '800',
       color: colors.textPrimary,
-      marginBottom: 10,
-      lineHeight: 24,
+      marginBottom: 8,
     },
     badge: {
       alignSelf: 'flex-start',
@@ -791,10 +808,13 @@ function createStyles(colors: ColorPalette) {
     detailRow: {
       marginBottom: 16,
     },
+    detailRowLast: {
+      marginBottom: 0,
+    },
     detailLabel: {
       fontSize: 11,
       color: colors.textMuted,
-      marginBottom: 6,
+      marginBottom: 4,
       fontWeight: '800',
       textTransform: 'uppercase',
       letterSpacing: 0.4,
@@ -810,18 +830,6 @@ function createStyles(colors: ColorPalette) {
       color: colors.textSecondary,
       marginTop: 6,
       fontFamily: 'monospace',
-      lineHeight: 17,
-    },
-    modalActions: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingTop: 12,
-      paddingBottom: 12,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderSoft,
-      backgroundColor: colors.surface,
-      gap: 10,
     },
     mapButton: {
       backgroundColor: colors.skySoft,
@@ -837,6 +845,21 @@ function createStyles(colors: ColorPalette) {
       color: colors.sky,
       fontSize: 12,
       fontWeight: '700',
+    },
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 16,
+      minHeight: MODAL_ACTIONS_HEIGHT,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+      backgroundColor: colors.surface,
+      flexGrow: 0,
+      flexShrink: 0,
+      elevation: 8,
+      zIndex: 10,
     },
     deleteBtn: {
       flex: 1,

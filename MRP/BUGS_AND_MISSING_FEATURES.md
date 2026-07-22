@@ -695,7 +695,7 @@ val content = timelineFile.readText(StandardCharsets.UTF_8).trim()
 ### 30. Missing Subscription System
 **Severity**: 🟢 LOW
 
-**File**: None
+**File**: None (design: [SUBSCRIPTION_PLAN.md](SUBSCRIPTION_PLAN.md))
 
 **Problem**:
 - No plan management
@@ -703,6 +703,7 @@ val content = timelineFile.readText(StandardCharsets.UTF_8).trim()
 - No payment integration
 
 **Fix Required**:
+- Follow [SUBSCRIPTION_PLAN.md](SUBSCRIPTION_PLAN.md) (Free / Premium / Enterprise, Play Billing, offline grace)
 - Create subscription screen
 - Implement plan selection
 - Add feature validation

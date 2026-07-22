@@ -143,7 +143,6 @@ export function HomeScreen({
     accuracy_meters: number;
     detailed_address: string;
   } | null>(null);
-  const [battery, setBattery] = useState<number>(-1);
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [gps, setGps] = useState<GpsStatus | null>(null);
   const [permFlags, setPermFlags] = useState({
@@ -161,15 +160,15 @@ export function HomeScreen({
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
   const [postureGrade, setPostureGrade] = useState<string>('Unknown');
+  const [postureIssueCount, setPostureIssueCount] = useState(0);
   const [highRiskCount, setHighRiskCount] = useState(0);
 
   const loadAll = useCallback(async () => {
     const bridge = mrpmModule as any;
-    const [tRes, pRes, bRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes, postureRes, riskRes] =
+    const [tRes, pRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes, postureRes, riskRes] =
       await Promise.allSettled([
         mrpmModule.getTimeline(),
         mrpmModule.getPhotos(),
-        mrpmModule.getDeviceBatteryLevel(),
         mrpmModule.getNetworkInfo(),
         mrpmModule.getGpsStatus(),
         mrpmModule.checkCameraPermission(),
@@ -185,7 +184,6 @@ export function HomeScreen({
 
     if (tRes.status === 'fulfilled') setTimeline(Array.isArray(tRes.value) ? tRes.value : []);
     if (pRes.status === 'fulfilled') setPhotos(Array.isArray(pRes.value) ? pRes.value : []);
-    if (bRes.status === 'fulfilled') setBattery(typeof bRes.value === 'number' ? bRes.value : -1);
     if (nRes.status === 'fulfilled') setNetwork(nRes.value as NetworkInfo);
     if (gRes.status === 'fulfilled') setGps(gRes.value as GpsStatus);
     if (liveRes.status === 'fulfilled' && liveRes.value) {
@@ -196,8 +194,24 @@ export function HomeScreen({
       setRecoveryContactOk(!!(st.enabled && st.hasContacts));
     }
     if (postureRes.status === 'fulfilled' && postureRes.value) {
-      const g = (postureRes.value as {grade?: string}).grade;
+      const summary = postureRes.value as {grade?: string; lastJson?: string};
+      const g = summary.grade;
       setPostureGrade(g && g.length ? g : 'Unknown');
+      let issues = 0;
+      if (summary.lastJson) {
+        try {
+          const parsed = JSON.parse(summary.lastJson);
+          const checks = Array.isArray(parsed?.checks) ? parsed.checks : [];
+          issues = checks.filter((c: {ok?: boolean}) => c && c.ok === false).length;
+        } catch {
+          issues = 0;
+        }
+      }
+      // Critical / Attention with no parsed checks still counts as at least 1
+      if (issues === 0 && (g === 'Critical' || g === 'Attention')) {
+        issues = 1;
+      }
+      setPostureIssueCount(issues);
     }
     if (riskRes.status === 'fulfilled') {
       const apps = Array.isArray(riskRes.value) ? riskRes.value : [];
@@ -217,7 +231,7 @@ export function HomeScreen({
     });
   }, []);
 
-  // Refresh only when Home is opened / focused — no continuous polling (battery)
+  // Refresh only when Home is opened / focused — no continuous polling
   useFocusEffect(
     useCallback(() => {
       loadAll();
@@ -300,42 +314,60 @@ export function HomeScreen({
       label: 'Anti Theft',
       ok: settings.isMonitoringEnabled && (settings.captureOnWrongUnlock || settings.captureOnUsb),
       status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
       icon: '🔄',
       label: 'SIM Monitoring',
       ok: settings.captureOnSimChange,
       status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
       icon: '👤',
       label: 'Recovery Contact',
       ok: recoveryContactOk,
       status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
       icon: '🔐',
       label: 'Security Health',
-      ok: postureGrade === 'Healthy',
-      status: postureGrade === 'Unknown' ? '—' : postureGrade,
+      ok: postureIssueCount === 0 && postureGrade !== 'Critical' && postureGrade !== 'Attention',
+      // Number only (never "Critical" / "Attention") — red when issues > 0
+      status:
+        postureGrade === 'Unknown' && postureIssueCount === 0
+          ? '—'
+          : postureIssueCount === 0
+            ? '✓'
+            : String(postureIssueCount),
+      statusTone:
+        postureIssueCount > 0
+          ? ('bad' as const)
+          : postureGrade === 'Unknown'
+            ? ('muted' as const)
+            : ('ok' as const),
     },
     {
       icon: '📦',
       label: 'App Safety',
       ok: highRiskCount === 0,
       status: highRiskCount === 0 ? '✓' : String(highRiskCount),
+      statusTone: (highRiskCount > 0 ? 'bad' : 'ok') as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
       icon: '📍',
       label: 'Geofence',
       ok: permFlags.location,
       status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
       icon: '📊',
       label: 'App Usage',
       ok: permFlags.usageStats,
       status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
   ];
 
@@ -453,7 +485,7 @@ export function HomeScreen({
         </View>
       </View>
 
-      {/* Stat cards: Security score, Battery, Network, GPS */}
+      {/* Stat cards: Security score, About, Network, GPS */}
       <View style={styles.statGrid}>
         <StatCard
           icon="🔒"
@@ -463,11 +495,12 @@ export function HomeScreen({
           styles={styles}
         />
         <StatCard
-          icon="🔋"
-          label="Battery"
-          value={battery >= 0 ? `${battery}%` : '--'}
-          accent={battery >= 50 ? colors.emerald : battery >= 20 ? colors.amber : colors.red}
+          icon="ℹ️"
+          label="How to use →"
+          value="MRP Guide"
+          accent={colors.sky}
           styles={styles}
+          onPress={() => navigation?.navigate?.('About')}
         />
         <StatCard
           icon="📶"
@@ -651,20 +684,28 @@ export function HomeScreen({
               }}>
               <View style={styles.overviewLeft}>
                 <Text style={styles.overviewIcon}>{item.icon}</Text>
-                <Text style={styles.overviewLabel}>{item.label}</Text>
+                <Text style={styles.overviewLabel} numberOfLines={1}>
+                  {item.label}
+                </Text>
               </View>
               <Text
                 style={[
                   styles.overviewStatus,
                   {
-                    color: item.ok
-                      ? colors.emerald
-                      : item.status && item.status !== '—' && item.status !== '○'
-                        ? colors.amber
-                        : colors.textMuted,
-                    fontSize: item.status && item.status.length > 2 ? 11 : 18,
+                    color: (() => {
+                      const tone = (item as {statusTone?: string}).statusTone;
+                      if (tone === 'bad') return colors.red;
+                      if (tone === 'ok') return colors.emerald;
+                      if (tone === 'muted') return colors.textMuted;
+                      if (item.ok) return colors.emerald;
+                      if (item.status && item.status !== '—' && item.status !== '○') {
+                        return colors.amber;
+                      }
+                      return colors.textMuted;
+                    })(),
                   },
-                ]}>
+                ]}
+                numberOfLines={1}>
                 {item.status ?? (item.ok ? '✓' : '○')}
               </Text>
             </TouchableOpacity>
@@ -685,6 +726,7 @@ function StatCard({
   sub,
   accent,
   styles,
+  onPress,
 }: {
   icon: string;
   label: string;
@@ -692,9 +734,10 @@ function StatCard({
   sub?: string;
   accent: string;
   styles: ReturnType<typeof createHomeStyles>;
+  onPress?: () => void;
 }) {
-  return (
-    <View style={styles.statCard}>
+  const inner = (
+    <>
       <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
         <Text style={{fontSize: 16}}>{icon}</Text>
       </View>
@@ -709,8 +752,23 @@ function StatCard({
       <Text style={styles.statLabel} numberOfLines={1}>
         {label}
       </Text>
-    </View>
+    </>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity
+        style={styles.statCard}
+        onPress={onPress}
+        activeOpacity={0.75}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}. ${value}`}>
+        {inner}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={styles.statCard}>{inner}</View>;
 }
 
 function buildMapUris(lat: number, lng: number): string[] {
@@ -1078,18 +1136,33 @@ function createHomeStyles(colors: ColorPalette) {
     width: '48%',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: colors.bg,
     borderRadius: radius.md,
-    padding: spacing.md,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
-  overviewLeft: {flexDirection: 'row', alignItems: 'center', flex: 1},
-  overviewIcon: {fontSize: 16, marginRight: spacing.sm},
-  overviewLabel: {fontSize: 12, color: colors.textBody, fontWeight: '600'},
-  overviewStatus: {fontSize: 18, fontWeight: '800'},
+  overviewLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 6,
+    minWidth: 0,
+  },
+  overviewIcon: {fontSize: 14, marginRight: 6},
+  overviewLabel: {
+    fontSize: 12,
+    color: colors.textBody,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  overviewStatus: {
+    fontSize: 13,
+    fontWeight: '800',
+    flexShrink: 0,
+  },
   manageBtn: {
     backgroundColor: colors.skySoft,
     borderRadius: radius.md,

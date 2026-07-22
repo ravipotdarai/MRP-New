@@ -1,6 +1,6 @@
 import React, {useMemo} from 'react';
 import {View, Text, StyleSheet, FlatList} from 'react-native';
-import {AppUsageSession, UnifiedEvent} from './AppUsageScreen';
+import {AppUsageSession} from './AppUsageScreen';
 import {
   formatAppLabel,
   formatDuration,
@@ -11,54 +11,26 @@ import {useTheme} from '../../shared/ThemeContext';
 
 interface Props {
   sessions: AppUsageSession[];
-  events: UnifiedEvent[];
+  /** Kept for call-site compatibility; security events are not shown here. */
+  events?: unknown[];
 }
-
-type TimelineItem =
-  | {type: 'SESSION'; data: AppUsageSession; timestamp: number}
-  | {type: 'EVENT'; data: UnifiedEvent; timestamp: number};
 
 const MAX_ITEMS = 200;
 
 /**
- * Chronological interleaved timeline (recent apps + security events),
- * with overlapping/duplicate app sessions merged so the same app
- * does not appear as repeated rows for one continuous use.
+ * App-only chronological timeline (no security / monitoring events).
+ * Overlapping sessions for the same package are merged.
  */
-export function AppUsageTimeline({sessions, events}: Props) {
+export function AppUsageTimeline({sessions}: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  // Group duplicate / overlapping sessions per package before listing
-  const uniqueSessions = useMemo(
-    () => mergeOverlappingSessions(sessions),
-    [sessions],
-  );
-
-  const items: TimelineItem[] = useMemo(() => {
-    const seenEvents = new Set<string>();
-    const uniqueEvents = events.filter(e => {
-      const key = e.id || `${e.type}_${e.timestamp}`;
-      if (seenEvents.has(key)) return false;
-      seenEvents.add(key);
-      return true;
-    });
-
-    const merged: TimelineItem[] = [
-      ...uniqueSessions.map(s => ({
-        type: 'SESSION' as const,
-        data: s,
-        timestamp: s.startTime,
-      })),
-      ...uniqueEvents.map(e => ({
-        type: 'EVENT' as const,
-        data: e,
-        timestamp: e.timestamp,
-      })),
-    ].sort((a, b) => b.timestamp - a.timestamp);
-
+  const items = useMemo(() => {
+    const merged = mergeOverlappingSessions(sessions)
+      .slice()
+      .sort((a, b) => b.startTime - a.startTime);
     return merged.slice(0, MAX_ITEMS);
-  }, [uniqueSessions, events]);
+  }, [sessions]);
 
   const formatTime = (ts: number) => {
     try {
@@ -99,98 +71,36 @@ export function AppUsageTimeline({sessions, events}: Props) {
     }
   };
 
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'SCREEN_UNLOCK':
-        return '🔓';
-      case 'SCREEN_LOCK':
-        return '🔒';
-      case 'WRONG_PASSWORD':
-        return '🚨';
-      case 'WRONG_BIOMETRIC':
-        return '👆';
-      case 'UNLOCK_FAILED':
-        return '⚠️';
-      case 'SIM_REMOVED':
-      case 'SIM_INSERTED':
-        return '📱';
-      case 'FACTORY_RESET':
-        return '💣';
-      case 'AIRPLANE_MODE_TOGGLE':
-        return '✈️';
-      case 'WIFI_TOGGLE':
-        return '📶';
-      case 'MOBILE_DATA_TOGGLE':
-        return '📡';
-      case 'HOTSPOT_TOGGLE':
-        return '🔥';
-      case 'USB_CONNECTED':
-        return '💻';
-      case 'DEVICE_BOOT':
-        return '🔄';
-      case 'APP_INSTALLED':
-      case 'APP_UPDATED':
-        return '📦';
-      case 'APP_MISUSE':
-        return '📵';
-      case 'POSTURE_ALERT':
-        return '🛡️';
-      default:
-        return '⚡';
-    }
-  };
-
-  const renderItem = ({item, index}: {item: TimelineItem; index: number}) => {
+  const renderItem = ({item, index}: {item: AppUsageSession; index: number}) => {
     const isLast = index === items.length - 1;
-    const prevTs = index > 0 ? items[index - 1].timestamp : undefined;
-    const dayLabel = formatDay(item.timestamp, prevTs);
+    const prevTs = index > 0 ? items[index - 1].startTime : undefined;
+    const dayLabel = formatDay(item.startTime, prevTs);
 
-    const timeRail = (ts: number) => (
-      <View style={styles.timeColumn}>
-        {dayLabel ? <Text style={styles.dayText}>{dayLabel}</Text> : null}
-        <Text style={styles.timeText} numberOfLines={1}>
-          {formatTime(ts)}
-        </Text>
-      </View>
-    );
-
-    if (item.type === 'SESSION') {
-      const s = item.data;
-      return (
-        <View style={styles.timelineItem}>
-          {timeRail(s.startTime)}
-          <View style={styles.lineColumn}>
-            <View style={[styles.dot, {backgroundColor: colors.sky}]} />
-            {!isLast && <View style={styles.line} />}
-          </View>
-          <View style={styles.contentColumn}>
-            <View style={styles.sessionCard}>
-              <Text style={styles.sessionName} numberOfLines={1}>
-                📱 {formatAppLabel(s.appName, s.packageName)}
-              </Text>
-              <Text style={styles.sessionDuration}>
-                {formatDuration(s.durationSeconds)}
-              </Text>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    const e = item.data;
     return (
       <View style={styles.timelineItem}>
-        {timeRail(e.timestamp)}
+        <View style={styles.timeColumn}>
+          {dayLabel ? <Text style={styles.dayText}>{dayLabel}</Text> : null}
+          <Text style={styles.timeText} numberOfLines={1}>
+            {formatTime(item.startTime)}
+          </Text>
+        </View>
         <View style={styles.lineColumn}>
-          <View style={[styles.dot, {backgroundColor: colors.amber}]} />
+          <View style={[styles.dot, {backgroundColor: colors.sky}]} />
           {!isLast && <View style={styles.line} />}
         </View>
         <View style={styles.contentColumn}>
-          <View style={styles.eventCard}>
-            <Text style={styles.eventName}>
-              {getEventIcon(e.type)} {e.type ? e.type.replace(/_/g, ' ') : 'Event'}
+          <View style={styles.sessionCard}>
+            <Text style={styles.sessionName} numberOfLines={1}>
+              {formatAppLabel(item.appName, item.packageName)}
             </Text>
-            {e.description ? <Text style={styles.eventDesc}>{e.description}</Text> : null}
+            <Text style={styles.sessionDuration}>
+              {formatDuration(item.durationSeconds)}
+            </Text>
+            {item.category && item.category !== 'Other' ? (
+              <Text style={styles.sessionMeta} numberOfLines={1}>
+                {item.category}
+              </Text>
+            ) : null}
           </View>
         </View>
       </View>
@@ -203,19 +113,17 @@ export function AppUsageTimeline({sessions, events}: Props) {
       contentContainerStyle={styles.scrollContent}
       data={items}
       keyExtractor={(item, index) =>
-        item.type === 'SESSION'
-          ? `s_${(item.data as AppUsageSession).packageName}_${(item.data as AppUsageSession).startTime}_${(item.data as AppUsageSession).endTime}`
-          : `e_${(item.data as UnifiedEvent).id || (item.data as UnifiedEvent).timestamp}_${index}`
+        `s_${item.packageName}_${item.startTime}_${item.endTime}_${index}`
       }
       renderItem={renderItem}
       ListHeaderComponent={
         <Text style={styles.title}>
-          Interleaved Timeline
+          App Timeline
           {items.length >= MAX_ITEMS ? ` (showing latest ${MAX_ITEMS})` : ''}
         </Text>
       }
       ListEmptyComponent={
-        <Text style={styles.emptyText}>No activity recorded yet.</Text>
+        <Text style={styles.emptyText}>No app usage recorded yet.</Text>
       }
       initialNumToRender={20}
       maxToRenderPerBatch={20}
@@ -244,93 +152,68 @@ function createStyles(colors: ColorPalette) {
     emptyText: {
       color: colors.textSecondary,
       fontSize: 14,
-      textAlign: 'center',
-      marginTop: 40,
     },
     timelineItem: {
       flexDirection: 'row',
-      alignItems: 'stretch',
+      minHeight: 56,
     },
     timeColumn: {
-      width: 78,
-      alignItems: 'flex-start',
-      paddingRight: 8,
+      width: 64,
       paddingTop: 2,
+      paddingRight: 8,
     },
     dayText: {
-      color: colors.textMuted,
+      color: colors.sky,
       fontSize: 10,
       fontWeight: '700',
       marginBottom: 2,
-      textTransform: 'uppercase',
-      letterSpacing: 0.3,
     },
     timeText: {
-      color: colors.sky,
-      fontSize: 12,
-      fontWeight: '700',
-      fontVariant: ['tabular-nums'],
+      color: colors.textMuted,
+      fontSize: 11,
+      fontWeight: '600',
     },
     lineColumn: {
-      width: 18,
+      width: 16,
       alignItems: 'center',
     },
     dot: {
       width: 10,
       height: 10,
       borderRadius: 5,
-      marginTop: 6,
-      zIndex: 10,
+      marginTop: 4,
     },
     line: {
-      width: 2,
       flex: 1,
+      width: 2,
       backgroundColor: colors.borderSoft,
-      marginTop: -6,
-      marginBottom: -4,
+      marginTop: 4,
     },
     contentColumn: {
       flex: 1,
-      paddingLeft: 10,
-      paddingBottom: 20,
-      minWidth: 0,
+      paddingBottom: 14,
+      paddingLeft: 8,
     },
     sessionCard: {
       backgroundColor: colors.surface,
+      borderRadius: 10,
       padding: 12,
-      borderRadius: 8,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
       borderWidth: 1,
-      borderColor: colors.skySoft,
+      borderColor: colors.borderSubtle,
     },
     sessionName: {
       color: colors.textPrimary,
-      fontSize: 14,
-      fontWeight: '500',
-      flex: 1,
-      paddingRight: 8,
+      fontSize: 15,
+      fontWeight: '700',
     },
     sessionDuration: {
       color: colors.sky,
-      fontSize: 14,
-      fontWeight: 'bold',
+      fontSize: 13,
+      fontWeight: '600',
+      marginTop: 4,
     },
-    eventCard: {
-      backgroundColor: colors.amberSoft,
-      padding: 10,
-      borderRadius: 8,
-      borderWidth: 1,
-      borderColor: colors.amberSoft,
-    },
-    eventName: {
-      color: colors.amber,
-      fontSize: 14,
-      fontWeight: 'bold',
-    },
-    eventDesc: {
-      color: colors.textSecondary,
+    sessionMeta: {
+      color: colors.textMuted,
       fontSize: 12,
       marginTop: 4,
     },

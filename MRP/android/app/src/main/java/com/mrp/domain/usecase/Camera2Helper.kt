@@ -8,8 +8,8 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import com.mrp.util.SelfieCaptureUtil
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -20,6 +20,8 @@ class Camera2Helper(private val context: Context) {
     private var imageReader: ImageReader? = null
     private var backgroundHandler: Handler? = null
     private var backgroundThread: HandlerThread? = null
+    private var sensorOrientation: Int = 0
+    private var cameraChars: CameraCharacteristics? = null
 
     init {
         startBackgroundThread()
@@ -39,7 +41,12 @@ class Camera2Helper(private val context: Context) {
         }
 
         try {
-            imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 1).apply {
+            val chars = cameraManager.getCameraCharacteristics(cameraId)
+            cameraChars = chars
+            sensorOrientation = SelfieCaptureUtil.sensorOrientation(chars)
+            val chosen = SelfieCaptureUtil.chooseJpegSize(SelfieCaptureUtil.jpegOutputSizes(chars))
+
+            imageReader = ImageReader.newInstance(chosen.width, chosen.height, ImageFormat.JPEG, 1).apply {
                 setOnImageAvailableListener({ reader ->
                     val image = reader.acquireLatestImage()
                     if (image != null) {
@@ -92,6 +99,11 @@ class Camera2Helper(private val context: Context) {
             val captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureRequestBuilder.addTarget(surface)
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            SelfieCaptureUtil.applyStillCaptureSettings(
+                captureRequestBuilder,
+                sensorOrientation,
+                cameraChars,
+            )
 
             camera.createCaptureSession(
                 listOf(surface),
@@ -121,6 +133,7 @@ class Camera2Helper(private val context: Context) {
             val captureBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             captureBuilder.addTarget(reader.surface)
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            SelfieCaptureUtil.applyStillCaptureSettings(captureBuilder, sensorOrientation, cameraChars)
 
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
@@ -152,20 +165,20 @@ class Camera2Helper(private val context: Context) {
         if (!photosDir.exists()) photosDir.mkdirs()
 
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        // Match MrpMonitorService naming: EVENTTYPE_yyyyMMdd_HHmmss.jpg
         val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9]"), "_").uppercase(Locale.getDefault())
         val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 
-        try {
-            val buffer = image.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-            FileOutputStream(photoFile).use { fos -> fos.write(bytes) }
-            Log.d(TAG, "Photo saved: ${photoFile.absolutePath}")
+        return try {
+            SelfieCaptureUtil.saveUprightJpeg(
+                image = image,
+                destFile = photoFile,
+                sensorOrientationDeg = sensorOrientation,
+                mirrorFront = false,
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
+            photoFile.absolutePath
         }
-        return photoFile.absolutePath
     }
 
     private fun closeCamera() {

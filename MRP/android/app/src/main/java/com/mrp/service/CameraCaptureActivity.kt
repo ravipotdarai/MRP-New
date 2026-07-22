@@ -17,8 +17,9 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import com.mrp.data.local.TimelineStorage
+import com.mrp.util.SelfieCaptureUtil
 import java.io.File
-import java.io.FileOutputStream
+import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -30,6 +31,8 @@ class CameraCaptureActivity : Activity() {
     private var backgroundThread: HandlerThread? = null
     private var backgroundHandler: Handler? = null
     private var eventName: String = "unknown"
+    private var sensorOrientation: Int = 0
+    @Volatile private var photoSaved = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -100,7 +103,6 @@ class CameraCaptureActivity : Activity() {
     }
 
     private var cameraRetryCount = 0
-    @Volatile private var photoSaved = false
 
     private fun takeSelfie() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -176,12 +178,9 @@ class CameraCaptureActivity : Activity() {
         try {
             val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val chars = cameraManager.getCameraCharacteristics(camera.id)
-            val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            val sizes = map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray()
-            // Pick a moderate supported size around 1024x768 or lowest available above 600x400
-            val chosenSize = sizes.filter { it.width >= 600 && it.height >= 400 }.minByOrNull { it.width * it.height }
-                ?: sizes.firstOrNull()
-                ?: android.util.Size(640, 480)
+            sensorOrientation = SelfieCaptureUtil.sensorOrientation(chars)
+            val chosenSize = SelfieCaptureUtil.chooseJpegSize(SelfieCaptureUtil.jpegOutputSizes(chars))
+            Log.d(TAG, "Selfie size ${chosenSize.width}x${chosenSize.height} orient=$sensorOrientation")
 
             imageReader = ImageReader.newInstance(chosenSize.width, chosenSize.height, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
@@ -200,6 +199,7 @@ class CameraCaptureActivity : Activity() {
                 addTarget(surface)
                 set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
                 set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+                SelfieCaptureUtil.applyStillCaptureSettings(this, sensorOrientation, chars)
             }
 
             camera.createCaptureSession(
@@ -254,18 +254,16 @@ class CameraCaptureActivity : Activity() {
         val safeEventName = eventName.replace(Regex("[^a-zA-Z0-9_]"), "_").uppercase(Locale.getDefault())
 
         try {
-            val buffer = image.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-
             val filename = "${safeEventName}_$timestamp.jpg"
             val photoFile = File(photosDir, filename)
-            FileOutputStream(photoFile).use { fos ->
-                fos.write(bytes)
-            }
+            SelfieCaptureUtil.saveUprightJpeg(
+                image = image,
+                destFile = photoFile,
+                sensorOrientationDeg = sensorOrientation,
+                mirrorFront = false,
+            )
             Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
 
-            // Register with MediaStore for visibility in gallery and other apps
             registerWithMediaStore(photoFile)
             try {
                 sendBroadcast(Intent("com.mrp.ACTION_PHOTO_CAPTURED"))
@@ -288,10 +286,9 @@ class CameraCaptureActivity : Activity() {
             val insertedUri = contentResolver.insert(mediaStoreUri, contentValues)
 
             if (insertedUri != null) {
-                // Write the file content to MediaStore
                 contentResolver.openOutputStream(insertedUri).use { outputStream ->
                     if (outputStream != null) {
-                        java.io.FileInputStream(file).use { inputStream ->
+                        FileInputStream(file).use { inputStream ->
                             inputStream.copyTo(outputStream)
                         }
                         Log.d(TAG, "Photo registered with MediaStore: $insertedUri")

@@ -41,8 +41,8 @@ import com.mrp.domain.usecase.BreachPostureScanner
 import java.util.Calendar
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.util.OemBatteryMitigation
+import com.mrp.util.SelfieCaptureUtil
 import java.io.File
-import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -1053,6 +1053,8 @@ class MrpMonitorService : Service() {
 
     @Volatile private var pendingPhotoCapture = false
     @Volatile private var currentPhotoEventName = "unknown"
+    @Volatile private var selfieSensorOrientation: Int = 0
+    @Volatile private var selfieCameraChars: CameraCharacteristics? = null
 
     @SuppressLint("MissingPermission")
     private fun openCamera() {
@@ -1077,7 +1079,13 @@ class MrpMonitorService : Service() {
                 closeCamera()
             }
 
-            imageReader = ImageReader.newInstance(640, 480, ImageFormat.JPEG, 2).apply {
+            val chars = cameraManager.getCameraCharacteristics(cameraId)
+            selfieCameraChars = chars
+            selfieSensorOrientation = SelfieCaptureUtil.sensorOrientation(chars)
+            val chosen = SelfieCaptureUtil.chooseJpegSize(SelfieCaptureUtil.jpegOutputSizes(chars))
+            Log.d(TAG, "Selfie size ${chosen.width}x${chosen.height} orient=$selfieSensorOrientation")
+
+            imageReader = ImageReader.newInstance(chosen.width, chosen.height, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
                     val image = reader.acquireLatestImage()
                     if (image != null) {
@@ -1139,6 +1147,11 @@ class MrpMonitorService : Service() {
             }
             captureRequestBuilder.addTarget(surface)
             captureRequestBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            SelfieCaptureUtil.applyStillCaptureSettings(
+                captureRequestBuilder,
+                selfieSensorOrientation,
+                selfieCameraChars,
+            )
 
             camera.createCaptureSession(
                 listOf(surface),
@@ -1207,6 +1220,11 @@ class MrpMonitorService : Service() {
             captureBuilder.addTarget(reader.surface)
             captureBuilder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
             captureBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
+            SelfieCaptureUtil.applyStillCaptureSettings(
+                captureBuilder,
+                selfieSensorOrientation,
+                selfieCameraChars,
+            )
 
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
@@ -1233,12 +1251,12 @@ class MrpMonitorService : Service() {
         val photoFile = File(photosDir, "${safeEventName}_$timestamp.jpg")
 
         try {
-            val buffer = image.planes[0].buffer
-            val bytes = ByteArray(buffer.remaining())
-            buffer.get(bytes)
-            FileOutputStream(photoFile).use { fos ->
-                fos.write(bytes)
-            }
+            SelfieCaptureUtil.saveUprightJpeg(
+                image = image,
+                destFile = photoFile,
+                sensorOrientationDeg = selfieSensorOrientation,
+                mirrorFront = false,
+            )
             Log.d(TAG, "Photo saved: ${photoFile.path}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)

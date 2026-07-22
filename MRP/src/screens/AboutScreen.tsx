@@ -60,6 +60,46 @@ const LAYERS = [
   },
 ];
 
+/** Practical walkthrough — where to tap in the app. */
+const HOW_TO_USE = [
+  {
+    step: '1',
+    title: 'Finish setup once',
+    where: 'Security → Monitoring → Grant All Access',
+    body: 'Allow camera, location, overlay, device admin, and battery unrestricted so monitoring can run while the phone is locked.',
+  },
+  {
+    step: '2',
+    title: 'Turn monitoring on',
+    where: 'Security → Monitoring',
+    body: 'Flip the master switch. Pick which events capture selfies (wrong unlock, USB, SIM, installs, and so on).',
+  },
+  {
+    step: '3',
+    title: 'Add recovery contacts (optional)',
+    where: 'Security → Monitoring → SIM Recovery',
+    body: 'Enable SIM Change Recovery, consent to the sample SMS, and save people who should get an alert if the SIM changes.',
+  },
+  {
+    step: '4',
+    title: 'Check what happened',
+    where: 'Home · Security → Timeline / Photos',
+    body: 'Home shows live status and the latest event. Timeline is the full log; Photos holds intruder selfies matched to events.',
+  },
+  {
+    step: '5',
+    title: 'Understand app activity',
+    where: 'App Usage → Dashboard / Timeline / Reports',
+    body: 'See screen time, interleaved events, and Battery Impact estimates. Open system Battery Usage for official power stats.',
+  },
+  {
+    step: '6',
+    title: 'Run App Safety checks',
+    where: 'App Usage → Safety (or Home → App Safety)',
+    body: 'Scan security health, review risky apps, and toggle misuse rules. Configure App Battery Usage from here if MRP is restricted.',
+  },
+];
+
 const TRUST = [
   {
     title: 'Built for protection, not surveillance of you',
@@ -162,6 +202,31 @@ export function AboutScreen() {
             </View>
           </View>
         ))}
+
+        {/* How to use */}
+        <Text style={[styles.sectionLabel, {marginTop: spacing.xl}]}>
+          HOW TO USE MRP
+        </Text>
+        <Text style={styles.sectionIntro}>
+          Follow these steps in order the first time. After that, Home is your
+          daily check-in — this guide stays here whenever you need it.
+        </Text>
+        <View style={styles.guideCard}>
+          {HOW_TO_USE.map((item, i) => (
+            <View
+              key={item.step}
+              style={[styles.guideRow, i === HOW_TO_USE.length - 1 && styles.guideRowLast]}>
+              <View style={styles.guideStepBadge}>
+                <Text style={styles.guideStepNum}>{item.step}</Text>
+              </View>
+              <View style={styles.guideCopy}>
+                <Text style={styles.guideTitle}>{item.title}</Text>
+                <Text style={styles.guideWhere}>{item.where}</Text>
+                <Text style={styles.guideBody}>{item.body}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
 
         {/* How it works */}
         <Text style={[styles.sectionLabel, {marginTop: spacing.xl}]}>
@@ -382,6 +447,61 @@ function createStyles(colors: ColorPalette) {
       marginBottom: 4,
     },
     flowBody: {
+      fontSize: 13,
+      lineHeight: 20,
+      color: colors.textSecondary,
+    },
+    guideCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 4,
+      marginBottom: spacing.sm,
+    },
+    guideRow: {
+      flexDirection: 'row',
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderSubtle,
+      gap: 12,
+    },
+    guideRowLast: {
+      borderBottomWidth: 0,
+    },
+    guideStepBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.skySoft,
+      borderWidth: 1,
+      borderColor: colors.sky,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 2,
+    },
+    guideStepNum: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.sky,
+    },
+    guideCopy: {
+      flex: 1,
+    },
+    guideTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
+    guideWhere: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: colors.emerald,
+      marginBottom: 6,
+    },
+    guideBody: {
       fontSize: 13,
       lineHeight: 20,
       color: colors.textSecondary,
