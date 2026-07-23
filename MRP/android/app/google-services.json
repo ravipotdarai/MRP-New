@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "966919333335",
+    "project_id": "mobileresilienceplatform",
+    "storage_bucket": "mobileresilienceplatform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:966919333335:android:2287e19cd674947bf09792",
+        "android_client_info": {
+          "package_name": "com.mrp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "966919333335-aqk6hk7c3d6rta4118ulpmfkv4uspl8j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mrp",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "966919333335-tud8brd7tt39akpa8506up86uaer9foc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFjpiV0dHKlSTAu0VntZVpOnymLlBKqGM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "966919333335-tud8brd7tt39akpa8506up86uaer9foc.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,17 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
-        <!-- Watch login attempts - required for onPasswordFailed callback -->
+        <!-- Only policy MRP uses: failed PIN/password callbacks. Extra policies
+             (wipe/reset/force-lock) look like malware to banks & AV scanners. -->
         <watch-login />
-        <!-- Force lock - allows locking device programmatically -->
-        <force-lock />
-        <!-- Reset password - allows setting/changing device password -->
-        <reset-password />
-        <!-- Limit password - allows setting password quality policies -->
-        <limit-password />
-        <!-- Wipe data - allows factory reset (use with caution) -->
-        <wipe-data />
-        <!-- Profile status bar - show status bar for managed profiles -->
-        <profile-status-bar />
     </uses-policies>
 </device-admin>

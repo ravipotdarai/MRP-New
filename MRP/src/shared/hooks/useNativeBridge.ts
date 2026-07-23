@@ -9,6 +9,14 @@ export interface MrpNativeInterface {
   requestDeviceAdminEnable(): Promise<boolean>;
   disableDeviceAdmin(): Promise<boolean>;
   isAccessibilityEnabled(): Promise<boolean>;
+  lockScreenNow(): Promise<{ok: boolean; reason: string; message: string}>;
+  performSoftWipe(confirmToken: string): Promise<{
+    ok: boolean;
+    reason: string;
+    message: string;
+    cleared: string;
+  }>;
+  openFindMyDevice(): Promise<boolean>;
   isDeviceAdminEnabled(): Promise<boolean>;
   checkOverlayPermission(): Promise<boolean>;
   requestOverlayPermission(): Promise<boolean>;
@@ -74,6 +82,7 @@ export interface MrpNativeInterface {
   ): Promise<any>;
   deleteRecoveryContact(id: string): Promise<boolean>;
   testRecoverySms(): Promise<boolean | {success: boolean; message: string}>;
+  sendPanicAlert(): Promise<{success: boolean; message: string}>;
   getSimChangeHistory(): Promise<string>;
   deleteSimChangeHistory(): Promise<boolean>;
   checkSmsPermission(): Promise<boolean>;
@@ -106,6 +115,8 @@ export interface MrpNativeInterface {
   getSampleRecoverySmsMessage(): Promise<string>;
   isPermissionWizardDismissed(): Promise<boolean>;
   setPermissionWizardDismissed(dismissed: boolean): Promise<boolean>;
+  getCircleLocalJson(): Promise<string>;
+  setCircleLocalJson(json: string): Promise<boolean>;
   openAppNotificationSettings(): Promise<boolean>;
   getAppRiskReport(): Promise<any[]>;
   runBreachPostureScan(): Promise<any>;

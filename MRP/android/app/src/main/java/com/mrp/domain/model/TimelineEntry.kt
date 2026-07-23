@@ -142,6 +142,7 @@ object EventTypes {
     const val APP_UPDATED = "APP_UPDATED"
     const val APP_MISUSE = "APP_MISUSE"
     const val POSTURE_ALERT = "POSTURE_ALERT"
+    const val PANIC_ALERT = "PANIC_ALERT"
 }
 
 object StatusValues {

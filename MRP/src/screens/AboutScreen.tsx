@@ -77,7 +77,7 @@ const HOW_TO_USE = [
   {
     step: '3',
     title: 'Add recovery contacts (optional)',
-    where: 'Security → Monitoring → SIM Recovery',
+    where: 'Hub → SIM Recovery',
     body: 'Enable SIM Change Recovery, consent to the sample SMS, and save people who should get an alert if the SIM changes.',
   },
   {

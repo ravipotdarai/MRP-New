@@ -197,6 +197,20 @@ class SimRecoveryStorage(context: Context) {
         prefs.edit().putString(KEY_HISTORY, "[]").apply()
     }
 
+    /** Soft wipe: contacts, baseline, history, pending sync, disable recovery. */
+    fun clearAllSensitive() {
+        prefs.edit()
+            .putBoolean(KEY_ENABLED, false)
+            .putBoolean(KEY_CONSENT, false)
+            .remove(KEY_CONTACTS)
+            .remove(KEY_BASELINE)
+            .putString(KEY_HISTORY, "[]")
+            .putString(KEY_PENDING_SYNC, "[]")
+            .remove(KEY_LAST_CHANGE)
+            .remove(KEY_LAST_SMS)
+            .apply()
+    }
+
     private fun persistContacts(contacts: List<RecoveryContact>) {
         val arr = JSONArray()
         contacts.forEach { c ->

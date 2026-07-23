@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useMemo, useState, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import {ColorPalette} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
@@ -16,6 +17,7 @@ interface Props {
   isSetup: boolean;
   onPinSet: (pin: string) => void;
   onPinVerify: (pin: string) => void;
+  onForgotPin?: () => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -24,6 +26,7 @@ export function PinLockScreen({
   isSetup,
   onPinSet,
   onPinVerify,
+  onForgotPin,
   isLoading,
   error,
 }: Props) {
@@ -32,6 +35,18 @@ export function PinLockScreen({
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const pinRef = useRef<TextInput>(null);
+
+  // Do not auto-open the system keyboard on app launch (looks like a gray bottom popup).
+  // Keyboard appears only when the user taps the PIN field.
+  useEffect(() => {
+    Keyboard.dismiss();
+    const t = setTimeout(() => {
+      pinRef.current?.blur();
+      Keyboard.dismiss();
+    }, 50);
+    return () => clearTimeout(t);
+  }, []);
 
   const handlePinSubmit = () => {
     if (pin.length < 4 || pin.length > 6) {
@@ -44,8 +59,10 @@ export function PinLockScreen({
         setLocalError('PINs do not match');
         return;
       }
+      Keyboard.dismiss();
       onPinSet(pin);
     } else {
+      Keyboard.dismiss();
       onPinVerify(pin);
     }
   };
@@ -65,7 +82,7 @@ export function PinLockScreen({
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.content}>
         <Text style={styles.title}>
           {isSetup ? 'Set Up PIN' : 'Enter PIN'}
@@ -78,6 +95,7 @@ export function PinLockScreen({
 
         <View style={styles.inputContainer}>
           <TextInput
+            ref={pinRef}
             style={styles.pinInput}
             value={pin}
             onChangeText={handlePinChange}
@@ -86,6 +104,8 @@ export function PinLockScreen({
             keyboardType="number-pad"
             maxLength={6}
             secureTextEntry
+            autoFocus={false}
+            showSoftInputOnFocus={true}
           />
 
           {isSetup && (
@@ -98,6 +118,7 @@ export function PinLockScreen({
               keyboardType="number-pad"
               maxLength={6}
               secureTextEntry
+              autoFocus={false}
             />
           )}
         </View>
@@ -118,6 +139,12 @@ export function PinLockScreen({
             </Text>
           )}
         </TouchableOpacity>
+
+        {!isSetup && onForgotPin ? (
+          <TouchableOpacity style={styles.forgotBtn} onPress={onForgotPin}>
+            <Text style={styles.forgotText}>Forgot PIN?</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </KeyboardAvoidingView>
   );
@@ -187,5 +214,7 @@ function createStyles(colors: ColorPalette) {
       fontSize: 18,
       fontWeight: '600',
     },
+    forgotBtn: {marginTop: 24},
+    forgotText: {color: colors.sky, fontSize: 15, fontWeight: '700'},
   });
 }

@@ -16,7 +16,7 @@ export type AppMenuTarget =
   | {screen: 'Home'}
   | {screen: 'Security'; tab: 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS'}
   | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY'}
-  | {screen: 'About'};
+  | {screen: 'Hub'; section?: 'circle' | 'sim-recovery' | 'subscriptions' | 'promotions' | 'affiliates' | 'about'};
 
 type Props = {
   visible: boolean;
@@ -52,7 +52,7 @@ const MENU: MenuRow[] = [
       {label: 'App Safety', target: {screen: 'App Usage', tab: 'SAFETY'}},
     ],
   },
-  {kind: 'item', label: 'About', icon: 'ℹ️', target: {screen: 'About'}},
+  {kind: 'item', label: 'Hub', icon: '⚙️', target: {screen: 'Hub'}},
 ];
 
 /**

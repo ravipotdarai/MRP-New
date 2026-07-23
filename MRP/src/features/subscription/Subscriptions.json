@@ -1,0 +1,82 @@
+{
+  "mode": "hardcoded",
+  "version": 1,
+  "description": "Local catalog for P3 testing until Play Console Developer account + SKUs are live. Set mode to \"play\" later and remove reliance on activateCatalogProduct.",
+  "incompleteStep": "PLAY_CONSOLE_SUBSCRIPTIONS",
+  "products": [
+    {
+      "productId": "free",
+      "tier": "free",
+      "title": "Free",
+      "description": "Local vault, basic monitoring, 7-day timeline, 1 SIM contact",
+      "basePlans": [
+        {
+          "basePlanId": "none",
+          "label": "Free forever",
+          "formattedPrice": "₹0",
+          "billingPeriod": "P0D"
+        }
+      ]
+    },
+    {
+      "productId": "mrp_premium",
+      "tier": "premium",
+      "title": "Premium",
+      "description": "90-day history, 5 SIM contacts, Drive backup, reports export",
+      "basePlans": [
+        {
+          "basePlanId": "monthly",
+          "label": "Monthly",
+          "formattedPrice": "₹399",
+          "billingPeriod": "P1M"
+        },
+        {
+          "basePlanId": "yearly",
+          "label": "Yearly",
+          "formattedPrice": "₹2,999",
+          "billingPeriod": "P1Y"
+        }
+      ]
+    },
+    {
+      "productId": "mrp_premium_family",
+      "tier": "family",
+      "title": "Family",
+      "description": "Premium for up to 6 members (owner selects plan for testing)",
+      "basePlans": [
+        {
+          "basePlanId": "monthly",
+          "label": "Monthly",
+          "formattedPrice": "₹599",
+          "billingPeriod": "P1M"
+        },
+        {
+          "basePlanId": "yearly",
+          "label": "Yearly",
+          "formattedPrice": "₹4,999",
+          "billingPeriod": "P1Y"
+        }
+      ]
+    },
+    {
+      "productId": "mrp_enterprise",
+      "tier": "enterprise",
+      "title": "Enterprise",
+      "description": "Circle live share, fleet, extended retention",
+      "basePlans": [
+        {
+          "basePlanId": "monthly",
+          "label": "Monthly",
+          "formattedPrice": "₹1,999",
+          "billingPeriod": "P1M"
+        },
+        {
+          "basePlanId": "yearly",
+          "label": "Yearly",
+          "formattedPrice": "₹19,999",
+          "billingPeriod": "P1Y"
+        }
+      ]
+    }
+  ]
+}

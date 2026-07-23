@@ -1,7 +1,8 @@
 # MRP Subscription Plan
 
-> **Status:** Documentation only — not implemented yet.  
-> **Audience:** Product + engineering when monetization work starts.  
+> **Status:** P3 in progress — FeatureGate + billing bridge + hardcoded catalog for testing.  
+> **Play Console SKUs:** incomplete — see [PLAY_BILLING_INCOMPLETE.md](../PLAY_BILLING_INCOMPLETE.md).  
+> **Audience:** Product + engineering.  
 > **Related:** [PROJECT_IMPLEMENTATION_PLAN.md](../PROJECT_IMPLEMENTATION_PLAN.md) (master plan + test plans), [Architecture.md](Architecture.md), [BUGS_AND_MISSING_FEATURES.md](BUGS_AND_MISSING_FEATURES.md) §30.
 
 ---

@@ -14,6 +14,8 @@ import {
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
+import {PaywallModal} from '../subscription/PaywallModal';
 
 type Contact = {
   id: string;
@@ -58,9 +60,16 @@ async function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T
  * SIM Change Recovery — single Protection toggle.
  * Phone permission is optional (often permanently denied on Pixel); SMS is required for Test SMS.
  */
-export function SimRecoveryPanel() {
+export function SimRecoveryPanel({
+  onUpgrade,
+}: {
+  onUpgrade?: () => void;
+} = {}) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const {caps, tier} = useEntitlements();
+  const maxContacts = caps.simContacts;
+  const [paywallVisible, setPaywallVisible] = useState(false);
   const [status, setStatus] = useState<Status | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [name, setName] = useState('');
@@ -259,8 +268,8 @@ export function SimRecoveryPanel() {
         Alert.alert('Invalid phone', 'Enter a valid phone number (min 8 digits).');
         return;
       }
-      if (contacts.length >= 3) {
-        Alert.alert('Limit reached', 'Maximum 3 recovery contacts.');
+      if (contacts.length >= maxContacts) {
+        setPaywallVisible(true);
         return;
       }
       try {
@@ -421,7 +430,11 @@ export function SimRecoveryPanel() {
           }
           styles={styles}
         />
-        <Stat label="Contacts" value={String(status?.contactCount ?? 0)} styles={styles} />
+        <Stat
+          label="Contacts"
+          value={`${status?.contactCount ?? 0}/${maxContacts}`}
+          styles={styles}
+        />
         <Stat label="Last SMS" value={fmt(status?.lastSmsMs ?? 0)} styles={styles} />
         <Stat
           label="Baseline"
@@ -431,7 +444,9 @@ export function SimRecoveryPanel() {
         <Stat label="SMS Perm" value={status?.enabled ? 'Required' : '—'} styles={styles} />
       </View>
 
-      <Text style={styles.section}>Recovery Contacts (max 3)</Text>
+      <Text style={styles.section}>
+        Recovery Contacts (max {maxContacts} · {tier})
+      </Text>
       {contacts.map(c => (
         <View key={c.id} style={styles.contactRow}>
           <View style={{flex: 1}}>
@@ -447,7 +462,7 @@ export function SimRecoveryPanel() {
         </View>
       ))}
 
-      {contacts.length < 3 && (
+      {contacts.length < maxContacts && (
         <View style={styles.form}>
           <TextInput
             style={styles.input}
@@ -485,6 +500,21 @@ export function SimRecoveryPanel() {
           <Text style={styles.btnSecondaryText}>Delete History</Text>
         </TouchableOpacity>
       </View>
+
+      <PaywallModal
+        visible={paywallVisible}
+        title="Contact limit reached"
+        message={`Free plan allows ${maxContacts} recovery contact. Upgrade to Premium for up to 5, or Enterprise for up to 20.`}
+        onClose={() => setPaywallVisible(false)}
+        onUpgrade={
+          onUpgrade
+            ? () => {
+                setPaywallVisible(false);
+                onUpgrade();
+              }
+            : undefined
+        }
+      />
     </View>
   );
 }

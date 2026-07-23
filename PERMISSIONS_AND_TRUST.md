@@ -20,10 +20,10 @@ MRP does **not** read your SMS inbox. SMS is used **only** to send SIM-change re
 
 | Tier | Permissions | When | Required for monitoring? |
 |------|-------------|------|--------------------------|
-| **1 — Core** | Camera, Location, Notifications, Display over other apps, Device Admin | Grant All Access wizard | **Yes** |
+| **1 — Core** | Camera, Location, Notifications, Display over other apps, Device Admin (`watch-login` only) | Grant All Access wizard | **Yes** |
 | **2 — Survival** | Battery unrestricted, OEM autostart (Xiaomi/Samsung/etc.) | End of wizard | Recommended |
 | **3 — SIM Recovery** | SEND_SMS, Phone (optional) | When you enable SIM Change Recovery + consent | SMS only |
-| **4 — Optional** | Accessibility, Usage Stats | Separate cards | No |
+| **4 — Optional** | Accessibility (Instant Lock + biometrics), Usage Stats | Separate cards | No |
 
 ---
 
@@ -35,13 +35,28 @@ MRP does **not** read your SMS inbox. SMS is used **only** to send SIM-change re
 
 ---
 
-## Accessibility — optional enhanced protection
+## Accessibility — Instant Lock + optional biometrics
 
-- **Not required** to start monitoring.
-- **Adds:** Detection of failed fingerprint/face unlock (Android has no public API otherwise).
-- **Does not replace:** Device Admin (wrong PIN/password) or foreground monitoring service.
+- **Instant Lock:** With MRP Accessibility enabled, Security → **Lock screen now** (and Panic) can lock the device via Android’s accessibility lock action — **not** Device Admin `force-lock`.
+- **Also adds:** Detection of failed fingerprint/face unlock (no public API otherwise).
+- **Not required** for basic monitoring or wrong PIN capture (Device Admin `watch-login`).
+- **Does not** read other apps’ screen content (narrow event types only).
 
-Enable from Permissions tab → **Enhanced protection (optional)** when you want biometric wrong-unlock capture.
+Enable from Security → Permissions → Accessibility when you want Instant Lock or biometric wrong-unlock capture.
+
+---
+
+## Device Care (owner phone) — no wipe/reset Device Admin
+
+MRP does **not** declare Device Admin `wipe-data`, `reset-password`, or `force-lock` (those are **phone** lock-screen APIs that trigger bank/AV “risky app” alerts — not the MRP app PIN).
+
+| Goal | How MRP does it |
+|------|-----------------|
+| **MRP app PIN reset** | Lock screen → **Forgot PIN** → recovery code or Google (unchanged; soft wipe does not clear it) |
+| Instant lock | Accessibility → Lock screen now / Panic |
+| Erase MRP data | Soft wipe (type **WIPE**) — timeline, selfies, SIM recovery, local circles; stops monitoring |
+| Factory reset | Opens **Find My Device** (Google) |
+| Phone lock-screen PIN | Out of scope — change in Android Settings → Security if needed |
 
 ---
 

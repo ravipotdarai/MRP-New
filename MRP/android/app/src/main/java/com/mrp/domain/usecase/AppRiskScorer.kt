@@ -129,13 +129,19 @@ class AppRiskScorer(private val context: Context) {
     }
 
     fun scanInstalledApps(limit: Int = 80): List<AppRiskReport> {
-        val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-        return apps.asSequence()
-            .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-            .mapNotNull { scorePackage(it.packageName) }
-            .sortedByDescending { it.score }
-            .take(limit)
-            .toList()
+        return try {
+            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            apps.asSequence()
+                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
+                .mapNotNull { scorePackage(it.packageName) }
+                .sortedByDescending { it.score }
+                .take(limit)
+                .toList()
+        } catch (e: Exception) {
+            // Without QUERY_ALL_PACKAGES, visibility is limited on Android 11+ — fail soft.
+            Log.w(TAG, "scanInstalledApps limited without broad package visibility", e)
+            emptyList()
+        }
     }
 
     private fun resolveInstaller(packageName: String): String {

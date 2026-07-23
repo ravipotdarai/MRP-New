@@ -11,7 +11,8 @@ object SmsGuard {
 
     enum class Purpose {
         SIM_RECOVERY_ALERT,
-        SIM_RECOVERY_TEST
+        SIM_RECOVERY_TEST,
+        PANIC_ALERT,
     }
 
     @Volatile

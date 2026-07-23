@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal flags for optional biometric failure detection — avoid full content scrape. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_service_description"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeAnnouncement|typeNotificationStateChanged"
-    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds"
-    android:canRetrieveWindowContent="true"
-    android:notificationTimeout="100"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeAnnouncement"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:notificationTimeout="200"
     android:settingsActivity="com.mrp.SettingsActivity" />

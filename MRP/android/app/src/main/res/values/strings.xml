@@ -1,4 +1,6 @@
 <resources>
     <string name="app_name">MRP</string>
     <string name="accessibility_service_description">Optional: detect failed fingerprint or face unlock attempts for intruder alerts. Not required for basic monitoring.</string>
+    <!-- Firebase Console → Project settings → Web app → OAuth 2.0 client ID -->
+    <string name="google_web_client_id" translatable="false">966919333335-tud8brd7tt39akpa8506up86uaer9foc.apps.googleusercontent.com</string>
 </resources>

@@ -1,6 +1,5 @@
 package com.mrp
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.util.Base64
 import android.util.Log
@@ -8,6 +7,7 @@ import androidx.annotation.NonNull
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.facebook.react.bridge.*
+import com.mrp.auth.RecoveryWords
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -45,15 +45,7 @@ class PinLockModule(private val reactContext: ReactApplicationContext) : ReactCo
     @ReactMethod
     fun setPin(pin: String, promise: Promise) {
         try {
-            if (pin.length < 4 || pin.length > 6) {
-                promise.reject("INVALID_PIN", "PIN must be 4-6 digits")
-                return
-            }
-
-            if (!pin.all { it.isDigit() }) {
-                promise.reject("INVALID_PIN", "PIN must contain only digits")
-                return
-            }
+            if (!validatePinFormat(pin, promise)) return
 
             val salt = generateSalt()
             val pinHash = hashPin(pin, salt)
@@ -98,12 +90,137 @@ class PinLockModule(private val reactContext: ReactApplicationContext) : ReactCo
             encryptedPrefs.edit()
                 .remove(KEY_PIN_HASH)
                 .remove(KEY_SALT)
+                .remove(KEY_RECOVERY_HASH)
+                .remove(KEY_RECOVERY_ACK)
                 .apply()
             promise.resolve(true)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear PIN", e)
             promise.reject("CLEAR_ERROR", "Failed to clear PIN", e)
         }
+    }
+
+    @ReactMethod
+    fun generateRecoveryCode(promise: Promise) {
+        try {
+            val phrase = RecoveryWords.generatePhrase(12)
+            promise.resolve(phrase)
+        } catch (e: Exception) {
+            promise.reject("RECOVERY_GEN", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun saveRecoveryCode(phrase: String, promise: Promise) {
+        try {
+            val normalized = RecoveryWords.normalizePhrase(phrase)
+            if (normalized.split(" ").size < 12) {
+                promise.reject("INVALID_CODE", "Recovery code must be 12 words")
+                return
+            }
+            encryptedPrefs.edit()
+                .putString(KEY_RECOVERY_HASH, hashRecoveryPhrase(normalized))
+                .apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RECOVERY_SAVE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun hasRecoveryCode(promise: Promise) {
+        try {
+            promise.resolve(encryptedPrefs.getString(KEY_RECOVERY_HASH, null) != null)
+        } catch (e: Exception) {
+            promise.reject("RECOVERY_CHECK", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setRecoveryCodeAcknowledged(acknowledged: Boolean, promise: Promise) {
+        try {
+            encryptedPrefs.edit().putBoolean(KEY_RECOVERY_ACK, acknowledged).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RECOVERY_ACK", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun hasRecoveryCodeAcknowledged(promise: Promise) {
+        try {
+            promise.resolve(encryptedPrefs.getBoolean(KEY_RECOVERY_ACK, false))
+        } catch (e: Exception) {
+            promise.reject("RECOVERY_ACK_CHECK", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun resetPinWithRecoveryCode(newPin: String, phrase: String, promise: Promise) {
+        try {
+            if (!validatePinFormat(newPin, promise)) return
+            val normalized = RecoveryWords.normalizePhrase(phrase)
+            val stored = encryptedPrefs.getString(KEY_RECOVERY_HASH, null)
+            if (stored == null) {
+                promise.reject("NO_RECOVERY", "No recovery code was saved")
+                return
+            }
+            if (hashRecoveryPhrase(normalized) != stored) {
+                promise.reject("INVALID_CODE", "Recovery code does not match")
+                return
+            }
+            val salt = generateSalt()
+            encryptedPrefs.edit()
+                .putString(KEY_PIN_HASH, hashPin(newPin, salt))
+                .putString(KEY_SALT, salt)
+                .apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RESET_RECOVERY", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun resetPinAfterGoogleAuth(newPin: String, promise: Promise) {
+        try {
+            if (!validatePinFormat(newPin, promise)) return
+            val resetAllowed = encryptedPrefs.getBoolean(KEY_GOOGLE_RESET_ALLOWED, false)
+            if (!resetAllowed) {
+                promise.reject("GOOGLE_AUTH_REQUIRED", "Sign in with Google first to reset PIN")
+                return
+            }
+            val salt = generateSalt()
+            encryptedPrefs.edit()
+                .putString(KEY_PIN_HASH, hashPin(newPin, salt))
+                .putString(KEY_SALT, salt)
+                .remove(KEY_GOOGLE_RESET_ALLOWED)
+                .apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RESET_GOOGLE", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun allowPinResetViaGoogle(promise: Promise) {
+        try {
+            encryptedPrefs.edit().putBoolean(KEY_GOOGLE_RESET_ALLOWED, true).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RESET_FLAG", e.message, e)
+        }
+    }
+
+    private fun validatePinFormat(pin: String, promise: Promise): Boolean {
+        if (pin.length < 4 || pin.length > 6) {
+            promise.reject("INVALID_PIN", "PIN must be 4-6 digits")
+            return false
+        }
+        if (!pin.all { it.isDigit() }) {
+            promise.reject("INVALID_PIN", "PIN must contain only digits")
+            return false
+        }
+        return true
     }
 
     private fun generateSalt(): String {
@@ -119,10 +236,19 @@ class PinLockModule(private val reactContext: ReactApplicationContext) : ReactCo
         return Base64.encodeToString(hash, Base64.NO_WRAP)
     }
 
+    private fun hashRecoveryPhrase(normalized: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(normalized.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(hash, Base64.NO_WRAP)
+    }
+
     companion object {
         private const val TAG = "PinLock"
         private const val PREFS_NAME = "mrp_pin_prefs"
         private const val KEY_PIN_HASH = "pin_hash"
         private const val KEY_SALT = "pin_salt"
+        private const val KEY_RECOVERY_HASH = "recovery_hash"
+        private const val KEY_RECOVERY_ACK = "recovery_ack"
+        private const val KEY_GOOGLE_RESET_ALLOWED = "google_reset_allowed"
     }
 }

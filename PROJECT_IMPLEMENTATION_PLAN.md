@@ -203,7 +203,7 @@ See:
 | **P0** | This doc + `.env.example` + SUBSCRIPTION amend |
 | **P1** | Tabs; Hub; Home Subscribe + Panic; MRP Guide |
 | **P2** | Firebase Auth; devices; recovery code |
-| **P3** | Play SKUs; NestJS entitlements; FeatureGate |
+| **P3** | Play SKUs; NestJS entitlements; FeatureGate — **Play Console incomplete**; hardcoded `Subscriptions.json` for testing (see [PLAY_BILLING_INCOMPLETE.md](PLAY_BILLING_INCOMPLETE.md)) |
 | **P4** | Enterprise Circle (categories, E2E, reconnect) |
 | **P5** | Drive encrypted backup + restore |
 | **P6** | NestJS `api/` + Next.js `web/` + admin |

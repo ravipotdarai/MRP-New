@@ -10,40 +10,18 @@ import {
   Alert,
   TouchableOpacity,
   AppState,
+  Modal,
+  TextInput,
+  Linking,
   type Permission,
 } from 'react-native';
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
-import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
 import {PermissionSetupWizard} from '../setup/PermissionSetupWizard';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
 type PermOutcome = 'granted' | 'denied' | 'blocked';
-
-/** Surfaces SIM Recovery render failures instead of silently blanking the panel. */
-class SimRecoveryErrorBoundary extends React.Component<
-  {children: React.ReactNode},
-  {error: string | null}
-> {
-  state = {error: null as string | null};
-
-  static getDerivedStateFromError(error: Error) {
-    return {error: error?.message || String(error)};
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <View style={{padding: 12, backgroundColor: '#450a0a', borderRadius: 8}}>
-          <Text style={{color: '#fecaca', fontWeight: '700'}}>SIM Recovery failed to load</Text>
-          <Text style={{color: '#fca5a5', marginTop: 6}}>{this.state.error}</Text>
-        </View>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 /**
  * Request Android runtime permission(s) via native PermissionAwareActivity
@@ -253,6 +231,9 @@ export function MonitoringScreen() {
   const [hasAccessibility, setHasAccessibility] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [coreSetupComplete, setCoreSetupComplete] = useState(true);
+  const [softWipeVisible, setSoftWipeVisible] = useState(false);
+  const [softWipeToken, setSoftWipeToken] = useState('');
+  const [softWipeBusy, setSoftWipeBusy] = useState(false);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -458,7 +439,7 @@ export function MonitoringScreen() {
           }}
         />
 
-        {/* Phone/SMS permissions are requested by SIM Recovery "Protection Enabled" — no separate toggle */}
+        {/* Phone/SMS for SIM Recovery are managed under Hub → SIM Recovery */}
 
         <SettingItem
           icon="🔐"
@@ -480,7 +461,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="♿"
           title="Accessibility (optional)"
-          subtitle="Enhanced: failed fingerprint/face unlock detection"
+          subtitle="Instant Lock + failed fingerprint/face detection"
           value={hasAccessibility}
           isLast={true}
           onValueChange={async val => {
@@ -489,7 +470,7 @@ export function MonitoringScreen() {
             } else {
               Alert.alert(
                 'Disable in Settings',
-                'Turn off MRP under Settings → Accessibility if you no longer need biometric detection.',
+                'Turn off MRP under Settings → Accessibility if you no longer need Instant Lock or biometric detection.',
                 [
                   {text: 'OK'},
                   {text: 'Open Settings', onPress: () => mrpmModule.requestAccessibilityEnable()},
@@ -501,19 +482,118 @@ export function MonitoringScreen() {
         />
       </View>
 
-      {/* SIM Change Recovery — placed here (right after permissions) so it stays visible */}
+      {/* Owner device care — no Device Admin wipe/force-lock */}
       <View style={styles.sectionCard}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>SIM CHANGE RECOVERY ALERT</Text>
+          <Text style={styles.sectionTitle}>DEVICE CARE (OWNER)</Text>
         </View>
-        <Text style={styles.simRecoveryHint}>
-          Alert trusted contacts by SMS when a different SIM is inserted. Add contacts and use Test
-          SMS below.
+        <TouchableOpacity
+          style={styles.careBtn}
+          onPress={async () => {
+            try {
+              const result = await mrpmModule.lockScreenNow();
+              if (result?.ok) return;
+              if (result?.reason === 'accessibility_required') {
+                Alert.alert(
+                  'Accessibility required',
+                  'Enable MRP under Settings → Accessibility to lock the screen instantly (no Device Admin force-lock).',
+                  [
+                    {text: 'Cancel', style: 'cancel'},
+                    {
+                      text: 'Open Settings',
+                      onPress: () => mrpmModule.requestAccessibilityEnable(),
+                    },
+                  ],
+                );
+              } else {
+                Alert.alert('Could not lock', result?.message || 'Instant lock failed');
+              }
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Instant lock failed');
+            }
+          }}>
+          <Text style={styles.careBtnTitle}>Lock screen now</Text>
+          <Text style={styles.careBtnSub}>Uses Accessibility — not Device Admin force-lock</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.careBtn, styles.careBtnDanger]}
+          onPress={() => {
+            setSoftWipeToken('');
+            setSoftWipeVisible(true);
+          }}>
+          <Text style={styles.careBtnTitle}>Erase MRP data (soft wipe)</Text>
+          <Text style={styles.careBtnSub}>Type WIPE — keeps device PIN & Google account</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.careBtn}
+          onPress={async () => {
+            try {
+              await mrpmModule.openFindMyDevice();
+            } catch {
+              Linking.openURL('https://www.google.com/android/find').catch(() => {});
+            }
+          }}>
+          <Text style={styles.careBtnTitle}>Factory reset via Find My Device</Text>
+          <Text style={styles.careBtnSub}>Google’s trusted wipe — banks do not flag MRP for this</Text>
+        </TouchableOpacity>
+        <Text style={styles.careHint}>
+          MRP app PIN is unchanged by soft wipe. To reset it, use Forgot PIN on the lock screen
+          (recovery code or Google). Soft wipe and Find My Device erase data / factory-reset the
+          phone — they do not change your MRP PIN.
         </Text>
-        <SimRecoveryErrorBoundary>
-          <SimRecoveryPanel />
-        </SimRecoveryErrorBoundary>
       </View>
+
+      <Modal
+        visible={softWipeVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !softWipeBusy && setSoftWipeVisible(false)}>
+        <View style={styles.wipeOverlay}>
+          <View style={styles.wipeCard}>
+            <Text style={styles.wipeTitle}>Erase MRP data</Text>
+            <Text style={styles.wipeBody}>
+              Stops monitoring and deletes timeline, selfies, SIM recovery, and local circles. Does
+              not factory-reset the phone. Type WIPE to confirm.
+            </Text>
+            <TextInput
+              style={styles.wipeInput}
+              value={softWipeToken}
+              onChangeText={setSoftWipeToken}
+              placeholder="WIPE"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="characters"
+              editable={!softWipeBusy}
+            />
+            <TouchableOpacity
+              style={[styles.wipeConfirm, softWipeBusy && {opacity: 0.6}]}
+              disabled={softWipeBusy}
+              onPress={async () => {
+                setSoftWipeBusy(true);
+                try {
+                  const result = await mrpmModule.performSoftWipe(softWipeToken);
+                  setSoftWipeVisible(false);
+                  Alert.alert(
+                    result?.ok ? 'Soft wipe done' : 'Not erased',
+                    result?.message || 'Soft wipe failed',
+                  );
+                  if (result?.ok) checkPermissions();
+                } catch (e: any) {
+                  Alert.alert('Error', e?.message || 'Soft wipe failed');
+                } finally {
+                  setSoftWipeBusy(false);
+                }
+              }}>
+              <Text style={styles.wipeConfirmText}>Erase</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled={softWipeBusy}
+              onPress={() => setSoftWipeVisible(false)}
+              style={styles.wipeCancel}>
+              <Text style={styles.wipeCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Security Surveillance Rules */}
       <View style={styles.sectionCard}>
@@ -647,12 +727,6 @@ function createMonitoringStyles(colors: ColorPalette) {
     fontSize: 15,
     fontWeight: '600',
   },
-  simRecoveryHint: {
-    color: colors.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10,
-  },
   masterBanner: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -740,6 +814,78 @@ function createMonitoringStyles(colors: ColorPalette) {
     fontSize: 12,
     lineHeight: 17,
   },
+  careBtn: {
+    backgroundColor: colors.bg,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  careBtnDanger: {
+    borderColor: colors.red,
+  },
+  careBtnTitle: {
+    color: colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  careBtnSub: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  careHint: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  wipeOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  wipeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  wipeTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  wipeBody: {
+    fontSize: 14,
+    color: colors.textBody,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  wipeInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.textPrimary,
+    marginBottom: 12,
+    fontSize: 16,
+  },
+  wipeConfirm: {
+    backgroundColor: colors.redDark,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  wipeConfirmText: {color: '#fff', fontWeight: '800'},
+  wipeCancel: {alignItems: 'center', paddingVertical: 12},
+  wipeCancelText: {color: colors.textMuted, fontWeight: '700'},
   itemContainer: {
     flexDirection: 'row',
     alignItems: 'center',

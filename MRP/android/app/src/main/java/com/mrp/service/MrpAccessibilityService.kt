@@ -3,6 +3,7 @@ package com.mrp.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.mrp.data.local.SettingsStorage
@@ -10,12 +11,8 @@ import com.mrp.domain.model.*
 import com.mrp.domain.usecase.TimelineEventLogger
 
 /**
- * AccessibilityService that detects lock/unlock transitions by monitoring
- * window state changes for known lock screen packages.
- *
- * Detects:
- * - SCREEN_LOCK (transitions to lock screen)
- * - SCREEN_UNLOCK (transitions from lock screen)
+ * AccessibilityService for optional biometric failure detection and owner Instant Lock
+ * via [GLOBAL_ACTION_LOCK_SCREEN] (no Device Admin force-lock policy).
  */
 class MrpAccessibilityService : AccessibilityService() {
 
@@ -24,20 +21,28 @@ class MrpAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         settings = SettingsStorage(this)
 
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                AccessibilityEvent.TYPE_ANNOUNCEMENT or
-                AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
+                AccessibilityEvent.TYPE_ANNOUNCEMENT
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-                    AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
-            notificationTimeout = 300
+            flags = 0
+            notificationTimeout = 200
         }
         setServiceInfo(info)
         Log.d(TAG, "Accessibility service connected")
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (instance === this) instance = null
+        return super.onUnbind(intent)
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -64,7 +69,6 @@ class MrpAccessibilityService : AccessibilityService() {
             }
         }
 
-        // Detect biometric failure text on the lock screen
         val packageName = event.packageName?.toString() ?: ""
         val className = event.className?.toString() ?: ""
         val isLockPackage = isLockScreenPackage(packageName, className)
@@ -74,7 +78,7 @@ class MrpAccessibilityService : AccessibilityService() {
             if (textNodes.isNotEmpty() || contentDesc.isNotEmpty()) {
                 val textContent = (textNodes.joinToString(" ") + " " + contentDesc).lowercase()
                 Log.d(TAG, "Lock screen text parsed: $textContent")
-                
+
                 val failureKeywords = listOf(
                     "not recognized", "try again", "no match", "fingerprint didn't match",
                     "fingerprint not recognized", "didn't recognize", "couldn't recognize",
@@ -86,10 +90,9 @@ class MrpAccessibilityService : AccessibilityService() {
                 )
                 if (failureKeywords.any { textContent.contains(it) }) {
                     Log.d(TAG, "Unlock/Biometric failure detected via Accessibility: $textContent")
-                    
+
                     val currentSettings = try { this.settings?.getSettings() } catch (e: Exception) { null }
                     if (currentSettings?.isMonitoringEnabled == true && currentSettings.captureOnWrongUnlock) {
-                        // Log event and request selfie in background
                         Thread {
                             try {
                                 val eventLogger = TimelineEventLogger(this)
@@ -102,11 +105,8 @@ class MrpAccessibilityService : AccessibilityService() {
                                         "detected_text" to textContent
                                     )
                                 )
-
-                                // Give the lock screen a tiny moment to stabilize before snapping
                                 Thread.sleep(500)
-                                
-                                com.mrp.service.MrpMonitorService.requestPhoto(this, EventTypes.WRONG_UNLOCK_ATTEMPT)
+                                MrpMonitorService.requestPhoto(this, EventTypes.WRONG_UNLOCK_ATTEMPT)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Failed to log biometric failure", e)
                             }
@@ -150,20 +150,37 @@ class MrpAccessibilityService : AccessibilityService() {
         )
 
         return lockPackages.any { packageName.startsWith(it) } ||
-               lockClasses.any { className.startsWith(it) }
+            lockClasses.any { className.startsWith(it) }
     }
 
     private fun handleScreenLock() {
         // Screen lock is handled by MrpMonitorService via BroadcastReceiver
-        // Accessibility service does NOT log screen lock/unlock to avoid duplicates
     }
 
     private fun handleScreenUnlock() {
         // Screen unlock is handled by MrpMonitorService via BroadcastReceiver
-        // Accessibility service does NOT log screen lock/unlock to avoid duplicates
     }
 
     companion object {
         private const val TAG = "MrpAccessibilityService"
+
+        @Volatile
+        private var instance: MrpAccessibilityService? = null
+
+        fun lockScreenNow(): Boolean {
+            val service = instance ?: return false
+            return try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    service.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+                } else {
+                    false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "lockScreenNow failed", e)
+                false
+            }
+        }
+
+        fun isConnected(): Boolean = instance != null
     }
 }

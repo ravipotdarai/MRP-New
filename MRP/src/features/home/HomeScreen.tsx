@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo, useEffect} from 'react';
+import React, {useState, useCallback, useMemo, useEffect, useRef} from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   Alert,
   RefreshControl,
   AppState,
+  Pressable,
+  PermissionsAndroid,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
@@ -19,8 +21,11 @@ import {useSettings} from '../../shared/hooks/useSettings';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {AppMenuDrawer, AppMenuTarget} from '../../shared/components/AppMenuDrawer';
 import {ThemePickerModal} from '../../shared/components/ThemePickerModal';
+import {useSubscriptionTier} from '../../shared/hooks/useSubscriptionTier';
 
 const USER_NAME = 'Ravi';
+const PANIC_MAX_BURST = 3;
+const PANIC_WINDOW_MS = 15 * 60 * 1000;
 
 const EVENT_ICONS: Record<string, string> = {
   SCREEN_LOCK: '🔒',
@@ -52,6 +57,7 @@ const EVENT_ICONS: Record<string, string> = {
   APP_UPDATED: '📦',
   APP_MISUSE: '📵',
   POSTURE_ALERT: '🛡️',
+  PANIC_ALERT: '🆘',
 };
 
 interface TimelineEntry {
@@ -157,6 +163,11 @@ export function HomeScreen({
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const {colors} = useTheme();
   const styles = useMemo(() => createHomeStyles(colors), [colors]);
+  const {isPaid} = useSubscriptionTier();
+  const panicTimestamps = useRef<number[]>([]);
+  const [panicBusy, setPanicBusy] = useState(false);
+  const [panicHoldProgress, setPanicHoldProgress] = useState(0);
+  const panicHoldTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
   const [postureGrade, setPostureGrade] = useState<string>('Unknown');
@@ -399,8 +410,11 @@ export function HomeScreen({
       navigation.navigate('Home');
       return;
     }
-    if (target.screen === 'About') {
-      navigation.navigate('About');
+    if (target.screen === 'Hub') {
+      navigation.navigate(
+        'Hub',
+        target.section ? {openSection: target.section} : undefined,
+      );
       return;
     }
     if (target.screen === 'Security') {
@@ -418,6 +432,97 @@ export function HomeScreen({
       {text: 'Cancel', style: 'cancel'},
       {text: 'Sign Out', style: 'destructive', onPress: onLogout},
     ]);
+  };
+
+  const canSendPanic = (): boolean => {
+    const now = Date.now();
+    panicTimestamps.current = panicTimestamps.current.filter(t => now - t < PANIC_WINDOW_MS);
+    return panicTimestamps.current.length < PANIC_MAX_BURST;
+  };
+
+  const triggerPanic = useCallback(async () => {
+    if (panicBusy) return;
+    if (!canSendPanic()) {
+      Alert.alert(
+        'Please wait',
+        `You can send up to ${PANIC_MAX_BURST} panic alerts every 15 minutes.`,
+      );
+      return;
+    }
+    const bridge = mrpmModule as any;
+    if (typeof bridge.sendPanicAlert !== 'function') {
+      Alert.alert('Unavailable', 'Panic alert is not available on this build.');
+      return;
+    }
+    setPanicBusy(true);
+    try {
+      // Instant lock first when Accessibility is connected (no Device Admin force-lock).
+      try {
+        await bridge.lockScreenNow?.();
+      } catch {
+        /* lock is best-effort during panic */
+      }
+      const smsOk = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.SEND_SMS,
+      );
+      if (smsOk !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert('SMS permission required', 'Allow SMS for MRP to alert recovery contacts.', [
+          {text: 'Cancel', style: 'cancel'},
+          {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
+        ]);
+        return;
+      }
+      const result = await bridge.sendPanicAlert();
+      const ok = !!result?.success;
+      const detail =
+        result?.message ||
+        (ok ? 'Recovery contacts notified.' : 'Could not send panic SMS.');
+      panicTimestamps.current.push(Date.now());
+      Alert.alert(ok ? 'Panic alert sent' : 'Panic failed', detail);
+      if (ok) loadAll();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'Panic alert failed');
+    } finally {
+      setPanicBusy(false);
+      setPanicHoldProgress(0);
+    }
+  }, [panicBusy, loadAll]);
+
+  const startPanicHold = () => {
+    if (panicBusy) return;
+    setPanicHoldProgress(0);
+    let step = 0;
+    panicHoldTimer.current = setInterval(() => {
+      step += 1;
+      setPanicHoldProgress(step / 20);
+      if (step >= 20) {
+        if (panicHoldTimer.current) clearInterval(panicHoldTimer.current);
+        panicHoldTimer.current = null;
+        triggerPanic();
+      }
+    }, 100);
+  };
+
+  const cancelPanicHold = () => {
+    if (panicHoldTimer.current) {
+      clearInterval(panicHoldTimer.current);
+      panicHoldTimer.current = null;
+    }
+    setPanicHoldProgress(0);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (panicHoldTimer.current) clearInterval(panicHoldTimer.current);
+    };
+  }, []);
+
+  const goSubscribe = () => {
+    navigation?.navigate?.('Hub', {openSection: 'subscriptions'});
+  };
+
+  const goMrpGuide = () => {
+    navigation?.navigate?.('Hub', {openSection: 'about'});
   };
 
   return (
@@ -485,7 +590,36 @@ export function HomeScreen({
         </View>
       </View>
 
-      {/* Stat cards: Security score, About, Network, GPS */}
+      {/* Quick actions: Subscribe + Panic */}
+      <View style={styles.quickActionRow}>
+        {!isPaid ? (
+          <TouchableOpacity style={styles.subscribeBtn} onPress={goSubscribe} activeOpacity={0.85}>
+            <Text style={styles.subscribeBtnText}>⭐ Subscribe</Text>
+          </TouchableOpacity>
+        ) : null}
+        <Pressable
+          style={({pressed}) => [
+            styles.panicBtn,
+            !isPaid ? styles.panicBtnHalf : styles.panicBtnFull,
+            pressed && styles.panicBtnPressed,
+          ]}
+          onPressIn={startPanicHold}
+          onPressOut={cancelPanicHold}
+          disabled={panicBusy}>
+          <Text style={styles.panicBtnText}>
+            {panicBusy ? 'Sending…' : panicHoldProgress > 0 ? 'Hold…' : '🆘 Panic'}
+          </Text>
+          {panicHoldProgress > 0 ? (
+            <View style={styles.panicProgressTrack}>
+              <View style={[styles.panicProgressFill, {width: `${panicHoldProgress * 100}%`}]} />
+            </View>
+          ) : (
+            <Text style={styles.panicHint}>Hold 2s — SMS recovery contacts</Text>
+          )}
+        </Pressable>
+      </View>
+
+      {/* Stat cards: Security score, MRP Guide, Network, GPS */}
       <View style={styles.statGrid}>
         <StatCard
           icon="🔒"
@@ -500,7 +634,7 @@ export function HomeScreen({
           value="MRP Guide"
           accent={colors.sky}
           styles={styles}
-          onPress={() => navigation?.navigate?.('About')}
+          onPress={goMrpGuide}
         />
         <StatCard
           icon="📶"
@@ -921,6 +1055,47 @@ function createHomeStyles(colors: ColorPalette) {
   greeting: {fontSize: 22, fontWeight: '800', color: colors.textPrimary},
   protectionStatus: {fontSize: 14, fontWeight: '700', marginTop: 4},
   syncedText: {fontSize: 12, color: colors.textMuted, marginTop: 4},
+  quickActionRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  subscribeBtn: {
+    flex: 1,
+    backgroundColor: colors.skySoft,
+    borderRadius: radius.lg,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.sky,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscribeBtnText: {color: colors.sky, fontSize: 15, fontWeight: '800'},
+  panicBtn: {
+    backgroundColor: colors.redSoft,
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    borderWidth: 2,
+    borderColor: colors.red,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  panicBtnHalf: {flex: 1},
+  panicBtnFull: {flex: 1},
+  panicBtnPressed: {opacity: 0.9},
+  panicBtnText: {color: colors.red, fontSize: 16, fontWeight: '800'},
+  panicHint: {fontSize: 10, color: colors.textMuted, marginTop: 4, fontWeight: '600'},
+  panicProgressTrack: {
+    height: 4,
+    width: '100%',
+    backgroundColor: colors.borderSubtle,
+    borderRadius: 2,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  panicProgressFill: {height: '100%', backgroundColor: colors.red},
   statGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

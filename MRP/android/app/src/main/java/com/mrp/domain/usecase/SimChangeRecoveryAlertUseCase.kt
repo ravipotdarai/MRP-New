@@ -297,6 +297,64 @@ class SimChangeRecoveryAlertUseCase(private val context: Context) {
     /** @deprecated use sendTestSmsDetailed */
     fun sendTestSms(): Boolean = sendTestSmsDetailed().first
 
+    /** Panic SMS — same pipeline as test SMS with panic prefix and timeline log. */
+    fun sendPanicSmsDetailed(): Pair<Boolean, String> {
+        val contacts = storage.getContacts()
+        if (contacts.isEmpty()) {
+            return false to "Add at least one recovery contact in Hub → SIM Recovery first."
+        }
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false to "SMS permission is not granted. Enable SMS for MRP in App Settings."
+        }
+        val current = identityTracker.readCurrentIdentity()
+        val resolvedPhone = resolvePhoneNumber(current)
+        val gps = try {
+            gnss.captureSync(12_000L)
+        } catch (e: Exception) {
+            Log.w(TAG, "GPS for panic SMS failed", e)
+            GpsCapture(fixStatus = GpsFixStatus.NoFix)
+        }
+        val battery = readBattery()
+        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+        val msg = smsSender.buildMessage(
+            model = Build.MODEL ?: "Unknown",
+            phoneNumber = resolvedPhone.ifBlank { null },
+            carrier = current.carrier.ifBlank { "Unknown" },
+            battery = battery.first,
+            timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date()),
+            lat = gps.latitude,
+            lng = gps.longitude,
+            deviceId = androidId,
+            iccidMasked = SimRecoveryStorage.maskPhone(current.iccid.ifBlank { "0000" }),
+            hasPhone = resolvedPhone.isNotBlank()
+        )
+        val (sent, failed) = smsSender.sendToAll(
+            "[PANIC — NEED HELP NOW]\n$msg",
+            contacts.map { it.phoneNumber },
+            SmsGuard.Purpose.PANIC_ALERT
+        )
+        Log.i(TAG, "Panic SMS result sent=$sent failed=$failed")
+        try {
+            TimelineEventLogger(context).logEvent(
+                EventTypes.PANIC_ALERT,
+                if (sent > 0) StatusValues.ENABLED else StatusValues.FAILED
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Panic timeline log failed", e)
+        }
+        if (sent > 0) {
+            storage.setLastSmsMs(System.currentTimeMillis())
+            return true to "Panic alert sent to $sent contact(s). Help is on the way."
+        }
+        return false to if (failed > 0) {
+            "Panic SMS failed for $failed contact(s). Check numbers and SMS permission."
+        } else {
+            "Panic SMS failed. Check SMS permission and recovery contacts."
+        }
+    }
+
     /**
      * Live MSISDN from the current SIM only (requires READ_PHONE_STATE / READ_PHONE_NUMBERS).
      */

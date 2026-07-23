@@ -1,6 +1,5 @@
-import React, {useState, useEffect} from 'react';
-import {StatusBar, View, ActivityIndicator, StyleSheet, Platform} from 'react-native';
-import mrpmModule from './src/shared/hooks/useNativeBridge';
+import React, {useState} from 'react';
+import {StatusBar, View, ActivityIndicator, StyleSheet} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {PinLockScreen} from './src/screens/PinLockScreen';
@@ -8,8 +7,12 @@ import {usePinLock} from './src/hooks/usePinLock';
 import {HomeScreen} from './src/features/home/HomeScreen';
 import {SecurityScreen} from './src/features/security/SecurityScreen';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
-import {AboutScreen} from './src/screens/AboutScreen';
-import {PermissionSetupWizard} from './src/features/setup/PermissionSetupWizard';
+import {HubScreen} from './src/features/hub/HubScreen';
+import {RecoveryCodeSetupModal} from './src/features/auth/RecoveryCodeSetupModal';
+import {ForgotPinScreen} from './src/features/auth/ForgotPinScreen';
+import {AuthProvider} from './src/services/auth/AuthContext';
+import {EntitlementProvider} from './src/services/entitlements/EntitlementProvider';
+import PinLock from './src/native/PinLock.types';
 import {Text} from 'react-native';
 import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
 
@@ -48,17 +51,17 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
         }}
       />
       <Tab.Screen
+        name="Hub"
+        options={{
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>⚙️</Text>,
+        }}>
+        {({navigation, route}) => <HubScreen navigation={navigation} route={route} />}
+      </Tab.Screen>
+      <Tab.Screen
         name="App Usage"
         component={AppUsageScreen}
         options={{
           tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>📊</Text>,
-        }}
-      />
-      <Tab.Screen
-        name="About"
-        component={AboutScreen}
-        options={{
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>ℹ️</Text>,
         }}
       />
     </Tab.Navigator>
@@ -67,39 +70,52 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
 
 function AppContent(): React.JSX.Element {
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [showSetupWizard, setShowSetupWizard] = useState(false);
-  const {isPinSet, isVerifying, error, setPin, verifyPin} = usePinLock();
+  const [showForgotPin, setShowForgotPin] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const {isPinSet, isVerifying, error, setPin, verifyPin, recheckPin} = usePinLock();
   const {colors, themeId} = useTheme();
   const isLight = themeId === 'light';
 
-  useEffect(() => {
-    if (!isUnlocked || !isPinSet || Platform.OS !== 'android') return;
-    (async () => {
-      try {
-        const bridge = mrpmModule as any;
-        if (typeof bridge.getPermissionSetupStatus !== 'function') return;
-        const st = await bridge.getPermissionSetupStatus();
-        if (st?.coreComplete) {
-          setShowSetupWizard(false);
-          return;
-        }
-        // Do not spam on every launch if user already tapped Finish later
-        let dismissed = false;
-        if (typeof bridge.isPermissionWizardDismissed === 'function') {
-          dismissed = !!(await bridge.isPermissionWizardDismissed());
-        }
-        if (!dismissed) setShowSetupWizard(true);
-      } catch {
-        // ignore
-      }
-    })();
-  }, [isUnlocked, isPinSet]);
+  // Auto permission wizard on launch disabled — users grant from Security → Monitoring.
+  // To restore: set AUTO_SHOW_PERMISSION_WIZARD_ON_LAUNCH=true in permissionUxFlags.ts
+  // and re-add the previous useEffect + <PermissionSetupWizard /> here.
 
   const handlePinSet = async (pin: string) => {
     const success = await setPin(pin);
-    if (success) {
+    if (!success) return;
+
+    try {
+      const acknowledged = await PinLock.hasRecoveryCodeAcknowledged();
+      if (acknowledged) {
+        setIsUnlocked(true);
+        return;
+      }
+      const phrase = await PinLock.generateRecoveryCode();
+      await PinLock.saveRecoveryCode(phrase);
+      setRecoveryCode(phrase);
+      setShowRecoveryModal(true);
+    } catch (e) {
+      console.warn('[PIN] recovery setup failed', e);
       setIsUnlocked(true);
     }
+  };
+
+  const handleRecoveryConfirmed = async () => {
+    try {
+      await PinLock.setRecoveryCodeAcknowledged(true);
+    } catch (e) {
+      console.warn('[PIN] recovery ack failed', e);
+    }
+    setShowRecoveryModal(false);
+    setRecoveryCode(null);
+    setIsUnlocked(true);
+  };
+
+  const handlePinReset = async () => {
+    setShowForgotPin(false);
+    await recheckPin();
+    setIsUnlocked(false);
   };
 
   const handlePinVerify = async (pin: string) => {
@@ -139,11 +155,18 @@ function AppContent(): React.JSX.Element {
         <NavigationContainer>
           <TabNavigator onLogout={handleLogout} />
         </NavigationContainer>
-        <PermissionSetupWizard
-          visible={showSetupWizard}
-          onClose={() => setShowSetupWizard(false)}
-          onComplete={() => setShowSetupWizard(false)}
+      </View>
+    );
+  }
+
+  if (showForgotPin) {
+    return (
+      <View style={shellStyle}>
+        <StatusBar
+          barStyle={isLight ? 'dark-content' : 'light-content'}
+          backgroundColor={colors.bg}
         />
+        <ForgotPinScreen onBack={() => setShowForgotPin(false)} onPinReset={handlePinReset} />
       </View>
     );
   }
@@ -159,9 +182,17 @@ function AppContent(): React.JSX.Element {
         isSetup={!isPinSet}
         onPinSet={handlePinSet}
         onPinVerify={handlePinVerify}
+        onForgotPin={() => setShowForgotPin(true)}
         isLoading={isVerifying}
         error={error}
       />
+      {recoveryCode ? (
+        <RecoveryCodeSetupModal
+          visible={showRecoveryModal}
+          recoveryCode={recoveryCode}
+          onConfirm={handleRecoveryConfirmed}
+        />
+      ) : null}
     </View>
   );
 }
@@ -169,7 +200,11 @@ function AppContent(): React.JSX.Element {
 function App(): React.JSX.Element {
   return (
     <ThemeProvider>
-      <AppContent />
+      <AuthProvider>
+        <EntitlementProvider>
+          <AppContent />
+        </EntitlementProvider>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

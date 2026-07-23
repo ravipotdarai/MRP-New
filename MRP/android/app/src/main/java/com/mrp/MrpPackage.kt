@@ -8,7 +8,12 @@ import com.facebook.react.uimanager.ViewManager
 class MrpPackage : ReactPackage {
 
     override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-        return listOf(MrpNativeModule(reactContext), PinLockModule(reactContext))
+        return listOf(
+            MrpNativeModule(reactContext),
+            PinLockModule(reactContext),
+            MrpAuthModule(reactContext),
+            BillingModule(reactContext),
+        )
     }
 
     override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {

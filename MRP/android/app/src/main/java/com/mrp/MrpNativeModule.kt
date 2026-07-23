@@ -23,9 +23,11 @@ import com.mrp.data.local.EventStorage
 import com.mrp.data.local.SettingsStorage
 import com.mrp.data.local.TimelineStorage
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
+import com.mrp.service.MrpAccessibilityService
 import com.mrp.service.MrpMonitorService
 import com.mrp.domain.usecase.AppUsageTracker
 import com.mrp.domain.usecase.LocationHelper
+import com.mrp.domain.usecase.SoftWipeHelper
 import com.mrp.data.local.AppUsageDao
 import java.io.File
 
@@ -91,6 +93,75 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check accessibility", e)
             promise.reject("CHECK_ERROR", "Failed to check accessibility status", e)
+        }
+    }
+
+    /**
+     * Instant lock via Accessibility GLOBAL_ACTION_LOCK_SCREEN (API 28+).
+     * Does not use Device Admin force-lock (avoids bank/AV ransomware signatures).
+     */
+    @ReactMethod
+    fun lockScreenNow(promise: Promise) {
+        try {
+            val map = Arguments.createMap()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                map.putBoolean("ok", false)
+                map.putString("reason", "api_too_low")
+                map.putString("message", "Instant lock requires Android 9 or newer")
+                promise.resolve(map)
+                return
+            }
+            if (!MrpAccessibilityService.isConnected()) {
+                map.putBoolean("ok", false)
+                map.putString("reason", "accessibility_required")
+                map.putString(
+                    "message",
+                    "Enable MRP under Settings → Accessibility to use Instant Lock"
+                )
+                promise.resolve(map)
+                return
+            }
+            val locked = MrpAccessibilityService.lockScreenNow()
+            map.putBoolean("ok", locked)
+            map.putString("reason", if (locked) "locked" else "lock_failed")
+            map.putString("message", if (locked) "Screen locked" else "Could not lock screen")
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "lockScreenNow failed", e)
+            promise.reject("LOCK_ERROR", e.message, e)
+        }
+    }
+
+    /**
+     * Soft wipe local MRP data. confirmToken must be "WIPE".
+     * Does not factory-reset the phone or change device lock PIN.
+     */
+    @ReactMethod
+    fun performSoftWipe(confirmToken: String, promise: Promise) {
+        try {
+            val result = SoftWipeHelper(reactContext).perform(confirmToken)
+            val map = Arguments.createMap()
+            map.putBoolean("ok", result.optBoolean("ok", false))
+            map.putString("reason", result.optString("reason", ""))
+            map.putString("message", result.optString("message", ""))
+            map.putString("cleared", result.optString("cleared", ""))
+            promise.resolve(map)
+        } catch (e: Exception) {
+            Log.e(TAG, "performSoftWipe failed", e)
+            promise.reject("SOFT_WIPE_ERROR", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun openFindMyDevice(promise: Promise) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com/android/find"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            Log.e(TAG, "openFindMyDevice failed", e)
+            promise.reject("FIND_DEVICE_ERROR", e.message, e)
         }
     }
 
@@ -207,7 +278,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         try {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, MrpDeviceAdminReceiver.getComponentName(reactContext))
-            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "MRP needs device admin to monitor security events like wrong password attempts.")
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "MRP uses Device Admin only to detect failed lock-screen PIN/password attempts — not to wipe or change your password.")
             
             val activity = currentActivity
             if (activity != null) {
@@ -1174,6 +1245,21 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun sendPanicAlert(promise: Promise) {
+        try {
+            val (ok, message) = com.mrp.domain.usecase.SimChangeRecoveryAlertUseCase(reactContext)
+                .sendPanicSmsDetailed()
+            promise.resolve(Arguments.createMap().apply {
+                putBoolean("success", ok)
+                putString("message", message)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "sendPanicAlert failed", e)
+            promise.reject("PANIC_ALERT", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun getSimChangeHistory(promise: Promise) {
         try {
             val json = com.mrp.data.local.SimRecoveryStorage(reactContext).getHistoryJson()
@@ -1468,6 +1554,28 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
+    /** Local Circle roster (P4 shell) until NestJS Circle API lands. */
+    @ReactMethod
+    fun getCircleLocalJson(promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            promise.resolve(prefs.getString(KEY_CIRCLE_LOCAL_JSON, "[]") ?: "[]")
+        } catch (e: Exception) {
+            promise.resolve("[]")
+        }
+    }
+
+    @ReactMethod
+    fun setCircleLocalJson(json: String, promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_CIRCLE_LOCAL_JSON, json).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
     @ReactMethod
     fun openAppNotificationSettings(promise: Promise) {
         try {
@@ -1494,6 +1602,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         private const val UI_PREFS = "mrp_ui"
         private const val KEY_THEME_ID = "theme_id"
         private const val KEY_WIZARD_DISMISSED = "permission_wizard_dismissed"
+        private const val KEY_CIRCLE_LOCAL_JSON = "circle_local_json"
         const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
         const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
     }

@@ -1,6 +1,7 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
+apply plugin: "com.google.gms.google-services"
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -132,6 +133,11 @@ dependencies {
 
     // Google Play Services Location - for FusedLocationProviderClient
     implementation "com.google.android.gms:play-services-location:21.1.0"
+
+    implementation "com.google.android.gms:play-services-auth:21.2.0"
+
+    // Google Play Billing
+    implementation "com.android.billingclient:billing-ktx:6.2.1"
 
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
