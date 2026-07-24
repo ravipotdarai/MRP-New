@@ -72,7 +72,10 @@ export function AccountScreen({onBack}: Props) {
             {auth.displayName ? (
               <Text style={styles.meta}>{auth.displayName}</Text>
             ) : null}
-            <Text style={styles.meta}>UID: {auth.uid}</Text>
+            <Text style={styles.meta}>Google UID: {auth.uid}</Text>
+            <Text style={styles.meta}>
+              Firebase UID: {auth.firebaseUid || 'not linked — Circle invites will fail'}
+            </Text>
           </>
         ) : (
           <Text style={styles.muted}>Not signed in</Text>

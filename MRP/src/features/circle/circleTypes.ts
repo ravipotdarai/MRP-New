@@ -38,6 +38,12 @@ export type LocalCircle = {
   members: CircleMember[];
   /** True only when every member has consentLive — gates future live map. */
   liveReady: boolean;
+  /** Publish location to Firebase RTDB when true. */
+  shareEnabled: boolean;
+  /** Publish interval seconds: 20 | 60 | 600 */
+  intervalSec: 20 | 60 | 600;
+  /** AES group key from Firebase directory (E2E live). */
+  groupKey?: string;
 };
 
 export type CreateCircleInput = {

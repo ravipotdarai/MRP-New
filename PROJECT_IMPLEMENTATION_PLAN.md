@@ -213,6 +213,8 @@ See:
 
 ## 8. Test plans (per phase)
 
+Living tracker for **Not started / Partial / Untested** items (updated as work proceeds): [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md).
+
 ### P0 — Documentation
 
 | # | Test | Pass criteria |
@@ -373,3 +375,4 @@ See:
 | Date | Change |
 |---|---|
 | 2026-07-22 | Initial saved plan with per-phase test plans |
+| 2026-07-24 | Linked [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md) for open Not started / Partial / Untested work |

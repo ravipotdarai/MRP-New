@@ -6,9 +6,17 @@ export type AuthState = {
   email?: string;
   emailMasked?: string;
   displayName?: string;
+  /** Firebase Auth UID — required for Circle invite / RTDB. */
+  firebaseUid?: string | null;
   deviceId?: string;
   linkedAt?: number;
   deviceRegisteredAt?: number;
+};
+
+export type EnsureFirebaseAuthResult = {
+  ok: boolean;
+  firebaseUid?: string;
+  restored?: boolean;
 };
 
 export type DeviceInfo = {
@@ -30,6 +38,7 @@ export type GoogleSignInDebugInfo = {
 
 interface MrpAuthInterface {
   getAuthState(): Promise<AuthState>;
+  ensureFirebaseAuth(): Promise<EnsureFirebaseAuthResult>;
   isGoogleSignInConfigured(): Promise<boolean>;
   getGoogleSignInDebugInfo(): Promise<GoogleSignInDebugInfo>;
   signInWithGoogle(): Promise<AuthState>;

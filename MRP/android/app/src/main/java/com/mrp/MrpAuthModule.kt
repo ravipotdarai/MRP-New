@@ -16,6 +16,8 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.auth.api.signin.GoogleSignInStatusCodes
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.CommonStatusCodes
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -56,6 +58,92 @@ class MrpAuthModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.reject("AUTH_STATE", e.message, e)
         }
+    }
+
+    /**
+     * Ensure Firebase Auth session exists (required for RTDB Circle invites).
+     * Google Sign-In alone is not enough — RTDB rules need FirebaseAuth.currentUser.
+     */
+    @ReactMethod
+    fun ensureFirebaseAuth(promise: Promise) {
+        val existing = FirebaseAuth.getInstance().currentUser
+        if (existing != null) {
+            promise.resolve(
+                Arguments.createMap().apply {
+                    putBoolean("ok", true)
+                    putString("firebaseUid", existing.uid)
+                    putBoolean("restored", false)
+                }
+            )
+            return
+        }
+        val webClientId = try {
+            reactContext.getString(R.string.google_web_client_id)
+        } catch (e: Exception) {
+            ""
+        }
+        if (webClientId.isBlank() || webClientId.startsWith("YOUR_")) {
+            promise.reject(
+                "NOT_CONFIGURED",
+                "Google Web client ID missing — cannot link Firebase Auth for Circle."
+            )
+            return
+        }
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestIdToken(webClientId)
+            .build()
+        val client = GoogleSignIn.getClient(reactContext, gso)
+        client.silentSignIn()
+            .addOnSuccessListener { account ->
+                linkFirebaseWithGoogleAccount(account, promise, restored = true)
+            }
+            .addOnFailureListener { silentErr ->
+                val last = GoogleSignIn.getLastSignedInAccount(reactContext)
+                if (last != null && !last.idToken.isNullOrBlank()) {
+                    linkFirebaseWithGoogleAccount(last, promise, restored = true)
+                } else {
+                    Log.w(TAG, "ensureFirebaseAuth: no Google session", silentErr)
+                    promise.reject(
+                        "NO_FIREBASE_AUTH",
+                        "Sign in with Google from Hub → Account, then open Circle again. " +
+                            "Invite codes only work after Firebase Auth is linked.",
+                        silentErr
+                    )
+                }
+            }
+    }
+
+    private fun linkFirebaseWithGoogleAccount(
+        account: GoogleSignInAccount,
+        promise: Promise,
+        restored: Boolean
+    ) {
+        val idToken = account.idToken
+        if (idToken.isNullOrBlank()) {
+            promise.reject(
+                "NO_ID_TOKEN",
+                "Google session has no ID token. Sign out and Sign in again from Hub → Account."
+            )
+            return
+        }
+        persistAccount(account)
+        registerDeviceLocallySilent()
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        FirebaseAuth.getInstance().signInWithCredential(credential)
+            .addOnSuccessListener { result ->
+                promise.resolve(
+                    Arguments.createMap().apply {
+                        putBoolean("ok", true)
+                        putString("firebaseUid", result.user?.uid)
+                        putBoolean("restored", restored)
+                    }
+                )
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Firebase Auth link failed", e)
+                promise.reject("FIREBASE_AUTH", e.message ?: "Firebase Auth failed", e)
+            }
     }
 
     @ReactMethod
@@ -140,6 +228,10 @@ class MrpAuthModule(private val reactContext: ReactApplicationContext) :
                 .remove(KEY_DISPLAY_NAME)
                 .remove(KEY_LINKED_AT)
                 .apply()
+            try {
+                FirebaseAuth.getInstance().signOut()
+            } catch (_: Exception) {
+            }
             if (activity != null) {
                 val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
                 GoogleSignIn.getClient(activity, gso).signOut()
@@ -205,7 +297,30 @@ class MrpAuthModule(private val reactContext: ReactApplicationContext) :
             val account = task.getResult(ApiException::class.java)
             persistAccount(account)
             registerDeviceLocallySilent()
-            promise.resolve(buildAuthMap())
+            val idToken = account.idToken
+            if (!idToken.isNullOrBlank()) {
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
+                FirebaseAuth.getInstance().signInWithCredential(credential)
+                    .addOnCompleteListener { authTask ->
+                        if (!authTask.isSuccessful) {
+                            Log.w(TAG, "Firebase Auth link failed", authTask.exception)
+                            promise.reject(
+                                "FIREBASE_AUTH",
+                                authTask.exception?.message
+                                    ?: "Google signed in but Firebase Auth failed — Circle invites will not sync.",
+                                authTask.exception
+                            )
+                        } else {
+                            promise.resolve(buildAuthMap())
+                        }
+                    }
+            } else {
+                Log.w(TAG, "No Google idToken — Firebase RTDB live share needs requestIdToken")
+                promise.reject(
+                    "NO_ID_TOKEN",
+                    "Google Sign-In returned no ID token. Check google_web_client_id (Web client) and SHA-1 in Firebase."
+                )
+            }
         } catch (e: ApiException) {
             Log.e(TAG, "Google sign-in failed code=${e.statusCode}", e)
             promise.reject("SIGN_IN_FAILED", mapSignInError(e.statusCode), e)
@@ -308,6 +423,7 @@ class MrpAuthModule(private val reactContext: ReactApplicationContext) :
                 putString("email", email)
                 putString("emailMasked", maskEmail(email))
                 putString("displayName", authPrefs.getString(KEY_DISPLAY_NAME, "") ?: "")
+                putString("firebaseUid", FirebaseAuth.getInstance().currentUser?.uid)
                 putString("deviceId", getOrCreateDeviceId())
                 putDouble("linkedAt", (authPrefs.getLong(KEY_LINKED_AT, 0L)).toDouble())
                 putDouble(

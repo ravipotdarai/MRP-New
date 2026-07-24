@@ -13,7 +13,9 @@ type AuthContextValue = {
   device: DeviceInfo | null;
   loading: boolean;
   googleConfigured: boolean;
+  firebaseReady: boolean;
   refresh: () => Promise<void>;
+  ensureFirebaseAuth: () => Promise<string>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -43,10 +45,30 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     }
   }, []);
 
+  const ensureFirebaseAuth = useCallback(async () => {
+    if (!MrpAuth.ensureFirebaseAuth) {
+      throw new Error('Update the app — Firebase Auth helper missing');
+    }
+    const result = await MrpAuth.ensureFirebaseAuth();
+    await refresh();
+    if (!result?.ok || !result.firebaseUid) {
+      throw new Error('Firebase Auth not ready — sign in with Google from Account');
+    }
+    return result.firebaseUid;
+  }, [refresh]);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       await refresh();
+      try {
+        if (MrpAuth.ensureFirebaseAuth) {
+          await MrpAuth.ensureFirebaseAuth();
+          await refresh();
+        }
+      } catch (e) {
+        console.warn('[Auth] ensureFirebaseAuth on launch', e);
+      }
       setLoading(false);
     })();
   }, [refresh]);
@@ -64,17 +86,31 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
     await refresh();
   }, [refresh]);
 
+  const firebaseReady = !!auth.firebaseUid;
+
   const value = useMemo(
     () => ({
       auth,
       device,
       loading,
       googleConfigured,
+      firebaseReady,
       refresh,
+      ensureFirebaseAuth,
       signInWithGoogle,
       signOut,
     }),
-    [auth, device, loading, googleConfigured, refresh, signInWithGoogle, signOut],
+    [
+      auth,
+      device,
+      loading,
+      googleConfigured,
+      firebaseReady,
+      refresh,
+      ensureFirebaseAuth,
+      signInWithGoogle,
+      signOut,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

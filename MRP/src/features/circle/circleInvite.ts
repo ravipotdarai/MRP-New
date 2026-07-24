@@ -62,6 +62,11 @@ export function normalizeCircle(raw: Partial<LocalCircle> & {id: string; name: s
     inviteCode,
     members,
     liveReady: false,
+    shareEnabled: !!raw.shareEnabled,
+    intervalSec: ([20, 60, 600] as const).includes(raw.intervalSec as 20)
+      ? (raw.intervalSec as 20 | 60 | 600)
+      : 60,
+    groupKey: typeof raw.groupKey === 'string' ? raw.groupKey : undefined,
   });
 }
 

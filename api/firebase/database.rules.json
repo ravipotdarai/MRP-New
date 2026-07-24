@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "circle_by_code": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "circles": {
+      "$circleId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "members": {
+          "$uid": {
+            ".write": "auth != null && auth.uid == $uid"
+          }
+        }
+      }
+    },
+    "circle_live": {
+      "$circleId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['atMs', 'shareOn']) && newData.child('atMs').isNumber()"
+        }
+      }
+    }
+  }
+}

@@ -78,6 +78,8 @@ export function createLocalCircle(
       },
     ],
     liveReady: false,
+    shareEnabled: false,
+    intervalSec: 60,
   });
   return {ok: true, circle};
 }

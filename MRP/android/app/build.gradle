@@ -72,6 +72,31 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
+/** Load KEY=VALUE pairs from MRP/.env (no secrets logged). */
+def loadMrpEnv = {
+    def envFile = file("${rootDir}/../.env")
+    def map = [:]
+    if (envFile.exists()) {
+        envFile.eachLine { line ->
+            def t = line.trim()
+            if (t && !t.startsWith('#') && t.contains('=')) {
+                def idx = t.indexOf('=')
+                def k = t.substring(0, idx).trim()
+                def v = t.substring(idx + 1).trim()
+                if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+                    v = v.substring(1, v.length() - 1)
+                }
+                map[k] = v
+            }
+        }
+    }
+    return map
+}
+def mrpEnv = loadMrpEnv()
+def firebaseDatabaseUrl = mrpEnv['PUBLIC_FIREBASE_DATABASE_URL']
+        ?: mrpEnv['FIREBASE_DATABASE_URL']
+        ?: 'https://mobileresilienceplatform-default-rtdb.firebaseio.com'
+
 android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
@@ -84,6 +109,7 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        resValue "string", "firebase_database_url", firebaseDatabaseUrl
     }
     signingConfigs {
         debug {
@@ -135,6 +161,11 @@ dependencies {
     implementation "com.google.android.gms:play-services-location:21.1.0"
 
     implementation "com.google.android.gms:play-services-auth:21.2.0"
+
+    // Firebase Auth + RTDB for Circle live relay (P4)
+    implementation platform("com.google.firebase:firebase-bom:33.7.0")
+    implementation "com.google.firebase:firebase-auth"
+    implementation "com.google.firebase:firebase-database"
 
     // Google Play Billing
     implementation "com.android.billingclient:billing-ktx:6.2.1"
