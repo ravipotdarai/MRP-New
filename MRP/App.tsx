@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {StatusBar, View, ActivityIndicator, StyleSheet} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
@@ -15,6 +15,10 @@ import {EntitlementProvider} from './src/services/entitlements/EntitlementProvid
 import PinLock from './src/native/PinLock.types';
 import {Text} from 'react-native';
 import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
+import {
+  pullRemoteTrackingConfig,
+  startDevicePresence,
+} from './src/native/DeviceTracking.types';
 
 const Tab = createBottomTabNavigator();
 
@@ -53,7 +57,9 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
       <Tab.Screen
         name="Hub"
         options={{
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>⚙️</Text>,
+          tabBarIcon: ({color}) => (
+            <Text style={{fontSize: 18, color, fontWeight: '700'}}>HUB</Text>
+          ),
         }}>
         {({navigation, route}) => <HubScreen navigation={navigation} route={route} />}
       </Tab.Screen>
@@ -128,6 +134,23 @@ function AppContent(): React.JSX.Element {
   const handleLogout = () => {
     setIsUnlocked(false);
   };
+
+  // After unlock: pull web/admin tracking knobs + start lightweight presence (battery-safe).
+  useEffect(() => {
+    if (!isUnlocked || !isPinSet) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await pullRemoteTrackingConfig();
+        if (!cancelled) await startDevicePresence();
+      } catch (e) {
+        console.warn('[tracking] presence start skipped', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isUnlocked, isPinSet]);
 
   const shellStyle = {flex: 1 as const, backgroundColor: colors.bg};
 

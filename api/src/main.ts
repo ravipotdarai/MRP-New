@@ -9,7 +9,22 @@ loadEnv({ path: resolve(__dirname, '../.env') });
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  const origins = (
+    process.env.MRP_CORS_ORIGINS ||
+    [
+      'http://localhost:3001',
+      'http://127.0.0.1:3001',
+      'https://mobileresilienceplatform.web.app',
+      'https://mobileresilienceplatform.firebaseapp.com',
+    ].join(',')
+  )
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: origins,
+    credentials: true,
+  });
   app.setGlobalPrefix('v1');
   const port = process.env.PORT ? Number(process.env.PORT) : 3000;
   await app.listen(port);

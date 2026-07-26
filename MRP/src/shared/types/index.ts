@@ -49,6 +49,7 @@ export interface MonitoringSettings {
   captureOnWifiToggle: boolean;
   captureOnMobileData: boolean;
   captureOnHotspot: boolean;
+  captureOnBluetooth: boolean;
   captureOnSimChange: boolean;
   captureOnFactoryReset: boolean;
   captureOnUsb: boolean;

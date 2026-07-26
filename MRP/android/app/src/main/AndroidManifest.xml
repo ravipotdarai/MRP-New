@@ -148,6 +148,15 @@
         </intent-filter>
       </receiver>
 
+      <!-- OS geofence ENTER/EXIT (PendingIntent from NativeGeofenceRegistrar) -->
+      <receiver
+        android:name=".presentation.receiver.GeofenceTransitionReceiver"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.mrp.GEOFENCE_TRANSITION" />
+        </intent-filter>
+      </receiver>
+
       <!-- Boot Receiver - Auto-start Foreground Service -->
       <receiver
         android:name=".presentation.receiver.BootReceiver"

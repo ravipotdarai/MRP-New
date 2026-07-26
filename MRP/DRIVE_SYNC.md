@@ -1,21 +1,31 @@
 # Drive Sync (P5)
 
-## Mobile completion (2026-07-24)
+## Privacy (P5 complete for mobile)
+
+- Firebase RTDB holds **sync configuration only** (`device_config`).
+- Vault ciphertext (timeline, live location, Premium+ selfies) lives in **Drive appData**.
+- See [`DEVICE_TRACKING.md`](DEVICE_TRACKING.md).
+
+## Mobile completion
 
 | ID | Item | Status |
 |---|---|---|
-| P5-1 | OAuth scopes | **Done** — only `drive.appdata` in code (`ALLOWED_SCOPES`) |
-| P5-2 | Backup encrypt | **Done** — AES-GCM + PBKDF2(PIN); ciphertext uploaded |
-| P5-3 | Same-device backup/restore | **Done** (code); manual device pass recommended |
-| P5-4 | New device restore | **Done** (same Google + PIN path); UX copy on Drive Sync |
-| P5-5 | Drive full | **Done** — `PAUSED_QUOTA`; local intact |
-| P5-6 | Delete old MRP backups | **Done** — purge other `mrp_vault_backup*` in appData after upload |
-| P5-7 | Denied scope | **Done** — connect fails cleanly |
-| P5-8 | Wi‑Fi only | **Done** — gate on backup + tip if stale >24h (no background WorkManager yet) |
-| P5-9 | pending_sync drain | **Done** — included in backup then `clearPendingSync()` |
-| P5-10 | Web MRP-files-only | **Blocked** — needs P6 `web/` |
+| P5-1 | OAuth scopes | **Done** — only `drive.appdata` |
+| P5-2 | Backup encrypt | **Done** — AES-GCM + PBKDF2(PIN) |
+| P5-3 | Same-device backup/restore | **Done** (code) |
+| P5-4 | New device restore | **Done** |
+| P5-5 | Drive full | **Done** — `PAUSED_QUOTA` |
+| P5-6 | Delete old MRP backups | **Done** |
+| P5-7 | Denied scope | **Done** |
+| P5-8 | Wi‑Fi / mobile policy | **Done** — config `syncOnWifi` / `syncOnMobileData` + legacy wifi-only |
+| P5-9 | pending_sync drain | **Done** |
+| P5-G | Geofence + distance + address | **Done** |
+| P5-S | Event/location → Drive (not Firebase) | **Done** |
+| P5-E | Emergency Tracking (≥1 min) | **Done** |
+| P5-10 | Web cannot list other Drive files | **P6** — `MRP Web` uses `drive.appdata` + name filter only |
 
-**Phase P5 is complete for mobile.** Web (P5-10) tracks under P6.
+Auto Drive sync unlocks after one successful manual backup (PIN cached in EncryptedSharedPreferences).
+
 
 ## Layout
 

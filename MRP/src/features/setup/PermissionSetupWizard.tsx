@@ -19,6 +19,7 @@ export type PermissionSetupStatus = {
   camera: boolean;
   location: boolean;
   notifications: boolean;
+  bluetoothConnect?: boolean;
   overlay: boolean;
   deviceAdmin: boolean;
   batteryExempt: boolean;
@@ -29,13 +30,22 @@ export type PermissionSetupStatus = {
   missingCore: string[];
 };
 
+/** Android 12+ Nearby devices permission (string fallback if RN typings omit it). */
+function bluetoothConnectPermission(): string | null {
+  if (Platform.OS !== 'android' || Platform.Version < 31) {
+    return null;
+  }
+  const perms = PermissionsAndroid.PERMISSIONS as Record<string, string | undefined>;
+  return perms.BLUETOOTH_CONNECT ?? 'android.permission.BLUETOOTH_CONNECT';
+}
+
 type StepId = 'runtime' | 'overlay' | 'device_admin' | 'battery' | 'done';
 
 const STEPS: {id: StepId; label: string; why: string}[] = [
   {
     id: 'runtime',
-    label: 'Camera, Location & Notifications',
-    why: 'Capture intruder selfies and log GPS on security events. Notifications keep monitoring alive.',
+    label: 'Camera, Location, Notifications & Nearby devices',
+    why: 'Capture intruder selfies, log GPS, keep monitoring alive, and detect Bluetooth connect/disconnect.',
   },
   {
     id: 'overlay',
@@ -139,13 +149,17 @@ export function PermissionSetupWizard({
     try {
       switch (currentStep) {
         case 'runtime': {
-          const perms = [
+          const perms: string[] = [
             PermissionsAndroid.PERMISSIONS.CAMERA,
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
             PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
           ];
           if (Platform.Version >= 33) {
             perms.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+          }
+          const bt = bluetoothConnectPermission();
+          if (bt) {
+            perms.push(bt);
           }
           if (typeof bridge.requestRuntimePermissions === 'function') {
             await bridge.requestRuntimePermissions(perms);
@@ -165,6 +179,11 @@ export function PermissionSetupWizard({
             } else {
               await bridge.openAppSettings?.();
             }
+          } else if (after && after.bluetoothConnect === false) {
+            setHint(
+              'Nearby devices blocked. Opening App Settings — enable Nearby devices / Bluetooth for connect events.',
+            );
+            await bridge.openAppSettings?.();
           }
           break;
         }
@@ -310,7 +329,7 @@ function createStyles(colors: ColorPalette) {
       padding: spacing.lg,
       maxHeight: '85%',
     },
-    title: {fontSize: 22, fontWeight: '800', color: colors.text, marginBottom: spacing.sm},
+    title: {fontSize: 22, fontWeight: '800', color: colors.emerald, marginBottom: spacing.sm},
     subtitle: {
       fontSize: 14,
       color: colors.textSecondary,
@@ -326,7 +345,7 @@ function createStyles(colors: ColorPalette) {
       lineHeight: 18,
     },
     checklist: {maxHeight: 140, marginBottom: spacing.md},
-    checkItem: {fontSize: 14, color: colors.text, marginBottom: 6},
+    checkItem: {fontSize: 14, color: colors.emerald, marginBottom: 6},
     primaryBtn: {
       backgroundColor: colors.emerald,
       paddingVertical: 14,

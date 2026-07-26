@@ -101,6 +101,17 @@ function locationPermissions(): Permission[] {
   ];
 }
 
+function bluetoothConnectPermissions(): Permission[] {
+  if (Platform.OS !== 'android' || Platform.Version < 31) {
+    return [];
+  }
+  const perms = PermissionsAndroid.PERMISSIONS as Record<string, Permission | undefined>;
+  const connect =
+    perms.BLUETOOTH_CONNECT ??
+    ('android.permission.BLUETOOTH_CONNECT' as Permission);
+  return [connect];
+}
+
 function promptOpenSettings(title: string, message: string) {
   Alert.alert(title, message, [
     {text: 'Cancel', style: 'cancel'},
@@ -227,6 +238,7 @@ export function MonitoringScreen() {
   const [isDeviceAdminEnabled, setIsDeviceAdminEnabled] = useState(false);
   const [hasCameraPerm, setHasCameraPerm] = useState(false);
   const [hasLocationPerm, setHasLocationPerm] = useState(false);
+  const [hasBluetoothPerm, setHasBluetoothPerm] = useState(true);
   const [hasOverlayPerm, setHasOverlayPerm] = useState(false);
   const [hasAccessibility, setHasAccessibility] = useState(false);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -251,6 +263,11 @@ export function MonitoringScreen() {
       if (typeof (mrpmModule as any).getPermissionSetupStatus === 'function') {
         const st = await (mrpmModule as any).getPermissionSetupStatus();
         setCoreSetupComplete(!!st?.coreComplete);
+        if (typeof st?.bluetoothConnect === 'boolean') {
+          setHasBluetoothPerm(st.bluetoothConnect);
+        } else {
+          setHasBluetoothPerm(true);
+        }
       }
     } catch (e) {
       console.error('[checkPermissions] Failed to check permissions:', e);
@@ -322,7 +339,7 @@ export function MonitoringScreen() {
             {coreSetupComplete ? '🔒 Review permissions setup' : '🔒 Grant All Access'}
           </Text>
           <Text style={styles.managePermissionsButtonSubtitle}>
-            Guided one-time flow — camera, location, overlay, device admin, battery
+            Guided one-time flow — camera, location, nearby devices, overlay, device admin, battery
           </Text>
         </TouchableOpacity>
 
@@ -413,6 +430,43 @@ export function MonitoringScreen() {
             }}
           />
         </View>
+
+        {Platform.OS === 'android' && Platform.Version >= 31 && (
+          <View style={[styles.itemContainer, styles.itemBorder]}>
+            <View style={styles.iconBox}>
+              <Text style={styles.iconText}>🎧</Text>
+            </View>
+            <View style={styles.textContainer}>
+              <Text style={styles.itemTitle}>Nearby devices (Bluetooth)</Text>
+              <Text style={styles.itemSubtitle}>
+                Required for BLUETOOTH_CONNECTED / DISCONNECTED timeline events
+              </Text>
+            </View>
+            <PermissionSwitch
+              value={hasBluetoothPerm}
+              onRequestEnable={async () => {
+                const outcome = await requestRuntimePermissions(
+                  bluetoothConnectPermissions(),
+                );
+                const granted = outcome === 'granted';
+                setHasBluetoothPerm(granted);
+                if (outcome === 'blocked') {
+                  promptOpenSettings(
+                    'Nearby devices blocked',
+                    'Enable Nearby devices / Bluetooth for MRP in App Settings, then reconnect earbuds.',
+                  );
+                }
+                return granted;
+              }}
+              onRequestDisable={() => {
+                promptOpenSettings(
+                  'Disable Nearby devices',
+                  'Turn off Nearby devices for MRP in Android App Settings.',
+                );
+              }}
+            />
+          </View>
+        )}
 
         <SettingItem
           icon="🖥️"

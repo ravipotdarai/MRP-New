@@ -75,6 +75,10 @@ class MrpMonitorService : Service() {
     private var lastMobileDataState: Boolean? = null
     private var lastHotspotState: Boolean? = null
     private var lastBluetoothState: Boolean? = null
+    private var lastWifiAssociated: Boolean? = null
+    private var lastBtDeviceAddress: String? = null
+    private val connectedBtAddresses = mutableSetOf<String>()
+    private var bluetoothConnectionMonitor: com.mrp.domain.usecase.BluetoothConnectionMonitor? = null
     private var lastSimEventType: String? = null
     private var lastWifiBssid: String? = null
     private var lastAppUsageCheckTime: Long = 0
@@ -105,6 +109,13 @@ class MrpMonitorService : Service() {
             val bluetoothState = if (action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
             } else BluetoothAdapter.ERROR
+
+            @Suppress("DEPRECATION")
+            val wifiNetworkInfo = if (action == WifiManager.NETWORK_STATE_CHANGED_ACTION ||
+                action == "android.net.wifi.STATE_CHANGE"
+            ) {
+                intent.getParcelableExtra<android.net.NetworkInfo>(WifiManager.EXTRA_NETWORK_INFO)
+            } else null
 
             val airplaneState = if (action == Intent.ACTION_AIRPLANE_MODE_CHANGED) {
                 intent.getBooleanExtra("state", false)
@@ -165,19 +176,12 @@ class MrpMonitorService : Service() {
                             handleWifiChangeExplicit(isWifiOn = true, forceLog = false)
                         } else if (wifiState == WifiManager.WIFI_STATE_DISABLED || wifiState == WifiManager.WIFI_STATE_DISABLING) {
                             handleWifiChangeExplicit(isWifiOn = false, forceLog = false)
+                            lastWifiAssociated = false
                         }
                         scheduleToggleEvaluation()
                     }
-                    "android.net.wifi.STATE_CHANGE" -> {
-                        try {
-                            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                            val st = wm.wifiState
-                            if (st == WifiManager.WIFI_STATE_ENABLED) {
-                                handleWifiChangeExplicit(isWifiOn = true, forceLog = false)
-                            } else if (st == WifiManager.WIFI_STATE_DISABLED) {
-                                handleWifiChangeExplicit(isWifiOn = false, forceLog = false)
-                            }
-                        } catch (e: Exception) { Log.w(TAG, "Error in STATE_CHANGE wifi check", e) }
+                    WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
+                        handleWifiAssociationChange(wifiNetworkInfo)
                         scheduleToggleEvaluation()
                     }
                     "com.mrp.TEST_WIFI_TOGGLE" -> {
@@ -186,8 +190,11 @@ class MrpMonitorService : Service() {
                     BluetoothAdapter.ACTION_STATE_CHANGED -> {
                         if (bluetoothState == BluetoothAdapter.STATE_ON) {
                             handleBluetoothChangeExplicit(true)
+                            ensureBluetoothConnectionMonitor()
                         } else if (bluetoothState == BluetoothAdapter.STATE_OFF) {
                             handleBluetoothChangeExplicit(false)
+                            lastBtDeviceAddress = null
+                            connectedBtAddresses.clear()
                         }
                     }
                     Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
@@ -321,6 +328,17 @@ class MrpMonitorService : Service() {
             initializeInitialToggleStates()
             registerReceivers()
             checkBatteryOptimization()
+            // Battery-safe live presence for web (only when movement tracking is on)
+            try {
+                com.mrp.domain.usecase.DevicePresenceTracker.startIfBackgroundAllowed(this@MrpMonitorService)
+            } catch (e: Exception) {
+                Log.w(TAG, "DevicePresenceTracker start skipped", e)
+            }
+            try {
+                com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(this@MrpMonitorService)
+            } catch (e: Exception) {
+                Log.w(TAG, "NativeGeofenceRegistrar sync skipped", e)
+            }
         }
     }
 
@@ -344,25 +362,25 @@ class MrpMonitorService : Service() {
         return START_STICKY
     }
 
+    @Volatile private var cameraFgsActive = false
+
     private fun startForegroundSafe(notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Only claim LOCATION/CAMERA FGS types while actively using them —
+            // otherwise status-bar icons stay on for the whole monitoring session.
             var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-            val hasFineLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val hasCoarseLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            if (hasFineLocation || hasCoarseLocation) {
-                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val hasCamera = ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                if (hasCamera) {
-                    types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-                }
+            if (cameraFgsActive &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
             }
             try {
                 startForeground(NOTIFICATION_ID, notification, types)
                 Log.d(TAG, "Started foreground service with types bitmask: $types")
             } catch (e: SecurityException) {
-                Log.e(TAG, "SecurityException starting foreground with types $types, falling back to safe types", e)
+                Log.e(TAG, "SecurityException starting foreground with types $types, falling back", e)
                 try {
                     startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
                 } catch (e2: Exception) {
@@ -424,6 +442,7 @@ class MrpMonitorService : Service() {
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
                 addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
+                addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
                 addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
                 addAction("android.net.wifi.WIFI_AP_STATE_CHANGED")
                 addAction("android.net.conn.TETHER_STATE_CHANGED")
@@ -437,7 +456,6 @@ class MrpMonitorService : Service() {
                 addAction("com.mrp.TEST_SIM_REMOVED")
                 addAction("com.mrp.TEST_SIM_INSERTED")
                 addAction("com.mrp.TEST_FACTORY_RESET")
-                addAction("android.net.wifi.STATE_CHANGE")
                 addAction("com.mrp.TEST_WIFI_TOGGLE")
                 addAction("com.mrp.TEST_HOTSPOT_TOGGLE")
                 addAction("android.hardware.usb.action.USB_STATE")
@@ -465,8 +483,23 @@ class MrpMonitorService : Service() {
 
             contentResolver.registerContentObserver(Settings.Global.CONTENT_URI, true, settingsObserver)
             contentResolver.registerContentObserver(Settings.Secure.CONTENT_URI, true, settingsObserver)
+
+            ensureBluetoothConnectionMonitor()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to register receivers", e)
+        }
+    }
+
+    private fun ensureBluetoothConnectionMonitor() {
+        try {
+            if (bluetoothConnectionMonitor == null) {
+                bluetoothConnectionMonitor = com.mrp.domain.usecase.BluetoothConnectionMonitor(this) { connected, name, address ->
+                    handleBluetoothDeviceLink(connected, name, address)
+                }
+            }
+            bluetoothConnectionMonitor?.ensureStarted()
+        } catch (e: Exception) {
+            Log.w(TAG, "BluetoothConnectionMonitor start failed", e)
         }
     }
 
@@ -487,6 +520,13 @@ class MrpMonitorService : Service() {
         try {
             contentResolver.unregisterContentObserver(settingsObserver)
         } catch (e: Exception) { Log.w(TAG, "settingsObserver not registered") }
+
+        try {
+            bluetoothConnectionMonitor?.stop()
+        } catch (e: Exception) {
+            Log.w(TAG, "BluetoothConnectionMonitor stop failed", e)
+        }
+        bluetoothConnectionMonitor = null
     }
 
     private fun checkBatteryOptimization() {
@@ -603,6 +643,11 @@ class MrpMonitorService : Service() {
         val settings = try {
             settingsStorage.getSettings()
         } catch (e: Exception) { return }
+
+        // Retry BT monitor if Nearby devices permission was granted after service start
+        if (settings.captureOnBluetooth) {
+            ensureBluetoothConnectionMonitor()
+        }
 
         // 1. Wi-Fi
         if (settings.captureOnWifiToggle) {
@@ -800,6 +845,73 @@ class MrpMonitorService : Service() {
         return details
     }
 
+    private fun handleWifiAssociationChange(networkInfo: android.net.NetworkInfo?) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnWifiToggle) return
+        if (networkInfo == null) return
+
+        @Suppress("DEPRECATION")
+        val detailed = networkInfo.detailedState
+        val associated = when (detailed) {
+            android.net.NetworkInfo.DetailedState.CONNECTED -> true
+            android.net.NetworkInfo.DetailedState.DISCONNECTED,
+            android.net.NetworkInfo.DetailedState.FAILED,
+            android.net.NetworkInfo.DetailedState.IDLE -> false
+            else -> return // ignore intermediate states
+        }
+
+        val prev = lastWifiAssociated
+        if (prev != null && prev == associated) return
+        lastWifiAssociated = associated
+
+        val metadata = getWifiNetworkMetadata(associated)
+        val eventName = if (associated) "WIFI_CONNECTED" else "WIFI_DISCONNECTED"
+        Log.d(TAG, "Wi‑Fi association: $eventName detailed=$detailed")
+        eventLogger.logEvent(
+            eventName,
+            if (associated) StatusValues.CONNECTED else StatusValues.DISCONNECTED,
+            metadata
+        )
+        requestPhoto(this, eventName)
+    }
+
+    private fun handleBluetoothDeviceLink(
+        connected: Boolean,
+        name: String,
+        address: String
+    ) {
+        if (!isMonitoringEnabled()) return
+        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+        if (!settings.captureOnBluetooth) return
+
+        if (connected) {
+            if (address != "unknown" && !connectedBtAddresses.add(address)) {
+                Log.d(TAG, "BT already connected $address — skip duplicate")
+                return
+            }
+            lastBtDeviceAddress = address
+        } else {
+            if (address != "unknown") {
+                connectedBtAddresses.remove(address)
+            }
+            if (lastBtDeviceAddress == address) lastBtDeviceAddress = null
+        }
+
+        val eventName = if (connected) "BLUETOOTH_CONNECTED" else "BLUETOOTH_DISCONNECTED"
+        Log.i(TAG, "Bluetooth device link: $eventName name=$name addr=$address")
+        eventLogger.logEvent(
+            eventName,
+            if (connected) StatusValues.CONNECTED else StatusValues.DISCONNECTED,
+            mapOf(
+                "device_name" to name,
+                "device_address" to address,
+                "description" to if (connected) "Connected to $name" else "Disconnected from $name"
+            )
+        )
+        requestPhoto(this, eventName)
+    }
+
     private fun handleWifiChangeExplicit(isWifiOn: Boolean, forceLog: Boolean = false) {
         if (!isMonitoringEnabled()) return
         val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
@@ -813,22 +925,21 @@ class MrpMonitorService : Service() {
         Log.d(TAG, "handleWifiChangeExplicit: isWifiOn=$isWifiOn, prev=$prev, current=$current, forceLog=$forceLog")
 
         val metadata = getWifiNetworkMetadata(isWifiOn)
-        val currentBssid = metadata["wifi_bssid"]?.toString() ?: "N/A"
-        val prevBssid = lastWifiBssid
-
         lastWifiState = current
-        lastWifiBssid = currentBssid
+        if (!isWifiOn) {
+            lastWifiBssid = "N/A"
+            lastWifiAssociated = false
+        } else {
+            lastWifiBssid = metadata["wifi_bssid"]?.toString() ?: lastWifiBssid
+        }
 
-        val isNetworkChange = isWifiOn && prev == 1 && current == 1 && prevBssid != currentBssid && currentBssid != "Unavailable" && currentBssid != "02:00:00:00:00:00"
-        val isNetworkLost = isWifiOn && prev == 1 && current == 1 && prevBssid != currentBssid && (currentBssid == "Unavailable" || currentBssid == "02:00:00:00:00:00")
-
-        // Log if the Wi-Fi adapter toggles ON/OFF, OR if forced, OR if a genuine network change occurred, OR if the network was disconnected
-        if (forceLog || prev == null || prev != current || isNetworkChange || isNetworkLost) {
-            Log.d(TAG, "Logging Wi-Fi toggle/network change: isWifiOn=$isWifiOn, isNetworkLost=$isNetworkLost, meta=$metadata")
-            val eventName = if (isNetworkLost) "WIFI_DISCONNECTED" else if (isWifiOn) "WIFI_ENABLED" else "WIFI_DISABLED"
+        // Radio ON/OFF only — association is WIFI_CONNECTED / WIFI_DISCONNECTED
+        if (forceLog || prev == null || prev != current) {
+            Log.d(TAG, "Logging Wi-Fi radio toggle: isWifiOn=$isWifiOn meta=$metadata")
+            val eventName = if (isWifiOn) "WIFI_ENABLED" else "WIFI_DISABLED"
             eventLogger.logEvent(
                 eventName,
-                if (isNetworkLost) "DISCONNECTED" else if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED,
+                if (isWifiOn) StatusValues.ENABLED else StatusValues.DISABLED,
                 metadata
             )
             requestPhoto(this, eventName)
@@ -1065,6 +1176,7 @@ class MrpMonitorService : Service() {
             return
         }
 
+        cameraFgsActive = true
         updateForegroundServiceTypes()
 
         val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
@@ -1072,6 +1184,8 @@ class MrpMonitorService : Service() {
             val cameraId = getFrontCameraId(cameraManager) ?: run {
                 Log.e(TAG, "No front camera found")
                 pendingPhotoCapture = false
+                cameraFgsActive = false
+                updateForegroundServiceTypes()
                 return
             }
 
@@ -1188,6 +1302,9 @@ class MrpMonitorService : Service() {
             imageReader = null
         } catch (e: Exception) {
             Log.e(TAG, "Error closing camera", e)
+        } finally {
+            cameraFgsActive = false
+            updateForegroundServiceTypes()
         }
     }
 
@@ -1261,9 +1378,10 @@ class MrpMonitorService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
         } finally {
+            // Release camera ASAP so the status-bar icon drops
             backgroundHandler?.postDelayed({
                 closeCamera()
-            }, 1000)
+            }, 250)
         }
     }
 

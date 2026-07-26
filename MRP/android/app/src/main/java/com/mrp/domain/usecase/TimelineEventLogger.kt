@@ -56,21 +56,31 @@ class TimelineEventLogger(private val context: Context) {
             val severity = LocationResolver.severityForEvent(eventType)
             val resolved = LocationResolver.resolveSync(context, severity)
             val location = resolved?.location
-            val address = location?.let {
-                locationHelper.reverseGeocodeSync(it.latitude, it.longitude)
+            val addressParts = location?.let {
+                locationHelper.reverseGeocodePartsSync(it.latitude, it.longitude)
             }
+            val address = addressParts?.formatted
             val geofenceResult = location?.let {
                 locationHelper.evaluateGeofence(it.latitude, it.longitude)
             }
 
-            val enrichedMeta = if (resolved != null) {
-                metadata + mapOf(
-                    "location_tier" to resolved.tier,
-                    "location_cache_hit" to resolved.cacheHit,
-                    "location_duration_ms" to resolved.durationMs
-                )
-            } else {
-                metadata
+            val enrichedMeta = buildMap {
+                putAll(metadata)
+                if (resolved != null) {
+                    put("location_tier", resolved.tier)
+                    put("location_cache_hit", resolved.cacheHit)
+                    put("location_duration_ms", resolved.durationMs)
+                }
+                if (addressParts != null) {
+                    put("address_country", addressParts.country)
+                    put("address_state", addressParts.state)
+                    put("address_city", addressParts.city)
+                    put("address_postal", addressParts.postalCode)
+                }
+                if (geofenceResult != null) {
+                    put("geofence_name", geofenceResult.zoneName)
+                    put("geofence_distance_m", geofenceResult.distanceToCenter)
+                }
             }
 
             val entry = TimelineEntry(
@@ -90,6 +100,45 @@ class TimelineEventLogger(private val context: Context) {
             )
 
             timelineStorage.appendTimelineEntrySync(entry)
+            EventSyncPublisher.publishAsync(context, entry, addressParts)
+
+            // Soft geofence ENTER/EXIT when an event's location crosses a zone
+            // (OS GeofencingClient is primary; this covers cases without Play Services trigger yet)
+            if (geofenceResult != null && !eventType.startsWith("GEOFENCE_")) {
+                val prevInside = com.mrp.data.local.DeviceTrackingPrefs.lastGeofenceInside(context)
+                val prevId = com.mrp.data.local.DeviceTrackingPrefs.lastGeofenceId(context)
+                val crossed = prevInside != null &&
+                    (prevInside != geofenceResult.insideFence ||
+                        (prevId ?: "") != (geofenceResult.fenceId ?: ""))
+                if (crossed) {
+                    GeofenceTimeline.emitTransition(
+                        context = context,
+                        entered = geofenceResult.insideFence,
+                        zoneName = geofenceResult.zoneName,
+                        fenceId = geofenceResult.fenceId,
+                        distanceM = geofenceResult.distanceToCenter,
+                        lat = location!!.latitude,
+                        lng = location.longitude,
+                        accuracy = location.accuracy,
+                        addressParts = addressParts
+                    )
+                }
+                com.mrp.data.local.DeviceTrackingPrefs.rememberGeofence(
+                    context,
+                    geofenceResult.insideFence,
+                    geofenceResult.fenceId
+                )
+            }
+
+            if (location != null) {
+                DevicePresenceTracker.pingFromEvent(
+                    context,
+                    location.latitude,
+                    location.longitude,
+                    location.accuracy,
+                    eventType
+                )
+            }
             if (resolved != null && location != null) {
                 GeoSnapshotWriter.enqueueFromResolved(
                     context = context,

@@ -530,7 +530,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 captureOnWifiToggle = settingsMap.getBoolean("captureOnWifiToggle"),
                 captureOnMobileData = settingsMap.getBoolean("captureOnMobileData"),
                 captureOnHotspot = settingsMap.getBoolean("captureOnHotspot"),
-                captureOnBluetooth = settingsMap.getBoolean("captureOnBluetooth"),
+                captureOnBluetooth = optBool("captureOnBluetooth", true),
                 captureOnSimChange = settingsMap.getBoolean("captureOnSimChange"),
                 captureOnFactoryReset = settingsMap.getBoolean("captureOnFactoryReset"),
                 captureOnUsb = settingsMap.getBoolean("captureOnUsb"),
@@ -1008,7 +1008,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     }
                     val loc = resolved.location
                     val helper = LocationHelper(reactContext)
-                    val address = helper.reverseGeocodeSync(loc.latitude, loc.longitude)
+                    val parts = helper.reverseGeocodePartsSync(loc.latitude, loc.longitude)
+                    val address = parts?.formatted
+                        ?: helper.reverseGeocodeSync(loc.latitude, loc.longitude)
                     val geofence = helper.evaluateGeofence(loc.latitude, loc.longitude)
                     com.mrp.domain.usecase.GeoSnapshotWriter.enqueueFromResolved(
                         reactContext,
@@ -1023,8 +1025,19 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                         putDouble("longitude", loc.longitude)
                         putDouble("accuracy_meters", loc.accuracy.toDouble())
                         putString("detailed_address", address)
+                        putString("country", parts?.country)
+                        putString("state", parts?.state)
+                        putString("city", parts?.city)
+                        putString("postalCode", parts?.postalCode)
+                        putString("street", parts?.street)
                         putString("provider", resolved.provider)
                         putString("location_tier", resolved.tier)
+                        putBoolean("inside_geofence", geofence.insideFence)
+                        putString("geofence_id", geofence.fenceId)
+                        putString("geofence_name", geofence.zoneName)
+                        if (geofence.distanceToCenter.isFinite()) {
+                            putDouble("geofence_distance_m", geofence.distanceToCenter.toDouble())
+                        }
                     }
                     promise.resolve(map)
                 } catch (e: Exception) {
@@ -1046,6 +1059,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putBoolean("camera", status.camera)
                 putBoolean("location", status.location)
                 putBoolean("notifications", status.notifications)
+                putBoolean("bluetoothConnect", status.bluetoothConnect)
                 putBoolean("overlay", status.overlay)
                 putBoolean("deviceAdmin", status.deviceAdmin)
                 putBoolean("batteryExempt", status.batteryExempt)

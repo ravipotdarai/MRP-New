@@ -8,6 +8,7 @@ const defaultSettings: MonitoringSettings = {
   captureOnWifiToggle: true,
   captureOnMobileData: true,
   captureOnHotspot: true,
+  captureOnBluetooth: true,
   captureOnSimChange: true,
   captureOnFactoryReset: true,
   captureOnUsb: true,

@@ -3,12 +3,14 @@ package com.mrp.domain.usecase
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import com.mrp.data.local.GeofenceStorage
 import kotlinx.coroutines.*
 import java.util.*
 
@@ -20,15 +22,24 @@ class LocationHelper(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    /**
-     * Hardcoded geofence zones - can be expanded with database-driven zones
-     * These will only trigger when location is actually available
-     * IMPORTANT: Replace with actual coordinates for your use case!
-     */
     private val geofenceZones = mutableListOf<GeofenceZone>()
 
-    fun addGeofenceZone(id: String, latitude: Double, longitude: Double, radiusMeters: Float) {
-        geofenceZones.add(GeofenceZone(id, latitude, longitude, radiusMeters))
+    init {
+        reloadGeofencesFromStorage()
+    }
+
+    fun reloadGeofencesFromStorage() {
+        geofenceZones.clear()
+        GeofenceStorage.list(context).filter { it.enabled }.forEach { z ->
+            geofenceZones.add(
+                GeofenceZone(z.id, z.latitude, z.longitude, z.radiusMeters, z.name)
+            )
+        }
+    }
+
+    fun addGeofenceZone(id: String, latitude: Double, longitude: Double, radiusMeters: Float, name: String = id) {
+        geofenceZones.removeAll { it.id == id }
+        geofenceZones.add(GeofenceZone(id, latitude, longitude, radiusMeters, name))
     }
 
     fun clearGeofenceZones() {
@@ -110,8 +121,7 @@ class LocationHelper(private val context: Context) {
             ?: String.format(Locale.US, "Lat: %.5f, Long: %.5f", latitude, longitude)
     }
 
-    @Suppress("DEPRECATION")
-    private fun reverseGeocodeSyncOrNull(latitude: Double, longitude: Double): String? {
+    fun reverseGeocodePartsSync(latitude: Double, longitude: Double): AddressParts? {
         if (!LocationResolver.shouldGeocodeNow(context)) {
             Log.i(LocationResolver.TAG_BATTERY, "geocode skipped offline")
             return null
@@ -120,48 +130,79 @@ class LocationHelper(private val context: Context) {
         val roundedLat = (latitude * 1000).toInt() / 1000.0
         val roundedLng = (longitude * 1000).toInt() / 1000.0
         if (lastGeocodeLat == roundedLat && lastGeocodeLng == roundedLng &&
-            now - lastGeocodeElapsed < DUPLICATE_GEOCODE_MS && lastGeocodeAddress != null
+            now - lastGeocodeElapsed < DUPLICATE_GEOCODE_MS && lastGeocodeParts != null
         ) {
-            Log.i(LocationResolver.TAG_BATTERY, "geocode duplicate_coords skip")
-            return lastGeocodeAddress
+            return lastGeocodeParts
         }
         return try {
-            val geocoder = Geocoder(context, Locale.getDefault())
-            var result: String? = null
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val latch = java.util.concurrent.CountDownLatch(1)
-                geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
-                    result = addresses.firstOrNull()?.getAddressLine(0)
-                    latch.countDown()
-                }
-                latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
-            } else {
-                @Suppress("DEPRECATION")
-                val addresses = geocoder.getFromLocation(latitude, longitude, 1)
-                result = addresses?.firstOrNull()?.getAddressLine(0)
-            }
-            if (result != null) {
-                lastGeocodeElapsed = now
-                lastGeocodeLat = roundedLat
-                lastGeocodeLng = roundedLng
-                lastGeocodeAddress = result
-            }
-            val wifi = LocationResolver.isWifiConnected(context)
-            Log.i(
-                LocationResolver.TAG_BATTERY,
-                "geocode ok wifi=$wifi cellular_primary=${!wifi} address=${result != null}"
-            )
-            result
+            val address = fetchFirstAddress(latitude, longitude) ?: return null
+            val parts = addressToParts(address)
+            lastGeocodeElapsed = now
+            lastGeocodeLat = roundedLat
+            lastGeocodeLng = roundedLng
+            lastGeocodeAddress = parts.formatted
+            lastGeocodeParts = parts
+            parts
         } catch (e: Exception) {
             Log.e(TAG, "Reverse geocoding failed", e)
             null
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun reverseGeocodeSyncOrNull(latitude: Double, longitude: Double): String? {
+        return reverseGeocodePartsSync(latitude, longitude)?.formatted
+    }
+
+    @Suppress("DEPRECATION")
+    private fun fetchFirstAddress(latitude: Double, longitude: Double): Address? {
+        val geocoder = Geocoder(context, Locale.getDefault())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            var result: Address? = null
+            val latch = java.util.concurrent.CountDownLatch(1)
+            geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
+                result = addresses.firstOrNull()
+                latch.countDown()
+            }
+            latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+            return result
+        }
+        return geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
+    }
+
+    private fun addressToParts(address: Address): AddressParts {
+        val formatted = address.getAddressLine(0)
+            ?: listOfNotNull(
+                address.thoroughfare,
+                address.locality,
+                address.adminArea,
+                address.countryName
+            ).joinToString(", ").ifBlank { "Unknown address" }
+        return AddressParts(
+            formatted = formatted,
+            country = address.countryName,
+            state = address.adminArea,
+            city = address.locality ?: address.subAdminArea,
+            postalCode = address.postalCode,
+            street = address.thoroughfare ?: address.featureName
+        )
+    }
+
     /**
      * Evaluate if a location is inside any defined geofence zone
      */
     fun evaluateGeofence(latitude: Double, longitude: Double): GeofenceResult {
+        reloadGeofencesFromStorage()
+        if (geofenceZones.isEmpty()) {
+            return GeofenceResult(
+                insideFence = false,
+                fenceId = null,
+                distanceToCenter = Float.NaN,
+                zoneName = null
+            )
+        }
+        var nearest: GeofenceZone? = null
+        var nearestDist = Float.MAX_VALUE
         for (zone in geofenceZones) {
             val results = FloatArray(1)
             Location.distanceBetween(
@@ -178,8 +219,17 @@ class LocationHelper(private val context: Context) {
                     zoneName = zone.name
                 )
             }
+            if (distance < nearestDist) {
+                nearestDist = distance
+                nearest = zone
+            }
         }
-        return GeofenceResult(insideFence = false, fenceId = null, distanceToCenter = Float.MAX_VALUE, zoneName = null)
+        return GeofenceResult(
+            insideFence = false,
+            fenceId = nearest?.id,
+            distanceToCenter = nearestDist,
+            zoneName = nearest?.name
+        )
     }
 
     private fun hasLocationPermission(): Boolean {
@@ -231,5 +281,8 @@ class LocationHelper(private val context: Context) {
 
         @Volatile
         private var lastGeocodeAddress: String? = null
+
+        @Volatile
+        private var lastGeocodeParts: AddressParts? = null
     }
 }

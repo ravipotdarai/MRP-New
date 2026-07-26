@@ -191,64 +191,53 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
             try {
                 requireRecoveryAck()
                 requirePin(pin)
-                if (prefs.getBoolean(KEY_WIFI_ONLY, true) && !isOnWifi()) {
-                    promise.reject("WIFI_ONLY", "Wi‑Fi only is on. Connect to Wi‑Fi or turn off the setting.")
-                    return@execute
-                }
                 val account = GoogleSignIn.getLastSignedInAccount(reactContext)
                     ?: throw IllegalStateException("Sign in with Google first")
                 if (!GoogleSignIn.hasPermissions(account, Scope(DriveAppDataClient.SCOPE_APPDATA))) {
                     throw IllegalStateException("Connect Drive (appdata) first")
                 }
+                val sim = SimRecoveryStorage(reactContext)
+                val accountEmail = account.email ?: ""
                 val token = getAccessToken(account)
                     ?: throw IllegalStateException("Missing Google access token — reconnect Drive")
 
-                val timeline = TimelineStorage(reactContext)
-                val sim = SimRecoveryStorage(reactContext)
-                val payload = JSONObject()
-                    .put("version", 1)
-                    .put("createdAtMs", System.currentTimeMillis())
-                    .put("email", account.email ?: "")
-                    .put("timeline", timeline.exportTimelineJsonArray())
-                    .put("pendingSync", JSONArray(sim.getPendingSyncJson()))
-                    .put("simHistory", JSONArray(sim.getHistoryJson()))
-                val cipherBytes = VaultBackupCrypto.encryptUtf8(payload.toString(), pin)
-
-                val client = DriveAppDataClient(token)
-                val existing = client.listAppDataFiles(DriveAppDataClient.BACKUP_FILE_NAME)
-                    .maxByOrNull { it.modifiedTime ?: "" }
+                // Network: respect Drive wifi-only OR device_config mobile allowance
+                val allowCell = com.mrp.data.local.DeviceTrackingPrefs.syncOnMobileData(reactContext)
+                if (prefs.getBoolean(KEY_WIFI_ONLY, true) && !allowCell && !isOnWifi()) {
+                    promise.reject("WIFI_ONLY", "Wi‑Fi only is on. Connect to Wi‑Fi or allow mobile sync in Geofence policy.")
+                    return@execute
+                }
+                val pendingBefore = sim.getPendingSyncCount()
                 try {
-                    val pendingBefore = sim.getPendingSyncCount()
-                    val remote = client.uploadOrReplace(
-                        DriveAppDataClient.BACKUP_FILE_NAME,
-                        cipherBytes,
-                        existing?.id
+                    val ok = com.mrp.domain.usecase.DriveVaultSync.performBackup(
+                        reactContext,
+                        pin,
+                        token,
+                        accountEmail,
+                        "manual"
                     )
-                    // P5-6: remove older MRP vault files in appData only
-                    val purged = try {
-                        client.deleteOldMrpBackups(remote.id)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "purge old backups", e)
-                        0
-                    }
-                    // P5-9: pending queue was included in backup — clear local drain
-                    if (pendingBefore > 0) {
-                        sim.clearPendingSync()
-                    }
-                    prefs.edit()
-                        .putLong(KEY_LAST_BACKUP_MS, System.currentTimeMillis())
-                        .putString(KEY_LAST_FILE_ID, remote.id)
-                        .putBoolean(KEY_PAUSED_QUOTA, false)
-                        .apply()
+                    if (!ok) throw IllegalStateException("Backup failed")
+                    com.mrp.domain.usecase.DriveVaultSync.rememberPinForAutoSync(reactContext, pin)
+                    val payload = com.mrp.domain.usecase.DriveVaultSync.buildPayload(
+                        reactContext,
+                        accountEmail,
+                        "manual"
+                    )
                     promise.resolve(
                         Arguments.createMap().apply {
                             putBoolean("ok", true)
-                            putString("fileId", remote.id)
-                            putInt("timelineCount", payload.getJSONArray("timeline").length())
-                            putInt("bytes", cipherBytes.size)
-                            putString("modifiedTime", remote.modifiedTime)
-                            putInt("purgedOldBackups", purged)
+                            putString("fileId", prefs.getString(KEY_LAST_FILE_ID, null))
+                            putInt("timelineCount", payload.optJSONArray("timeline")?.length() ?: 0)
+                            putInt(
+                                "selfieCount",
+                                payload.optJSONArray("selfies")?.length() ?: 0
+                            )
+                            putBoolean(
+                                "hasLiveLocation",
+                                payload.has("liveLocation") && payload.getJSONObject("liveLocation").length() > 0
+                            )
                             putInt("pendingSyncDrained", pendingBefore)
+                            putString("privacy", "device+drive; firebase=config-only")
                         }
                     )
                 } catch (e: Exception) {

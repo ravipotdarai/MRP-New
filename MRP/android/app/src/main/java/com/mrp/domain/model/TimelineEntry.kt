@@ -151,4 +151,8 @@ object StatusValues {
     const val LOCKED = "locked"
     const val UNLOCKED = "unlocked"
     const val FAILED = "failed"
+    const val CONNECTED = "connected"
+    const val DISCONNECTED = "disconnected"
+    const val ENTER = "enter"
+    const val EXIT = "exit"
 }

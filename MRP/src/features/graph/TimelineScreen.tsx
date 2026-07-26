@@ -39,6 +39,8 @@ const EVENT_ICONS: Record<string, string> = {
   WIFI_TOGGLE: '📶',
   WIFI_ENABLED: '📶',
   WIFI_DISABLED: '📶',
+  WIFI_CONNECTED: '📶',
+  WIFI_DISCONNECTED: '📶',
   MOBILE_DATA_TOGGLE: '📱',
   MOBILE_DATA_ENABLED: '📱',
   MOBILE_DATA_DISABLED: '📱',
@@ -48,6 +50,10 @@ const EVENT_ICONS: Record<string, string> = {
   BLUETOOTH_TOGGLE: '🎧',
   BLUETOOTH_ENABLED: '🎧',
   BLUETOOTH_DISABLED: '🎧',
+  BLUETOOTH_CONNECTED: '🎧',
+  BLUETOOTH_DISCONNECTED: '🎧',
+  GEOFENCE_ENTER: '🏠',
+  GEOFENCE_EXIT: '🚪',
   AIRPLANE_MODE_ENABLED: '✈️',
   AIRPLANE_MODE_DISABLED: '✈️',
   USB_CONNECTED: '💻',
@@ -257,7 +263,12 @@ export function TimelineScreen() {
                     : colors.amber,
                 },
               ]}>
-              {item.geofence_status?.inside_fence ? '🏠 Home' : '📍 Away'}
+              {item.geofence_status?.inside_fence
+                ? `🏠 ${item.metadata?.geofence_name || 'Inside'}`
+                : item.metadata?.geofence_distance_m != null &&
+                    Number.isFinite(Number(item.metadata.geofence_distance_m))
+                  ? `📍 ${Math.round(Number(item.metadata.geofence_distance_m))}m away`
+                  : '📍 Away'}
             </Text>
           </View>
         </View>
@@ -356,9 +367,32 @@ export function TimelineScreen() {
                     <Text style={styles.detailLabel}>Geofence Status</Text>
                     <Text style={styles.detailValue}>
                       {selectedEntry.geofence_status?.inside_fence
-                        ? '🏠 Inside fence'
-                        : '📍 Outside fence'}
+                        ? `🏠 Inside ${selectedEntry.metadata?.geofence_name || 'zone'}`
+                        : selectedEntry.metadata?.geofence_name
+                          ? `📍 Outside ${selectedEntry.metadata.geofence_name}`
+                          : '📍 Outside fence'}
                     </Text>
+                    {selectedEntry.metadata?.geofence_distance_m != null &&
+                    Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m)) ? (
+                      <Text style={styles.detailSubvalue}>
+                        Distance to zone center:{' '}
+                        {Math.round(Number(selectedEntry.metadata.geofence_distance_m))} m
+                      </Text>
+                    ) : null}
+                    {(selectedEntry.metadata?.address_city ||
+                      selectedEntry.metadata?.address_state ||
+                      selectedEntry.metadata?.address_country) && (
+                      <Text style={styles.detailSubvalue}>
+                        {[
+                          selectedEntry.metadata.address_city,
+                          selectedEntry.metadata.address_state,
+                          selectedEntry.metadata.address_country,
+                          selectedEntry.metadata.address_postal,
+                        ]
+                          .filter(Boolean)
+                          .join(', ')}
+                      </Text>
+                    )}
                   </View>
 
                   {Object.keys(selectedEntry.metadata || {}).length > 0 && (

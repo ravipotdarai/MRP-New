@@ -15,6 +15,8 @@ class MrpPackage : ReactPackage {
             BillingModule(reactContext),
             CircleLiveModule(reactContext),
             DriveVaultModule(reactContext),
+            GeofenceModule(reactContext),
+            DeviceTrackingModule(reactContext),
         )
     }
 

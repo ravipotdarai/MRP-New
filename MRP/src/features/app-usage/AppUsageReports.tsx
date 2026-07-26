@@ -6,6 +6,7 @@ import {
   dedupeSessions,
   formatAppLabel,
   formatDuration,
+  mergeOverlappingSessions,
   rankBatteryImpact,
 } from './AppUsageUtils';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
@@ -36,7 +37,9 @@ export function AppUsageReports({sessions}: Props) {
     } else {
       cutoff = now - 30 * msInDay;
     }
-    return dedupeSessions(sessions.filter(s => s.startTime >= cutoff));
+    return mergeOverlappingSessions(
+      dedupeSessions(sessions.filter(s => s.startTime >= cutoff && (s.durationSeconds || 0) > 0)),
+    );
   }, [sessions, timeframe]);
 
   const totalUsage = useMemo(
@@ -209,9 +212,10 @@ export function AppUsageReports({sessions}: Props) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Battery Impact (estimated)</Text>
+        <Text style={styles.sectionTitle}>Screen-time share (estimate)</Text>
         <Text style={styles.impactHint}>
-          Ranked by screen-time share — not mAh. Use system Battery for real power stats.
+          Ranked by foreground UsageStats duration — not mAh and not Android Battery %. Open system
+          Battery Usage for official power numbers. Launcher/system noise packages are filtered.
         </Text>
         {batteryImpact.apps.length === 0 ? (
           <Text style={styles.emptyInline}>No apps in this period.</Text>

@@ -20,6 +20,7 @@ object PermissionSetupStatus {
         val camera: Boolean,
         val location: Boolean,
         val notifications: Boolean,
+        val bluetoothConnect: Boolean,
         val overlay: Boolean,
         val deviceAdmin: Boolean,
         val batteryExempt: Boolean,
@@ -41,7 +42,6 @@ object PermissionSetupStatus {
     }
 
     fun get(context: Context): Status {
-        val pm = context.packageManager
         val camera = ActivityCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
         val location = ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -50,6 +50,10 @@ object PermissionSetupStatus {
             PackageManager.PERMISSION_GRANTED
         val notifications = if (Build.VERSION.SDK_INT >= 33) {
             ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else true
+        val bluetoothConnect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
                 PackageManager.PERMISSION_GRANTED
         } else true
         val overlay = Settings.canDrawOverlays(context)
@@ -62,6 +66,7 @@ object PermissionSetupStatus {
             camera = camera,
             location = location,
             notifications = notifications,
+            bluetoothConnect = bluetoothConnect,
             overlay = overlay,
             deviceAdmin = admin,
             batteryExempt = battery,

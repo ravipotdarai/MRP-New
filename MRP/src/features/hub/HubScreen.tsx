@@ -17,11 +17,13 @@ import {AccountScreen} from './AccountScreen';
 import {SubscriptionScreen} from '../subscription/SubscriptionScreen';
 import {CircleScreen} from '../circle/CircleScreen';
 import {DriveSyncScreen} from '../drive/DriveSyncScreen';
+import {GeofenceScreen} from '../geofence/GeofenceScreen';
 
 export type HubSection =
   | 'menu'
   | 'account'
   | 'circle'
+  | 'geofence'
   | 'drive-sync'
   | 'sim-recovery'
   | 'subscriptions'
@@ -45,6 +47,13 @@ const MENU_ITEMS: MenuItem[] = [
     title: 'Account',
     subtitle: 'Google sign-in & device',
     icon: '👤',
+  },
+  {
+    id: 'geofence',
+    title: 'Geofence',
+    subtitle: 'Zones, distance & address',
+    icon: '🗺️',
+    badge: 'Premium',
   },
   {
     id: 'circle',
@@ -96,20 +105,10 @@ type HubNav = {
   setParams?: (params: {openSection?: HubSection | undefined}) => void;
 };
 
-function HubSubheader({
-  title,
-  onBack,
-  styles,
-}: {
-  title: string;
-  onBack: () => void;
-  styles: ReturnType<typeof createStyles>;
-}) {
+/** Title only — system / gesture back returns to Hub menu (no ← Hub button). */
+function HubTitleBar({title, styles}: {title: string; styles: ReturnType<typeof createStyles>}) {
   return (
     <View style={styles.subHeader}>
-      <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={12}>
-        <Text style={styles.backText}>← Hub</Text>
-      </TouchableOpacity>
       <Text style={styles.subTitle}>{title}</Text>
     </View>
   );
@@ -147,7 +146,6 @@ export function HubScreen({
 
   const goMenu = useCallback(() => {
     setSection('menu');
-    // Clear deep-link param so focus doesn't reopen the section
     navigation?.setParams?.({openSection: undefined});
   }, [navigation]);
 
@@ -182,7 +180,7 @@ export function HubScreen({
   if (section === 'about') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="About MRP" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="About MRP" styles={styles} />
         <AboutScreen />
       </SafeAreaView>
     );
@@ -191,7 +189,7 @@ export function HubScreen({
   if (section === 'account') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="Account" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="Account" styles={styles} />
         <AccountScreen onBack={goMenu} />
       </SafeAreaView>
     );
@@ -200,7 +198,7 @@ export function HubScreen({
   if (section === 'sim-recovery') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="SIM Recovery" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="SIM Recovery" styles={styles} />
         <ScrollView contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
           <SimRecoveryPanel onUpgrade={() => openSection('subscriptions')} />
         </ScrollView>
@@ -211,7 +209,7 @@ export function HubScreen({
   if (section === 'subscriptions') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="Subscriptions" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="Subscriptions" styles={styles} />
         <SubscriptionScreen onBack={goMenu} />
       </SafeAreaView>
     );
@@ -220,7 +218,7 @@ export function HubScreen({
   if (section === 'circle') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="Circle" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="Circle" styles={styles} />
         <CircleScreen onUpgrade={() => openSection('subscriptions')} />
       </SafeAreaView>
     );
@@ -229,8 +227,17 @@ export function HubScreen({
   if (section === 'drive-sync') {
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title="Drive Sync" onBack={goMenu} styles={styles} />
+        <HubTitleBar title="Drive Sync" styles={styles} />
         <DriveSyncScreen onUpgrade={() => openSection('subscriptions')} onBack={goMenu} />
+      </SafeAreaView>
+    );
+  }
+
+  if (section === 'geofence') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <HubTitleBar title="Geofence" styles={styles} />
+        <GeofenceScreen onUpgrade={() => openSection('subscriptions')} />
       </SafeAreaView>
     );
   }
@@ -250,7 +257,7 @@ export function HubScreen({
     const content = copy[section] ?? {title: item?.title ?? 'Hub', body: ''};
     return (
       <SafeAreaView style={styles.safe}>
-        <HubSubheader title={item?.title ?? 'Hub'} onBack={goMenu} styles={styles} />
+        <HubTitleBar title={item?.title ?? 'Hub'} styles={styles} />
         <ScrollView contentContainerStyle={styles.scrollPad}>
           <PlaceholderBody
             title={content.title}
@@ -269,6 +276,7 @@ export function HubScreen({
         <View style={styles.hero}>
           <Text style={styles.heroTitle}>Hub</Text>
           <Text style={styles.heroSub}>Services, billing & recovery</Text>
+          <Text style={styles.hint}>Use system back to leave a section</Text>
         </View>
         {MENU_ITEMS.map(item => (
           <TouchableOpacity
@@ -306,6 +314,7 @@ function createStyles(colors: ColorPalette) {
     hero: {marginBottom: spacing.lg},
     heroTitle: {fontSize: 28, fontWeight: '800', color: colors.textPrimary},
     heroSub: {fontSize: 14, color: colors.textMuted, marginTop: 4},
+    hint: {fontSize: 12, color: colors.textMuted, marginTop: 6},
     menuCard: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -339,17 +348,13 @@ function createStyles(colors: ColorPalette) {
     badgeText: {fontSize: 10, fontWeight: '800', color: '#fff'},
     chevron: {fontSize: 22, color: colors.textMuted, marginLeft: 8},
     subHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.md,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSubtle,
       backgroundColor: colors.surface,
     },
-    backBtn: {marginRight: spacing.md},
-    backText: {color: colors.sky, fontSize: 15, fontWeight: '700'},
-    subTitle: {fontSize: 17, fontWeight: '800', color: colors.textPrimary, flex: 1},
+    subTitle: {fontSize: 17, fontWeight: '800', color: colors.textPrimary},
     placeholderCard: {
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
@@ -364,13 +369,5 @@ function createStyles(colors: ColorPalette) {
       marginBottom: spacing.sm,
     },
     placeholderBody: {fontSize: 15, lineHeight: 22},
-    paywallBtn: {
-      marginTop: spacing.md,
-      backgroundColor: colors.sky,
-      borderRadius: radius.md,
-      paddingVertical: 12,
-      alignItems: 'center',
-    },
-    paywallBtnText: {color: '#fff', fontWeight: '800', fontSize: 14},
   });
 }

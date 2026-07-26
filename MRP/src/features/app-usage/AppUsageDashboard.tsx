@@ -184,7 +184,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
 
       <View style={styles.section}>
         <View style={styles.impactHeader}>
-          <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Battery Impact</Text>
+          <Text style={[styles.sectionTitle, {marginBottom: 0}]}>Screen-time share</Text>
           <View style={styles.impactToggle}>
             {(['TODAY', '7D'] as ImpactPeriod[]).map(p => (
               <TouchableOpacity
@@ -203,8 +203,9 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
           </View>
         </View>
         <Text style={styles.impactDisclaimer}>
-          Estimated from screen time share — not mAh. Open system Battery for official power
-          use (including services).
+          Screen-time share from UsageStats (foreground) — not mAh and not Android Battery %.
+          Totals merge overlapping sessions and hide launcher/system noise. Open system Battery
+          for official power use.
         </Text>
         {batteryImpact.apps.length === 0 ? (
           <Text style={styles.impactEmpty}>No app usage in this period.</Text>

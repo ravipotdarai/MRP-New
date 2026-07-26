@@ -240,6 +240,21 @@ export function HomeScreen({
       admin: adRes.status === 'fulfilled' ? !!adRes.value : false,
       usageStats: usRes.status === 'fulfilled' ? !!usRes.value : false,
     });
+    // Prefer aggregated setup status when available (more reliable for Device Admin / overlay)
+    try {
+      const setup = await bridge.getPermissionSetupStatus?.();
+      if (setup && typeof setup === 'object') {
+        setPermFlags(prev => ({
+          camera: setup.camera ?? prev.camera,
+          location: setup.location ?? prev.location,
+          overlay: setup.overlay ?? prev.overlay,
+          admin: setup.deviceAdmin ?? prev.admin,
+          usageStats: setup.usageStats ?? prev.usageStats,
+        }));
+      }
+    } catch {
+      /* keep flags from individual checks */
+    }
   }, []);
 
   // Refresh only when Home is opened / focused — no continuous polling
@@ -291,13 +306,15 @@ export function HomeScreen({
   };
 
   const securityScore = computeScore();
-  const protectionGaps: string[] = [];
+  // "Protected" = core permissions OK (matches Grant All Access core). Monitoring tip is separate.
+  const permissionGaps: string[] = [];
+  if (!permFlags.camera) permissionGaps.push('Camera');
+  if (!permFlags.location) permissionGaps.push('Location');
+  if (!permFlags.overlay) permissionGaps.push('Display over other apps');
+  if (!permFlags.admin) permissionGaps.push('Device Admin');
+  const isProtected = permissionGaps.length === 0;
+  const protectionGaps: string[] = [...permissionGaps];
   if (!settings.isMonitoringEnabled) protectionGaps.push('Monitoring off');
-  if (!permFlags.camera) protectionGaps.push('Camera');
-  if (!permFlags.location) protectionGaps.push('Location');
-  if (!permFlags.overlay) protectionGaps.push('Display over other apps');
-  if (!permFlags.admin) protectionGaps.push('Device Admin');
-  const isProtected = protectionGaps.length === 0;
 
   const latestEvent = timeline[0] ?? null;
   const latestPhoto = latestEvent ? findMatchingPhoto(latestEvent) : null;
@@ -583,8 +600,10 @@ export function HomeScreen({
           </Text>
           {!isProtected ? (
             <Text style={styles.syncedText} numberOfLines={2}>
-              Missing: {protectionGaps.join(', ')}
+              Missing: {permissionGaps.join(', ')}
             </Text>
+          ) : !settings.isMonitoringEnabled ? (
+            <Text style={styles.syncedText}>Tip: turn Monitoring on in Security</Text>
           ) : null}
           <Text style={styles.syncedText}>Last synced {lastSynced}</Text>
         </View>

@@ -101,6 +101,7 @@ export interface MrpNativeInterface {
     camera: boolean;
     location: boolean;
     notifications: boolean;
+    bluetoothConnect?: boolean;
     overlay: boolean;
     deviceAdmin: boolean;
     batteryExempt: boolean;

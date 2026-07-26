@@ -1,0 +1,63 @@
+name: P6 smoke
+
+on:
+  push:
+    paths:
+      - "MRP Web/**"
+      - "api/**"
+      - ".github/workflows/p6-smoke.yml"
+  pull_request:
+    paths:
+      - "MRP Web/**"
+      - "api/**"
+      - ".github/workflows/p6-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MRP Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: MRP Web/package-lock.json
+      - run: npm ci
+      - name: Build static export
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: dummy
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: mobileresilienceplatform.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: mobileresilienceplatform
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: mobileresilienceplatform.firebasestorage.app
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "966919333335"
+          NEXT_PUBLIC_FIREBASE_APP_ID: "1:966919333335:web:ef58b26505b7029ef09792"
+          NEXT_PUBLIC_FIREBASE_DATABASE_URL: https://mobileresilienceplatform-default-rtdb.firebaseio.com
+          NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID: dummy.apps.googleusercontent.com
+          NEXT_PUBLIC_ADMIN_EMAILS: ravipotdarai@gmail.com
+        run: npm run build
+
+  api-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Health smoke
+        run: |
+          node dist/main.js &
+          PID=$!
+          sleep 3
+          curl -sf http://127.0.0.1:3000/v1/health
+          kill $PID

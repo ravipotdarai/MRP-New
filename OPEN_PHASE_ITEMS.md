@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-24 (P5 mobile complete; P5-10 web open)  
+**Last updated:** 2026-07-26 (P6 doable pack + Hosting)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -135,54 +135,58 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ---
 
-## P5 — Drive sync
+## P5 — Drive sync + geofence / privacy tracking
 
-> **Mobile complete** 2026-07-24. See [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md).  
-> **P5-10 (web)** remains open until P6.
-
-### Not started
-| ID | Item | Notes |
-|---|---|---|
-| P5-10 | Web cannot list other Drive files | Needs P6 web app |
+> **Privacy MVP:** Firebase = Auth + `device_config` only. Data = device + Drive.  
+> Docs: [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md), [`MRP/DEVICE_TRACKING.md`](MRP/DEVICE_TRACKING.md), [`api/firebase/INDEXES.md`](api/firebase/INDEXES.md).  
+> Circle RTDB unchanged.
 
 ### Untested (mobile — code done; formal E2E optional)
 | ID | Item | Notes |
 |---|---|---|
-| P5-2 | Backup encrypt | Ciphertext path shipped |
+| P5-2 | Backup encrypt | Includes liveLocation + Premium+ selfies in vault v2 |
 | P5-3 | Same-device round-trip | Manual on Pixel recommended |
 | P5-5 | PAUSED_QUOTA | Error path present |
 | P5-7 | Denied Drive scope | Connect error path present |
+| P5-G | Hub Geofence + distance + address parts | Soft zones; Premium gate |
+| P5-S | Drive auto-sync (events / geofence / emergency) | No Firebase location payloads |
+| P5-C | device_config policy (wifi/mobile/freq/emergency) | Local + RTDB config-only |
 
 ---
 
 ## P6 — NestJS API + Web
 
-### Not started
+> Web app: [`MRP Web/`](MRP%20Web/) — Hosting https://mobileresilienceplatform.web.app  
+> Privacy: Drive vault decrypt in browser; Firebase `device_config` + `admin_audit` only.
+
+### Not started / deferred
 | ID | Item | Notes |
 |---|---|---|
-| P6-2 | Web Google SSO → dashboard | No `web/` app yet |
-| P6-3 | Web monitoring (Drive decrypt) | |
-| P6-4 | Web reports CSV | |
-| P6-5 | Web Circle live map | |
-| P6-6 | Web devices list | |
-| P6-7 | Admin login / non-admin blocked | |
-| P6-8 | Admin user search (no vault fields) | |
-| P6-9 | Admin subscription edit + audit | |
-| P6-10 | Admin cannot open selfies / vault binary | |
-| P6-12 | Web/mobile OAuth scope parity | |
-| P6-13 | API integration tests in CI | |
+| P6-5 | Web Circle live map | Deferred with Circle detail work |
+| P6-9-play | Real Play subscription grant/revoke | Needs Play Console + Nest billing |
+| P6-13 | Broader API integration tests | Smoke CI exists; expand later |
 
 ### Partial
 | ID | Item | Notes |
 |---|---|---|
-| P6-1 | API health | Nest `api/` scaffold exists; confirm `GET /health` in deploy |
-| P6-11 | CORS | Configure when API is hosted |
-| — | Circle / subscriptions / panic modules | Stubs under `api/src/` — not production control plane |
+| P6-1 | Nest hosted health | Local `/v1/health` + CI smoke; cloud host optional |
+| P6-9 | Admin subscription notes | Audit notes only — not Play Billing |
+| — | Circle / panic Nest modules | Stubs under `api/src/` |
+| — | Nest Admin SDK RTDB write | Wired when `FIREBASE_SERVICE_ACCOUNT_JSON` / ADC set |
 
-### Untested
+### Untested (implemented — E2E / manual)
 | ID | Item | Notes |
 |---|---|---|
-| P6-1 | Deployed health check | After first host |
+| P6-2 | Web Google SSO → dashboard | Hosting live; verify OAuth origins |
+| P6-3 | Web monitoring (Drive decrypt) | Client vault decrypt + timeline UI |
+| P6-4 | Web reports CSV | From decrypted vault |
+| P6-6 | Web devices list | Own + admin RTDB `device_config` metadata |
+| P6-7 | Admin login / non-admin blocked | `NEXT_PUBLIC_ADMIN_EMAILS` |
+| P6-8 | Admin user search | uid / accountEmail filter; no vault fields |
+| P6-10 | Admin cannot open selfies / vault binary | No admin vault routes |
+| P6-11 | CORS | Hosting origins in Nest default allowlist |
+| P6-12 | Web/mobile OAuth scope parity | Code = `drive.appdata` only; confirm consent screen |
+| P6-* | End-to-end with real Firebase + Drive | Manual on admin account |
 
 ---
 
@@ -212,7 +216,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | Partial | NestJS hosted + Firebase JWT guards | P2-3/9/10, P3-9, P4 API caps, P6 |
 | Not started | FCM + deep links for Circle invites | P4-3 plan criteria |
 | Not started | TTL Cloud Function for `circle_live` | P4-14 |
-| Not started | Next.js `web/` + admin | P6, P5-10, P3-10 |
+| Partial | Nest hosted + Play subscription admin | P6-1 cloud, P6-9-play |
 | Untested | Formal Circle E2E matrix (deferred to project end) | P4 sign-off |
 
 ---
@@ -239,6 +243,9 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-24 | P4 smoke | Publish invite + 2-device join + encrypted `circle_live` points observed |
 | 2026-07-24 | P5 first slice | Hub Drive Sync; `drive.appdata`; AES-GCM PIN backup/restore; recovery-ack gate; Wi‑Fi only |
 | 2026-07-24 | P5 mobile complete | Scope audit, purge old backups, pending_sync drain, new-device copy; P5-10 → P6 |
+| 2026-07-26 | P5 privacy sync | Firebase config-only; device_live/event_feed denied; Drive vault v2 + emergency tracking |
+| 2026-07-26 | P6 web scaffold | Independent `MRP Web/` Next.js — Auth, Drive decrypt, CSV, sync policy, admin gate |
+| 2026-07-26 | P6 Hosting + doable pack | Firebase Hosting live; Devices/Admin RTDB; admin_audit; Nest CORS + optional Admin SDK; P6 CI smoke; P5-10 closed (appData only) |
 
 ---
 
