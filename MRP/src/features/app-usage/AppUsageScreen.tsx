@@ -6,6 +6,7 @@ import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
 import {AppUsageReports} from './AppUsageReports';
 import {AppSafetyScreen} from './AppSafetyScreen';
+import {dedupeSessions} from './AppUsageUtils';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -122,7 +123,7 @@ export function AppUsageScreen({route}: {route?: any}) {
       console.log('[AppUsageScreen] Usage length:', Array.isArray(usageData) ? usageData.length : 0);
       console.log('[AppUsageScreen] Timeline length:', Array.isArray(timelineData) ? timelineData.length : 0);
 
-      setSessions(Array.isArray(usageData) ? usageData : []);
+      setSessions(Array.isArray(usageData) ? dedupeSessions(usageData) : []);
       setEvents(mapTimelineToEvents(Array.isArray(timelineData) ? timelineData : []));
       setPhotos(Array.isArray(photosData) ? photosData : []);
       setMrpBattery(mrpBatteryData);

@@ -23,6 +23,7 @@ import {
   setDriveWifiOnly,
   type DriveVaultStatus,
 } from '../../native/DriveVault.types';
+import {SyncPolicyPanel} from './SyncPolicyPanel';
 
 type Props = {
   onUpgrade?: () => void;
@@ -306,6 +307,8 @@ export function DriveSyncScreen({onUpgrade}: Props) {
           <Text style={styles.secondaryBtnText}>Restore latest</Text>
         </TouchableOpacity>
       </View>
+
+      <SyncPolicyPanel />
 
       <PaywallModal
         visible={paywallVisible}

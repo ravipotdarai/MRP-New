@@ -191,18 +191,18 @@ export const THEMES: Record<ThemeId, ThemeMeta> = {
   },
 };
 
-export const DEFAULT_THEME_ID: ThemeId = 'slate';
+export const DEFAULT_THEME_ID: ThemeId = 'light';
 
 export const THEME_LIST: ThemeMeta[] = [
+  THEMES.light,
   THEMES.slate,
   THEMES.midnight,
   THEMES.ocean,
   THEMES.forest,
-  THEMES.light,
 ];
 
-/** Legacy static export — default Slate palette (for screens not yet on useTheme). */
-export const colors: ColorPalette = THEMES.slate.colors;
+/** Legacy static export — mirrors default theme (for screens not yet on useTheme). */
+export const colors: ColorPalette = THEMES.light.colors;
 
 export const spacing = {
   xs: 4,

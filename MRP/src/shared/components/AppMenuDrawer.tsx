@@ -16,7 +16,19 @@ export type AppMenuTarget =
   | {screen: 'Home'}
   | {screen: 'Security'; tab: 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS'}
   | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY'}
-  | {screen: 'Hub'; section?: 'circle' | 'sim-recovery' | 'subscriptions' | 'promotions' | 'affiliates' | 'about'};
+  | {
+      screen: 'Hub';
+      section?:
+        | 'account'
+        | 'circle'
+        | 'geofence'
+        | 'drive-sync'
+        | 'sim-recovery'
+        | 'subscriptions'
+        | 'promotions'
+        | 'affiliates'
+        | 'about';
+    };
 
 type Props = {
   visible: boolean;
@@ -35,7 +47,7 @@ const MENU: MenuRow[] = [
     label: 'Security',
     icon: '🛡️',
     children: [
-      {label: 'Monitoring', target: {screen: 'Security', tab: 'MONITORING'}},
+      {label: 'Setup', target: {screen: 'Security', tab: 'MONITORING'}},
       {label: 'Timeline', target: {screen: 'Security', tab: 'TIMELINE'}},
       {label: 'Photos', target: {screen: 'Security', tab: 'PHOTOS'}},
       {label: 'Permissions', target: {screen: 'Security', tab: 'PERMISSIONS'}},
@@ -52,7 +64,22 @@ const MENU: MenuRow[] = [
       {label: 'App Safety', target: {screen: 'App Usage', tab: 'SAFETY'}},
     ],
   },
-  {kind: 'item', label: 'Hub', icon: '⚙️', target: {screen: 'Hub'}},
+  {
+    kind: 'section',
+    label: 'Hub',
+    icon: '⚙️',
+    children: [
+      {label: 'Account', target: {screen: 'Hub', section: 'account'}},
+      {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
+      {label: 'Circle', target: {screen: 'Hub', section: 'circle'}},
+      {label: 'Drive Sync', target: {screen: 'Hub', section: 'drive-sync'}},
+      {label: 'SIM Recovery', target: {screen: 'Hub', section: 'sim-recovery'}},
+      {label: 'Subscriptions', target: {screen: 'Hub', section: 'subscriptions'}},
+      {label: 'Promotions', target: {screen: 'Hub', section: 'promotions'}},
+      {label: 'Affiliates', target: {screen: 'Hub', section: 'affiliates'}},
+      {label: 'About MRP', target: {screen: 'Hub', section: 'about'}},
+    ],
+  },
 ];
 
 /**

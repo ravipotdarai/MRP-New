@@ -38,11 +38,23 @@ export function PermissionsScreen() {
   const [phonePermission, setPhonePermission] = useState<boolean | null>(null);
   const [accessibilityPermission, setAccessibilityPermission] = useState<boolean | null>(null);
   const [batteryUnrestricted, setBatteryUnrestricted] = useState<boolean | null>(null);
+  const [notificationsPermission, setNotificationsPermission] = useState<boolean | null>(null);
+  const [bluetoothPermission, setBluetoothPermission] = useState<boolean | null>(null);
+  const [backgroundLocationPermission, setBackgroundLocationPermission] =
+    useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     checkPermissions();
   }, []);
+
+  const bluetoothConnectPerm = (): string | null => {
+    if (Platform.OS !== 'android' || Platform.Version < 31) {
+      return null;
+    }
+    const perms = PermissionsAndroid.PERMISSIONS as Record<string, string | undefined>;
+    return perms.BLUETOOTH_CONNECT ?? 'android.permission.BLUETOOTH_CONNECT';
+  };
 
   const checkPermissions = async () => {
     try {
@@ -77,27 +89,70 @@ export function PermissionsScreen() {
       } catch {
         a11y = false;
       }
+
       let batteryOk = false;
+      let notificationsOk = Platform.Version < 33;
+      let bluetoothOk = Platform.Version < 31;
       try {
         const status = await (mrpmModule as any).getPermissionSetupStatus?.();
         batteryOk = !!status?.batteryExempt;
+        if (typeof status?.notifications === 'boolean') {
+          notificationsOk = status.notifications;
+        }
+        if (typeof status?.bluetoothConnect === 'boolean') {
+          bluetoothOk = status.bluetoothConnect;
+        }
       } catch {
         batteryOk = false;
+      }
+
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        try {
+          notificationsOk = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+          );
+        } catch {
+          /* keep status from bridge */
+        }
+      }
+
+      const bt = bluetoothConnectPerm();
+      if (bt) {
+        try {
+          bluetoothOk = await PermissionsAndroid.check(bt as any);
+        } catch {
+          /* keep status from bridge */
+        }
+      }
+
+      let bgLoc = loc;
+      if (Platform.OS === 'android' && Platform.Version >= 29) {
+        try {
+          bgLoc = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+          );
+        } catch {
+          bgLoc = false;
+        }
       }
 
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
         location: loc,
+        backgroundLocation: bgLoc,
         overlay: overlay,
         admin: admin,
         usageStats: usageStats,
         sms: sms,
         phone: phone,
         battery: batteryOk,
+        notifications: notificationsOk,
+        bluetooth: bluetoothOk,
       });
 
       setCameraPermission(cam);
       setLocationPermission(loc);
+      setBackgroundLocationPermission(bgLoc);
       setOverlayPermission(overlay);
       setDeviceAdminPermission(admin);
       setUsageStatsPermission(usageStats);
@@ -105,6 +160,8 @@ export function PermissionsScreen() {
       setPhonePermission(phone);
       setAccessibilityPermission(a11y);
       setBatteryUnrestricted(batteryOk);
+      setNotificationsPermission(notificationsOk);
+      setBluetoothPermission(bluetoothOk);
     } catch (e) {
       console.error('[PermissionsScreen] Failed to check permissions:', e);
       Alert.alert('Error', 'Failed to check permissions: ' + String(e));
@@ -221,6 +278,143 @@ export function PermissionsScreen() {
     }
   };
 
+  const requestNotificationsPermission = async () => {
+    if (Platform.OS !== 'android') return;
+    if (Platform.Version < 33) {
+      setNotificationsPermission(true);
+      return;
+    }
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        {
+          title: 'Notifications',
+          message:
+            'MRP needs notifications to keep monitoring alive and alert you for security events.',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Deny',
+        },
+      );
+      const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
+      setNotificationsPermission(ok);
+      if (!ok) {
+        Alert.alert(
+          'Notifications denied',
+          'Path:\n\n1. Settings → Apps → MRP → Notifications\n2. Allow notifications\n\nOr: Settings → Notifications → App notifications → MRP → Allow',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {
+              text: 'Open Settings',
+              onPress: async () => {
+                try {
+                  const opened = await (mrpmModule as any).openAppNotificationSettings?.();
+                  if (!opened) await openAppDetails();
+                } catch {
+                  await openAppDetails();
+                }
+              },
+            },
+          ],
+        );
+      } else {
+        await checkPermissions();
+      }
+    } catch (e) {
+      console.error('[PermissionsScreen] Notifications permission error:', e);
+      try {
+        await (mrpmModule as any).openAppNotificationSettings?.();
+      } catch {
+        await openAppDetails();
+      }
+    }
+  };
+
+  const requestBluetoothPermission = async () => {
+    if (Platform.OS !== 'android') return;
+    const bt = bluetoothConnectPerm();
+    if (!bt) {
+      setBluetoothPermission(true);
+      return;
+    }
+    try {
+      const granted = await PermissionsAndroid.request(bt as any, {
+        title: 'Nearby devices',
+        message:
+          'MRP needs Nearby devices access to log Bluetooth connect and disconnect on the security timeline.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      });
+      const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
+      setBluetoothPermission(ok);
+      if (!ok) {
+        Alert.alert(
+          'Nearby devices denied',
+          'Path:\n\n1. Settings → Apps → MRP → Permissions\n2. Nearby devices (or Bluetooth)\n3. Allow',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Settings', onPress: openAppDetails},
+          ],
+        );
+      } else {
+        await checkPermissions();
+      }
+    } catch (e) {
+      console.error('[PermissionsScreen] Bluetooth permission error:', e);
+      await openAppDetails();
+    }
+  };
+
+  const requestBackgroundLocation = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const fine = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      );
+      if (fine !== PermissionsAndroid.RESULTS.GRANTED) {
+        Alert.alert(
+          'Location required first',
+          'Path:\n\n1. Settings → Apps → MRP → Permissions → Location\n2. Allow while using the app\n3. Then return here for “Allow all the time”',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {text: 'Open Settings', onPress: openAppDetails},
+          ],
+        );
+        await checkPermissions();
+        return;
+      }
+      if (Platform.Version >= 29) {
+        const bg = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+          {
+            title: 'Background location',
+            message:
+              'Allow all the time so geofence and SIM recovery can log location when MRP is not open.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Deny',
+          },
+        );
+        const ok = bg === PermissionsAndroid.RESULTS.GRANTED;
+        setBackgroundLocationPermission(ok);
+        if (!ok) {
+          Alert.alert(
+            'Background location',
+            'Path:\n\n1. Settings → Apps → MRP → Permissions → Location\n2. Select “Allow all the time”\n\nOn some phones: Settings → Location → App location permissions → MRP → Allow all the time',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {text: 'Open Settings', onPress: openAppDetails},
+            ],
+          );
+        }
+      } else {
+        setBackgroundLocationPermission(true);
+      }
+      await checkPermissions();
+    } catch (e) {
+      console.error('[PermissionsScreen] Background location error:', e);
+      await openAppDetails();
+    }
+  };
+
   const openAppBatteryUsage = async () => {
     try {
       if (!mrpmModule) {
@@ -291,40 +485,79 @@ export function PermissionsScreen() {
     {
       name: 'Camera Access',
       icon: '📷',
-      description: 'Required to capture intruder selfies during security events. The app uses camera only when you actively trigger a capture (via wrong password, USB connection, etc.).',
+      description:
+        'Required to capture intruder selfies during security events. Camera is used only when a capture is triggered (wrong password, USB, panic, etc.).',
       granted: cameraPermission === true,
       grantSteps: [
-        'Go to: Settings → Apps → MRP',
-        'Tap on "Permissions"',
-        'Enable "Camera"',
+        'Path: Settings → Apps → MRP → Permissions → Camera → Allow',
       ],
       onOpen: openAppDetails,
       buttonLabel: 'Open App Settings',
     },
     {
-      name: 'Location Access',
+      name: 'Location (while using)',
       icon: '📍',
-      description: 'Required to log GPS coordinates and addresses for security events. Location is stored locally on your device and used only for security event logging.',
+      description:
+        'Required to attach GPS to security events and geofence checks while MRP is open or monitoring is active.',
       granted: locationPermission === true,
       grantSteps: [
-        'Go to: Settings → Apps → MRP',
-        'Tap on "Permissions"',
-        'Enable "Location"',
-        'Select "Allow all the time"',
+        'Path: Settings → Apps → MRP → Permissions → Location',
+        'Choose “Allow only while using the app” (then set “Allow all the time” below)',
       ],
       onOpen: openAppDetails,
       buttonLabel: 'Open App Settings',
+    },
+    {
+      name: 'Background Location',
+      icon: '🌐',
+      description:
+        'Required for geofence enter/exit and SIM recovery location when MRP is not on screen. Android shows this as “Allow all the time”.',
+      granted: backgroundLocationPermission === true,
+      grantSteps: [
+        'Grant Location (while using) first',
+        'Path: Settings → Apps → MRP → Permissions → Location → Allow all the time',
+        'Alt: Settings → Location → App location permissions → MRP → Allow all the time',
+      ],
+      onOpen: requestBackgroundLocation,
+      buttonLabel: 'Allow all the time',
+    },
+    {
+      name: 'Notifications',
+      icon: '🔔',
+      description:
+        'Required on Android 13+ so the monitoring foreground service can stay alive and show security alerts.',
+      granted: notificationsPermission === true,
+      grantSteps: [
+        'Tap Allow Notifications below for the system dialog',
+        'Path: Settings → Apps → MRP → Notifications → Allow',
+        'Alt: Settings → Notifications → App notifications → MRP → Allow',
+      ],
+      onOpen: requestNotificationsPermission,
+      buttonLabel: 'Allow Notifications',
+    },
+    {
+      name: 'Nearby devices (Bluetooth)',
+      icon: '🎧',
+      description:
+        'Required on Android 12+ to log BLUETOOTH_CONNECTED / DISCONNECTED timeline events when headphones or other devices link.',
+      granted: bluetoothPermission === true,
+      grantSteps: [
+        'Tap Allow Nearby devices below for the system dialog',
+        'Path: Settings → Apps → MRP → Permissions → Nearby devices → Allow',
+        'Some OEMs label this “Bluetooth” or “Nearby devices / Bluetooth”',
+      ],
+      onOpen: requestBluetoothPermission,
+      buttonLabel: 'Allow Nearby devices',
     },
     {
       name: 'Phone / SIM Number',
       icon: '📱',
       description:
-        'Required to read the phone number on the inserted SIM so recovery SMS can include "New Number". Same class of permission as Camera / Location.',
+        'Required to read the phone number on the inserted SIM so recovery SMS can include "New Number".',
       granted: phonePermission === true,
       grantSteps: [
         'Tap "Allow Phone" below to show the system dialog',
-        'Or go to: Settings → Apps → MRP → Permissions',
-        'Enable "Phone" / "Phone numbers"',
+        'Path: Settings → Apps → MRP → Permissions → Phone / Phone numbers → Allow',
       ],
       onOpen: requestPhonePermission,
       buttonLabel: 'Allow Phone',
@@ -333,12 +566,11 @@ export function PermissionsScreen() {
       name: 'SMS / Messages',
       icon: '💬',
       description:
-        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read or receive your SMS inbox.',
+        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read your SMS inbox.',
       granted: smsPermission === true,
       grantSteps: [
         'Tap "Allow SMS" below to show the system dialog',
-        'Or go to: Settings → Apps → MRP → Permissions',
-        'Enable "SMS" / "Messages"',
+        'Path: Settings → Apps → MRP → Permissions → SMS / Messages → Allow',
       ],
       onOpen: requestSmsPermission,
       buttonLabel: 'Allow SMS',
@@ -346,13 +578,12 @@ export function PermissionsScreen() {
     {
       name: 'Display Over Other Apps',
       icon: '🖥️',
-      description: 'Required to take selfies while your phone is locked or app is in background. The overlay shows a camera preview that captures intruder selfies.',
+      description:
+        'Required to show the camera overlay and capture selfies while the screen is locked or MRP is in the background.',
       granted: overlayPermission === true,
       grantSteps: [
-        'Go to: Settings → Apps → MRP',
-        'Tap on the three dots (⋮) in the top right corner',
-        'Select "Display over other apps"',
-        'Toggle ON',
+        'Path: Settings → Apps → MRP → ⋮ → Display over other apps → Allow',
+        'Alt: Settings → Apps → Special access → Display over other apps → MRP → Allow',
       ],
       onOpen: openOverlaySettings,
       buttonLabel: 'Open Overlay Settings',
@@ -360,13 +591,12 @@ export function PermissionsScreen() {
     {
       name: 'Device Admin Access',
       icon: '🔐',
-      description: 'Required to detect wrong password attempts, biometric unlocks, and unlock attempts. The app can detect when someone tries to unlock your phone.',
+      description:
+        'Required to detect wrong PIN/password unlock attempts and related lock-screen security events.',
       granted: deviceAdminPermission === true,
       grantSteps: [
-        'Go to: Settings → Security → Device Admin',
-        'Tap on "Add device admin"',
-        'Select "MRP" from the list',
-        'Enable the device admin',
+        'Path: Settings → Security → Device admin apps → MRP → Activate',
+        'Some OEMs: Settings → Security & privacy → More security settings → Device admin apps',
       ],
       onOpen: requestDeviceAdmin,
       buttonLabel: 'Enable Device Admin',
@@ -375,12 +605,10 @@ export function PermissionsScreen() {
       name: 'Accessibility Service (optional)',
       icon: '♿',
       description:
-        'Optional enhanced protection: detect failed fingerprint or face unlock. Not required for basic monitoring (wrong PIN uses Device Admin).',
+        'Optional: detect failed fingerprint or face unlock. Not required for wrong-PIN monitoring (Device Admin covers that).',
       granted: accessibilityPermission === true,
       grantSteps: [
-        'Go to: Settings → Accessibility',
-        'Tap on "Installed apps" or "Downloaded services"',
-        'Enable "MRP"',
+        'Path: Settings → Accessibility → Installed apps / Downloaded services → MRP → On',
       ],
       onOpen: openAccessibilitySettings,
       buttonLabel: 'Open Accessibility Settings',
@@ -388,12 +616,12 @@ export function PermissionsScreen() {
     {
       name: 'Usage Stats Access',
       icon: '📊',
-      description: 'Required to track which apps are open on your phone during security events. This helps identify which apps were in use when suspicious activity occurred.',
-      granted: usageStatsPermission === true, // Check actual permission
+      description:
+        'Required for App Usage screen time and to see which apps were foreground during security events.',
+      granted: usageStatsPermission === true,
       grantSteps: [
-        'Go to: Settings → Apps → Special access → Usage access',
-        'Find "MRP" in the list',
-        'Enable "MRP"',
+        'Path: Settings → Apps → Special access → Usage access → MRP → Allow',
+        'Some OEMs: Settings → Security → Special app access → Usage access',
       ],
       onOpen: openUsageAccessSettings,
       buttonLabel: 'Open Usage Access Settings',
@@ -402,12 +630,12 @@ export function PermissionsScreen() {
       name: 'App Battery Usage',
       icon: '🔋',
       description:
-        'Android setting for how MRP runs in the background: Unrestricted, Optimized, or Restricted. Recommended: Unrestricted so monitoring is not killed. You can change this anytime in system settings — MRP does not lock this choice.',
+        'Controls how MRP runs in the background: Unrestricted, Optimized, or Restricted. Recommended: Unrestricted so monitoring is not killed.',
       granted: batteryUnrestricted === true,
       grantSteps: [
-        'Open App battery usage below',
+        'Path: Settings → Apps → MRP → App battery usage',
         'Choose Unrestricted (recommended), Optimized, or Restricted',
-        'Return here and pull to refresh / re-open this screen',
+        'Return here and re-open this screen to refresh status',
       ],
       onOpen: openAppBatteryUsage,
       buttonLabel: 'Configure App Battery Usage',
@@ -435,7 +663,7 @@ export function PermissionsScreen() {
 
             <View style={styles.permissionTextContainer}>
               <Text style={styles.permissionName}>{perm.name}</Text>
-              <Text style={styles.permissionDescription} numberOfLines={3} ellipsizeMode="tail">
+              <Text style={styles.permissionDescription} numberOfLines={5} ellipsizeMode="tail">
                 {perm.description}
               </Text>
 
@@ -479,24 +707,52 @@ export function PermissionsScreen() {
 
       {/* Special Instructions */}
       <View style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Special Permissions</Text>
+        <Text style={styles.sectionTitle}>Quick paths</Text>
 
-        {/* Display Over Other Apps */}
         <View style={styles.instructionCard}>
-          <Text style={styles.instructionTitle}>🖥️ Display Over Other Apps</Text>
+          <Text style={styles.instructionTitle}>🔔 Notifications (Android 13+)</Text>
           <Text style={styles.instructionDescription}>
-            This permission allows MRP to show a camera preview on your locked screen or while the app is in the background.
+            Keeps the monitoring service visible and delivers security alerts.
           </Text>
           <Text style={styles.instructionSteps}>
-            Steps: Settings → Apps → MRP → ⋮ (three dots) → Display over other apps → Enable
+            Settings → Apps → MRP → Notifications → Allow
           </Text>
         </View>
 
-        {/* Device Admin */}
         <View style={styles.instructionCard}>
-          <Text style={styles.instructionTitle}>🔐 Device Admin Access</Text>
+          <Text style={styles.instructionTitle}>🎧 Nearby devices</Text>
           <Text style={styles.instructionDescription}>
-            This permission allows MRP to detect wrong password attempts and monitor unlock events.
+            Needed for Bluetooth connect/disconnect timeline events.
+          </Text>
+          <Text style={styles.instructionSteps}>
+            Settings → Apps → MRP → Permissions → Nearby devices → Allow
+          </Text>
+        </View>
+
+        <View style={styles.instructionCard}>
+          <Text style={styles.instructionTitle}>🌐 Background location</Text>
+          <Text style={styles.instructionDescription}>
+            Needed for geofence and SIM recovery when MRP is not open.
+          </Text>
+          <Text style={styles.instructionSteps}>
+            Settings → Apps → MRP → Permissions → Location → Allow all the time
+          </Text>
+        </View>
+
+        <View style={styles.instructionCard}>
+          <Text style={styles.instructionTitle}>🖥️ Display over other apps</Text>
+          <Text style={styles.instructionDescription}>
+            Camera overlay for locked-screen / background selfie capture.
+          </Text>
+          <Text style={styles.instructionSteps}>
+            Settings → Apps → MRP → ⋮ → Display over other apps → Enable
+          </Text>
+        </View>
+
+        <View style={styles.instructionCard}>
+          <Text style={styles.instructionTitle}>🔐 Device Admin</Text>
+          <Text style={styles.instructionDescription}>
+            Detects wrong PIN/password unlock attempts.
           </Text>
           <TouchableOpacity
             style={styles.requestButton}

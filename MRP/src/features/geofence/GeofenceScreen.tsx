@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,6 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
@@ -22,15 +21,8 @@ import {
   type GeofenceEval,
   type GeofenceZone,
 } from '../../native/Geofence.types';
-import {
-  getTrackingConfig,
-  pullRemoteTrackingConfig,
-  setTrackingConfig,
-  startDevicePresence,
-  type DeviceTrackingConfig,
-} from '../../native/DeviceTracking.types';
+import {startDevicePresence} from '../../native/DeviceTracking.types';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
-import {BackgroundLocationDisclosure} from '../setup/BackgroundLocationDisclosure';
 
 type Props = {onUpgrade?: () => void};
 
@@ -39,27 +31,21 @@ export function GeofenceScreen({onUpgrade}: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {canUseFeature} = useEntitlements();
   const unlocked = canUseFeature('geofence');
-  const [discloseBg, setDiscloseBg] = useState(false);
-  const pendingBg = useRef(false);
 
   const [zones, setZones] = useState<GeofenceZone[]>([]);
   const [here, setHere] = useState<GeofenceEval | null>(null);
-  const [cfg, setCfg] = useState<DeviceTrackingConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [paywall, setPaywall] = useState(false);
   const [name, setName] = useState('Home');
-  const [radius, setRadius] = useState('150');
+  const [radiusMeters, setRadiusMeters] = useState('150');
 
   const refresh = useCallback(async () => {
-    const [z, h, c] = await Promise.all([
+    const [z, h] = await Promise.all([
       listGeofenceZones(),
       evaluateGeofenceHere().catch(() => null),
-      getTrackingConfig(),
     ]);
     setZones(z);
     setHere(h);
-    setCfg(c);
-    await pullRemoteTrackingConfig().catch(() => false);
     await startDevicePresence().catch(() => false);
   }, []);
 
@@ -110,7 +96,7 @@ export function GeofenceScreen({onUpgrade}: Props) {
         name: name.trim() || 'Home',
         latitude: lat,
         longitude: lng,
-        radiusMeters: Math.max(30, parseFloat(radius) || 150),
+        radiusMeters: Math.max(30, parseFloat(radiusMeters) || 150),
         enabled: true,
       });
       await refresh();
@@ -122,30 +108,12 @@ export function GeofenceScreen({onUpgrade}: Props) {
     }
   };
 
-  const updateCfg = async (patch: Partial<DeviceTrackingConfig>) => {
-    if (!cfg) return;
-    const next = {...cfg, ...patch};
-    setCfg(next);
-    await setTrackingConfig(next);
-  };
-
-  const onToggle = (key: keyof DeviceTrackingConfig, v: boolean) => {
-    if (key === 'backgroundTracking' && v && !cfg?.backgroundTracking) {
-      pendingBg.current = true;
-      setDiscloseBg(true);
-      return;
-    }
-    void updateCfg({[key]: v});
-  };
-
   return (
-    <>
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <Text style={styles.hero}>Geofence</Text>
       <Text style={styles.sub}>
-        Define safe zones. Timeline shows Inside/Away on events, plus separate Enter/Exit rows
-        when a zone boundary is crossed. Location is only resolved for monitoring events — not
-        held continuously.
+        Define safe zones. Timeline shows Inside/Away on events, plus Enter/Exit when a boundary
+        is crossed. Sync policy (Drive / Firebase toggles) lives under Hub → Drive Sync.
       </Text>
 
       <View style={styles.card}>
@@ -180,22 +148,17 @@ export function GeofenceScreen({onUpgrade}: Props) {
           style={styles.input}
           value={name}
           onChangeText={setName}
-          placeholder="Home"
           placeholderTextColor={colors.textMuted}
         />
         <Text style={styles.label}>Radius (meters)</Text>
         <TextInput
           style={styles.input}
-          value={radius}
-          onChangeText={setRadius}
+          value={radiusMeters}
+          onChangeText={setRadiusMeters}
           keyboardType="number-pad"
-          placeholder="150"
           placeholderTextColor={colors.textMuted}
         />
-        <TouchableOpacity
-          style={[styles.primaryBtn, busy && {opacity: 0.6}]}
-          onPress={addAtCurrent}
-          disabled={busy}>
+        <TouchableOpacity style={styles.primaryBtn} onPress={addAtCurrent} disabled={busy}>
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -212,11 +175,9 @@ export function GeofenceScreen({onUpgrade}: Props) {
           zones.map(z => (
             <View key={z.id} style={styles.zoneRow}>
               <View style={{flex: 1}}>
-                <Text style={styles.zoneName}>
-                  {z.name} {z.enabled ? '' : '(off)'}
-                </Text>
+                <Text style={styles.zoneName}>{z.name}</Text>
                 <Text style={styles.meta}>
-                  {z.radiusMeters} m · {z.latitude.toFixed(5)}, {z.longitude.toFixed(5)}
+                  {Math.round(z.radiusMeters)} m · {z.latitude.toFixed(4)}, {z.longitude.toFixed(4)}
                 </Text>
               </View>
               <TouchableOpacity
@@ -239,84 +200,7 @@ export function GeofenceScreen({onUpgrade}: Props) {
           ))
         )}
       </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sync policy (Firebase config only)</Text>
-        <Text style={styles.body}>
-          Location and events stay on this device and sync to Drive. Firebase stores only these
-          toggles (what / when / how often) — never coordinates or selfies.
-        </Text>
-        {cfg ? (
-          <>
-            {(
-              [
-                ['movementTracking', 'Movement tracking (on-device)'],
-                ['backgroundTracking', 'Background tracking'],
-                ['highAccuracy', 'High accuracy GPS'],
-                ['eventSyncEnabled', 'Sync events to Drive'],
-                ['syncOnWifi', 'Allow sync on Wi‑Fi'],
-                ['syncOnMobileData', 'Allow sync on mobile data'],
-                ['syncLocation', 'Include live location in Drive'],
-                ['syncGeofenceChanges', 'Sync when geofence changes'],
-                ['syncSelfiesPremium', 'Premium+ selfies in Drive'],
-                ['emergencyTracking', 'Emergency Tracking'],
-              ] as const
-            ).map(([key, label]) => (
-              <View key={key} style={styles.switchRow}>
-                <Text style={styles.zoneName}>{label}</Text>
-                <Switch
-                  value={!!cfg[key]}
-                  onValueChange={v => onToggle(key, v)}
-                  trackColor={{false: colors.border, true: colors.emeraldDark}}
-                  thumbColor={cfg[key] ? colors.emerald : colors.textSecondary}
-                />
-              </View>
-            ))}
-            <Text style={styles.label}>Normal sync frequency (minutes, min 1)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="number-pad"
-              value={String(cfg.syncFrequencyMinutes)}
-              onChangeText={t => {
-                const n = Math.max(1, parseInt(t || '1', 10) || 1);
-                updateCfg({syncFrequencyMinutes: n});
-              }}
-              placeholderTextColor={colors.textMuted}
-            />
-            <Text style={styles.label}>Emergency interval (minutes, min 1)</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="number-pad"
-              value={String(cfg.emergencyIntervalMinutes)}
-              onChangeText={t => {
-                const n = Math.max(1, parseInt(t || '1', 10) || 1);
-                updateCfg({emergencyIntervalMinutes: n});
-              }}
-              placeholderTextColor={colors.textMuted}
-            />
-            <Text style={[styles.meta, {marginTop: 8}]}>
-              After one Hub → Drive “Back up now”, auto Drive sync can use that PIN securely on
-              device. Web reads Drive vault — not Firebase live nodes.
-            </Text>
-          </>
-        ) : null}
-      </View>
     </ScrollView>
-    <BackgroundLocationDisclosure
-      visible={discloseBg}
-      onCancel={() => {
-        pendingBg.current = false;
-        setDiscloseBg(false);
-      }}
-      onContinue={() => {
-        setDiscloseBg(false);
-        if (pendingBg.current) {
-          pendingBg.current = false;
-          void updateCfg({backgroundTracking: true});
-        }
-      }}
-    />
-    </>
   );
 }
 
@@ -325,7 +209,13 @@ function createStyles(colors: ColorPalette) {
     wrap: {flex: 1, padding: spacing.lg},
     scroll: {padding: spacing.lg, paddingBottom: spacing.xxl},
     hero: {fontSize: 26, fontWeight: '800', color: colors.textPrimary},
-    sub: {fontSize: 14, color: colors.textMuted, marginTop: 6, marginBottom: spacing.md, lineHeight: 20},
+    sub: {
+      fontSize: 14,
+      color: colors.textMuted,
+      marginTop: 6,
+      marginBottom: spacing.md,
+      lineHeight: 20,
+    },
     title: {fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.sm},
     card: {
       backgroundColor: colors.surface,
@@ -335,7 +225,12 @@ function createStyles(colors: ColorPalette) {
       borderColor: colors.border,
       marginBottom: spacing.md,
     },
-    cardTitle: {fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.sm},
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: spacing.sm,
+    },
     body: {fontSize: 14, color: colors.textBody, lineHeight: 20, marginBottom: spacing.sm},
     meta: {fontSize: 13, color: colors.textMuted, marginBottom: 4},
     label: {fontSize: 13, fontWeight: '700', color: colors.textSecondary, marginBottom: 6},
@@ -346,6 +241,7 @@ function createStyles(colors: ColorPalette) {
       paddingHorizontal: 12,
       paddingVertical: 10,
       color: colors.textPrimary,
+      backgroundColor: colors.bg,
       marginBottom: spacing.sm,
     },
     primaryBtn: {
@@ -368,11 +264,5 @@ function createStyles(colors: ColorPalette) {
     zoneRow: {flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm},
     zoneName: {fontSize: 15, fontWeight: '700', color: colors.textPrimary},
     remove: {color: colors.red, fontWeight: '700'},
-    switchRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 8,
-    },
   });
 }

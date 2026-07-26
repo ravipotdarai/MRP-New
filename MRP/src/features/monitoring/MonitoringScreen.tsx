@@ -18,6 +18,7 @@ import {
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {PermissionSetupWizard} from '../setup/PermissionSetupWizard';
+import {MisuseRulesPanel} from './MisuseRulesPanel';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -738,12 +739,14 @@ export function MonitoringScreen() {
         <SettingItem
           icon="📵"
           title="App misuse alerts"
-          subtitle="Timeline alerts when misuse rules match (App Usage → Safety)"
+          subtitle="Timeline alerts when misuse rules match (configure below)"
           value={settings.captureOnAppMisuse ?? true}
           isLast={true}
           onValueChange={v => updateSetting('captureOnAppMisuse', v)}
         />
       </View>
+
+      <MisuseRulesPanel />
     </ScrollView>
     <PermissionSetupWizard
       visible={showSetupWizard}

@@ -404,6 +404,13 @@ export function HomeScreen({
       statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
     },
     {
+      icon: '☁️',
+      label: 'Drive Sync',
+      ok: true,
+      status: undefined as string | undefined,
+      statusTone: undefined as 'ok' | 'warn' | 'bad' | 'muted' | undefined,
+    },
+    {
       icon: '📊',
       label: 'App Usage',
       ok: permFlags.usageStats,
@@ -853,8 +860,14 @@ export function HomeScreen({
                   navigation?.navigate?.('App Usage', {initialTab: 'SAFETY'});
                 } else if (item.label === 'App Usage') {
                   navigation?.navigate?.('App Usage');
+                } else if (item.label === 'Geofence') {
+                  navigation?.navigate?.('Hub', {openSection: 'geofence'});
+                } else if (item.label === 'Drive Sync') {
+                  navigation?.navigate?.('Hub', {openSection: 'drive-sync'});
+                } else if (item.label === 'SIM Monitoring' || item.label === 'Recovery Contact') {
+                  navigation?.navigate?.('Hub', {openSection: 'sim-recovery'});
                 } else {
-                  goToSecurity('Monitoring');
+                  goToSecurity('MONITORING');
                 }
               }}>
               <View style={styles.overviewLeft}>
@@ -886,8 +899,8 @@ export function HomeScreen({
             </TouchableOpacity>
           ))}
         </View>
-        <TouchableOpacity style={styles.manageBtn} onPress={() => goToSecurity('Monitoring')}>
-          <Text style={styles.manageBtnText}>Manage Security Features</Text>
+        <TouchableOpacity style={styles.manageBtn} onPress={() => goToSecurity('MONITORING')}>
+          <Text style={styles.manageBtnText}>Open Security Setup</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

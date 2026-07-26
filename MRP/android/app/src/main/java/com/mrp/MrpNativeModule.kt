@@ -691,19 +691,25 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             val since = now - (clampedDays * 24L * 60L * 60L * 1000L).toLong()
 
             val events = usageStatsManager.queryEvents(since, now)
-            val openStart = LinkedHashMap<String, Long>()
-            data class Sess(val pkg: String, val appName: String, val category: String,
-                            val start: Long, val end: Long, val dur: Long)
+            data class Sess(
+                val pkg: String,
+                val appName: String,
+                val category: String,
+                val start: Long,
+                val end: Long,
+                val dur: Long,
+            )
             val sessions = mutableListOf<Sess>()
-
-            // On API 29+ both ACTIVITY_* and MOVE_TO_* fire for the same session,
-            // which duplicated entries in Timeline/Reports. Prefer ACTIVITY_* only.
+            // Prefer ACTIVITY_* on API 29+, but count nested activities per package
+            // so multi-activity apps don't double-count screen time.
             val useActivityEvents = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             val moveToFg = android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND
             val moveToBg = android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND
             val activityResumed = android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED
             val activityPaused = android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED
             val selfPkg = reactContext.packageName
+            val openStart = LinkedHashMap<String, Long>()
+            val openDepth = HashMap<String, Int>()
 
             val ev = android.app.usage.UsageEvents.Event()
             while (events.hasNextEvent()) {
@@ -716,35 +722,49 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     ev.eventType == moveToFg
                 }
                 val isEnd = if (useActivityEvents) {
-                    ev.eventType == activityPaused
+                    ev.eventType == activityPaused ||
+                        ev.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_STOPPED
                 } else {
                     ev.eventType == moveToBg
                 }
                 when {
-                    isStart -> openStart[pkg] = ev.timeStamp
+                    isStart -> {
+                        val depth = (openDepth[pkg] ?: 0) + 1
+                        openDepth[pkg] = depth
+                        if (depth == 1) openStart[pkg] = ev.timeStamp
+                    }
                     isEnd -> {
-                        val start = openStart.remove(pkg)
-                        if (start != null && ev.timeStamp > start) {
-                            val durSec = (ev.timeStamp - start) / 1000L
-                            // Drop noise sub-second / tiny focus blips
-                            if (durSec >= 1L) {
-                                sessions += Sess(
-                                    pkg,
-                                    appNameFor(pm, pkg),
-                                    categoryFor(pm, pkg),
-                                    start,
-                                    ev.timeStamp,
-                                    durSec,
-                                )
+                        val depth = (openDepth[pkg] ?: 0) - 1
+                        if (depth <= 0) {
+                            openDepth.remove(pkg)
+                            val start = openStart.remove(pkg)
+                            if (start != null && ev.timeStamp > start) {
+                                val durSec = (ev.timeStamp - start) / 1000L
+                                // Drop blips; cap runaway sessions (stuck PAUSE)
+                                if (durSec in 2L..(6L * 60L * 60L)) {
+                                    sessions += Sess(
+                                        pkg,
+                                        appNameFor(pm, pkg),
+                                        categoryFor(pm, pkg),
+                                        start,
+                                        ev.timeStamp,
+                                        durSec,
+                                    )
+                                }
                             }
+                        } else {
+                            openDepth[pkg] = depth
                         }
                     }
                 }
             }
             for ((pkg, start) in openStart) {
                 if (now > start) {
-                    sessions += Sess(pkg, appNameFor(pm, pkg), categoryFor(pm, pkg),
-                        start, now, (now - start) / 1000L)
+                    val durSec = ((now - start) / 1000L).coerceAtMost(6L * 60L * 60L)
+                    if (durSec >= 2L) {
+                        sessions += Sess(pkg, appNameFor(pm, pkg), categoryFor(pm, pkg),
+                            start, now, durSec)
+                    }
                 }
             }
             sessions.sortByDescending { it.start }
@@ -1530,9 +1550,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     fun getUiThemeId(promise: Promise) {
         try {
             val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
-            promise.resolve(prefs.getString(KEY_THEME_ID, "slate") ?: "slate")
+            promise.resolve(prefs.getString(KEY_THEME_ID, "light") ?: "light")
         } catch (e: Exception) {
-            promise.resolve("slate")
+            promise.resolve("light")
         }
     }
 

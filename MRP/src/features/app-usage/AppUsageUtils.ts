@@ -132,6 +132,10 @@ export function consolidateSessionsByApp(
   const byPkg: Record<string, ConsolidatedApp> = {};
 
   for (const s of mergedSessions) {
+    if (isNoisePackage(s.packageName)) continue;
+    // Cap absurd durations (stuck sessions)
+    const dur = Math.min(Math.max(0, s.durationSeconds || 0), 6 * 60 * 60);
+    if (dur < 2) continue;
     if (!byPkg[s.packageName]) {
       byPkg[s.packageName] = {
         packageName: s.packageName,
@@ -142,7 +146,7 @@ export function consolidateSessionsByApp(
         sessionCount: 0,
       };
     }
-    byPkg[s.packageName].durationSeconds += Math.max(0, s.durationSeconds || 0);
+    byPkg[s.packageName].durationSeconds += dur;
     byPkg[s.packageName].sessionCount += 1;
     const last = s.endTime || s.startTime;
     if (last > byPkg[s.packageName].lastUsed) {
@@ -165,7 +169,6 @@ export function consolidateSessionsByApp(
     existing.durationSeconds += app.durationSeconds;
     existing.sessionCount += app.sessionCount;
     if (app.lastUsed > existing.lastUsed) existing.lastUsed = app.lastUsed;
-    // Prefer shorter package as canonical (usually the main app)
     if (app.packageName.length < existing.packageName.length) {
       existing.packageName = app.packageName;
       existing.appName = app.appName;
@@ -173,7 +176,7 @@ export function consolidateSessionsByApp(
   }
 
   return Object.values(byLabel)
-    .filter(a => a.durationSeconds >= 2)
+    .filter(a => a.durationSeconds >= 5)
     .sort((a, b) => b.durationSeconds - a.durationSeconds);
 }
 

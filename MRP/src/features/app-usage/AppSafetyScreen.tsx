@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -35,13 +34,6 @@ type PostureCheck = {
   severity: string;
 };
 
-type MisuseRule = {
-  id: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-};
-
 export function AppSafetyScreen() {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -50,10 +42,9 @@ export function AppSafetyScreen() {
   const [riskApps, setRiskApps] = useState<RiskApp[]>([]);
   const [grade, setGrade] = useState('Unknown');
   const [checks, setChecks] = useState<PostureCheck[]>([]);
-  const [rules, setRules] = useState<MisuseRule[]>([]);
   const [scanning, setScanning] = useState(false);
 
-  const applyRiskAndRules = useCallback((risk: any, misuse: any) => {
+  const applyRiskAndRules = useCallback((risk: any) => {
     const apps = Array.isArray(risk) ? risk : [];
     setRiskApps(
       apps.filter(
@@ -63,7 +54,6 @@ export function AppSafetyScreen() {
           a.riskLevel === 'MEDIUM',
       ),
     );
-    setRules(Array.isArray(misuse) ? misuse : []);
   }, []);
 
   const applyPostureSummary = useCallback((summary: any) => {
@@ -81,12 +71,11 @@ export function AppSafetyScreen() {
   const load = useCallback(async () => {
     try {
       const bridge = mrpmModule as any;
-      const [risk, summary, misuse] = await Promise.all([
+      const [risk, summary] = await Promise.all([
         bridge.getAppRiskReport?.() ?? Promise.resolve([]),
         bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
-        bridge.getMisuseRules?.() ?? Promise.resolve([]),
       ]);
-      applyRiskAndRules(risk, misuse);
+      applyRiskAndRules(risk);
       applyPostureSummary(summary);
     } catch (e) {
       console.warn('[AppSafety] load failed', e);
@@ -120,12 +109,8 @@ export function AppSafetyScreen() {
       if (report?.grade) setGrade(report.grade);
       if (Array.isArray(report?.checks)) setChecks(report.checks);
 
-      // Refresh risky apps + misuse rules without clobbering fresh posture
-      const [risk, misuse] = await Promise.all([
-        bridge.getAppRiskReport?.() ?? Promise.resolve([]),
-        bridge.getMisuseRules?.() ?? Promise.resolve([]),
-      ]);
-      applyRiskAndRules(risk, misuse);
+      const risk = await (bridge.getAppRiskReport?.() ?? Promise.resolve([]));
+      applyRiskAndRules(risk);
 
       const failed = Array.isArray(report?.checks)
         ? report.checks.filter((c: PostureCheck) => !c.ok)
@@ -139,23 +124,6 @@ export function AppSafetyScreen() {
       Alert.alert('Scan failed', e?.message || String(e));
     } finally {
       setScanning(false);
-    }
-  };
-
-  const toggleRule = async (id: string, enabled: boolean) => {
-    try {
-      const bridge = mrpmModule as any;
-      await bridge.setMisuseRuleEnabled?.(id, enabled);
-      setRules(prev => prev.map(r => (r.id === id ? {...r, enabled} : r)));
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Could not update rule');
-      // Re-sync from native if toggle failed
-      try {
-        const misuse = await (mrpmModule as any).getMisuseRules?.();
-        if (Array.isArray(misuse)) setRules(misuse);
-      } catch {
-        /* ignore */
-      }
     }
   };
 
@@ -299,26 +267,12 @@ export function AppSafetyScreen() {
         )}
       </View>
 
-      {/* Misuse rules */}
+      {/* Misuse rules moved to Security → Setup */}
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>MISUSE RULES</Text>
         <Text style={styles.muted}>
-          Alerts appear on Timeline when a rule matches (max once per hour).
+          Configure misuse alerts under Security → Setup (same screen as monitoring toggles).
         </Text>
-        {rules.map(rule => (
-          <View key={rule.id} style={styles.ruleRow}>
-            <View style={{flex: 1, paddingRight: 8}}>
-              <Text style={styles.appName}>{rule.title}</Text>
-              <Text style={styles.checkDetail}>{rule.description}</Text>
-            </View>
-            <Switch
-              value={rule.enabled}
-              onValueChange={v => toggleRule(rule.id, v)}
-              trackColor={{false: colors.border, true: colors.emeraldDark}}
-              thumbColor={rule.enabled ? colors.emerald : colors.textSecondary}
-            />
-          </View>
-        ))}
       </View>
     </ScrollView>
   );
@@ -396,12 +350,5 @@ function createStyles(colors: ColorPalette) {
     appName: {fontSize: 14, fontWeight: '700', color: colors.textPrimary},
     appPkg: {fontSize: 11, color: colors.textMuted, marginTop: 2},
     riskBadge: {fontSize: 11, fontWeight: '800'},
-    ruleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderSubtle,
-    },
   });
 }

@@ -212,7 +212,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
         ) : (
           <View style={styles.appList}>
             {batteryImpact.apps.map((app, index) => (
-              <View key={app.packageName} style={styles.impactRow}>
+              <View key={`${app.packageName}-${index}`} style={styles.impactRow}>
                 <View style={styles.appRank}>
                   <Text style={styles.appRankText}>{index + 1}</Text>
                 </View>
@@ -246,7 +246,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
         <Text style={styles.sectionTitle}>Most Used Apps</Text>
         <View style={styles.appList}>
           {sortedApps.slice(0, 5).map((app, index) => (
-            <View key={app.packageName} style={styles.appItem}>
+            <View key={`${app.packageName}-${index}`} style={styles.appItem}>
               <View style={styles.appRank}>
                 <Text style={styles.appRankText}>{index + 1}</Text>
               </View>

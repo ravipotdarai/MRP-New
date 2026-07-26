@@ -11,7 +11,7 @@ import {PermissionsScreen} from '../../screens/PermissionsScreen';
 type SecurityTab = 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS';
 
 const TABS: {key: SecurityTab; label: string; icon: string}[] = [
-  {key: 'MONITORING', label: 'Monitoring', icon: '🛡️'},
+  {key: 'MONITORING', label: 'Setup', icon: '🛡️'},
   {key: 'TIMELINE', label: 'Timeline', icon: '📋'},
   {key: 'PHOTOS', label: 'Photos', icon: '📷'},
   {key: 'PERMISSIONS', label: 'Permissions', icon: '🔒'},
