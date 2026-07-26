@@ -18,6 +18,8 @@ import {SubscriptionScreen} from '../subscription/SubscriptionScreen';
 import {CircleScreen} from '../circle/CircleScreen';
 import {DriveSyncScreen} from '../drive/DriveSyncScreen';
 import {GeofenceScreen} from '../geofence/GeofenceScreen';
+import {HubMenuCard} from './HubMenuCard';
+import {PromoLinksScreen} from './PromoLinksScreen';
 
 export type HubSection =
   | 'menu'
@@ -242,26 +244,27 @@ export function HubScreen({
     );
   }
 
+  if (section === 'promotions' || section === 'affiliates') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <HubTitleBar
+          title={section === 'promotions' ? 'Promotions' : 'Affiliates'}
+          styles={styles}
+        />
+        <PromoLinksScreen kind={section} />
+      </SafeAreaView>
+    );
+  }
+
   if (section !== 'menu') {
     const item = MENU_ITEMS.find(m => m.id === section);
-    const copy: Record<string, {title: string; body: string}> = {
-      promotions: {
-        title: 'Promotions',
-        body: 'Seasonal offers and rewards will appear here. Check back after launch.',
-      },
-      affiliates: {
-        title: 'Affiliates',
-        body: 'Share MRP with your link and track referrals. Coming soon.',
-      },
-    };
-    const content = copy[section] ?? {title: item?.title ?? 'Hub', body: ''};
     return (
       <SafeAreaView style={styles.safe}>
         <HubTitleBar title={item?.title ?? 'Hub'} styles={styles} />
         <ScrollView contentContainerStyle={styles.scrollPad}>
           <PlaceholderBody
-            title={content.title}
-            body={content.body}
+            title={item?.title ?? 'Hub'}
+            body="This section is not available yet."
             styles={styles}
             colors={colors}
           />
@@ -278,28 +281,17 @@ export function HubScreen({
           <Text style={styles.heroSub}>Services, billing & recovery</Text>
           <Text style={styles.hint}>Use system back to leave a section</Text>
         </View>
-        {MENU_ITEMS.map(item => (
-          <TouchableOpacity
+        {MENU_ITEMS.map((item, index) => (
+          <HubMenuCard
             key={item.id}
-            style={styles.menuCard}
-            activeOpacity={0.75}
-            onPress={() => openSection(item.id)}>
-            <View style={styles.menuIconWrap}>
-              <Text style={styles.menuIcon}>{item.icon}</Text>
-            </View>
-            <View style={styles.menuText}>
-              <View style={styles.menuTitleRow}>
-                <Text style={styles.menuTitle}>{item.title}</Text>
-                {item.badge ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{item.badge}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+            index={index}
+            title={item.title}
+            subtitle={item.subtitle}
+            icon={item.icon}
+            badge={item.badge}
+            colors={colors}
+            onPress={() => openSection(item.id)}
+          />
         ))}
       </ScrollView>
     </SafeAreaView>

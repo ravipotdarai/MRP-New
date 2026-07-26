@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import {
   type DeviceTrackingConfig,
 } from '../../native/DeviceTracking.types';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {BackgroundLocationDisclosure} from '../setup/BackgroundLocationDisclosure';
 
 type Props = {onUpgrade?: () => void};
 
@@ -38,6 +39,8 @@ export function GeofenceScreen({onUpgrade}: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {canUseFeature} = useEntitlements();
   const unlocked = canUseFeature('geofence');
+  const [discloseBg, setDiscloseBg] = useState(false);
+  const pendingBg = useRef(false);
 
   const [zones, setZones] = useState<GeofenceZone[]>([]);
   const [here, setHere] = useState<GeofenceEval | null>(null);
@@ -126,7 +129,17 @@ export function GeofenceScreen({onUpgrade}: Props) {
     await setTrackingConfig(next);
   };
 
+  const onToggle = (key: keyof DeviceTrackingConfig, v: boolean) => {
+    if (key === 'backgroundTracking' && v && !cfg?.backgroundTracking) {
+      pendingBg.current = true;
+      setDiscloseBg(true);
+      return;
+    }
+    void updateCfg({[key]: v});
+  };
+
   return (
+    <>
     <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
       <Text style={styles.hero}>Geofence</Text>
       <Text style={styles.sub}>
@@ -253,7 +266,7 @@ export function GeofenceScreen({onUpgrade}: Props) {
                 <Text style={styles.zoneName}>{label}</Text>
                 <Switch
                   value={!!cfg[key]}
-                  onValueChange={v => updateCfg({[key]: v})}
+                  onValueChange={v => onToggle(key, v)}
                   trackColor={{false: colors.border, true: colors.emeraldDark}}
                   thumbColor={cfg[key] ? colors.emerald : colors.textSecondary}
                 />
@@ -289,6 +302,21 @@ export function GeofenceScreen({onUpgrade}: Props) {
         ) : null}
       </View>
     </ScrollView>
+    <BackgroundLocationDisclosure
+      visible={discloseBg}
+      onCancel={() => {
+        pendingBg.current = false;
+        setDiscloseBg(false);
+      }}
+      onContinue={() => {
+        setDiscloseBg(false);
+        if (pendingBg.current) {
+          pendingBg.current = false;
+          void updateCfg({backgroundTracking: true});
+        }
+      }}
+    />
+    </>
   );
 }
 

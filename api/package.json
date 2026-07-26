@@ -6,7 +6,8 @@
   "scripts": {
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "build": "nest build"
+    "build": "nest build",
+    "test:load-health": "node scripts/p7-load-health.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

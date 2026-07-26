@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   TouchableOpacity,
   Image,
   Alert,
@@ -16,6 +15,7 @@ import {
   useWindowDimensions,
   SafeAreaView,
 } from 'react-native';
+import {FlashList} from '@shopify/flash-list';
 import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
@@ -456,10 +456,11 @@ export function TimelineScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={entries}
           renderItem={renderEntry}
           keyExtractor={item => item.id}
+          estimatedItemSize={96}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={

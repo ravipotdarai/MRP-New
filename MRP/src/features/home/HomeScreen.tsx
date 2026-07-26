@@ -22,10 +22,13 @@ import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {AppMenuDrawer, AppMenuTarget} from '../../shared/components/AppMenuDrawer';
 import {ThemePickerModal} from '../../shared/components/ThemePickerModal';
 import {useSubscriptionTier} from '../../shared/hooks/useSubscriptionTier';
+import {ActivityStatusBanner} from './ActivityStatusBanner';
+import {loadLocalCircles} from '../circle/circleLocalStore';
 
 const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
 const PANIC_WINDOW_MS = 15 * 60 * 1000;
+const PANIC_BANNER_MS = 60 * 1000;
 
 const EVENT_ICONS: Record<string, string> = {
   SCREEN_LOCK: '🔒',
@@ -167,6 +170,8 @@ export function HomeScreen({
   const panicTimestamps = useRef<number[]>([]);
   const [panicBusy, setPanicBusy] = useState(false);
   const [panicHoldProgress, setPanicHoldProgress] = useState(0);
+  const [panicBannerUntil, setPanicBannerUntil] = useState(0);
+  const [circleSharingName, setCircleSharingName] = useState<string | null>(null);
   const panicHoldTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
@@ -261,9 +266,17 @@ export function HomeScreen({
   useFocusEffect(
     useCallback(() => {
       loadAll();
+      void loadLocalCircles().then(circles => {
+        const sharing = circles.find(c => c.shareEnabled);
+        setCircleSharingName(sharing ? sharing.name : null);
+      });
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') {
           loadAll();
+          void loadLocalCircles().then(circles => {
+            const sharing = circles.find(c => c.shareEnabled);
+            setCircleSharingName(sharing ? sharing.name : null);
+          });
         }
       });
       return () => sub.remove();
@@ -496,7 +509,10 @@ export function HomeScreen({
         (ok ? 'Recovery contacts notified.' : 'Could not send panic SMS.');
       panicTimestamps.current.push(Date.now());
       Alert.alert(ok ? 'Panic alert sent' : 'Panic failed', detail);
-      if (ok) loadAll();
+      if (ok) {
+        setPanicBannerUntil(Date.now() + PANIC_BANNER_MS);
+        loadAll();
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Panic alert failed');
     } finally {
@@ -608,6 +624,12 @@ export function HomeScreen({
           <Text style={styles.syncedText}>Last synced {lastSynced}</Text>
         </View>
       </View>
+
+      <ActivityStatusBanner
+        panicActive={panicBannerUntil > Date.now()}
+        circleSharing={!!circleSharingName}
+        circleName={circleSharingName || undefined}
+      />
 
       {/* Quick actions: Subscribe + Panic */}
       <View style={styles.quickActionRow}>

@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-26 (P6 doable pack + Hosting)  
+**Last updated:** 2026-07-26 (P7 polish pack)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -192,19 +192,21 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ## P7 — Polish + compliance
 
-### Not started
+> Docs: [`MRP/PLAY_DATA_SAFETY.md`](MRP/PLAY_DATA_SAFETY.md), [`MRP/SECURITY_REVIEW_P7.md`](MRP/SECURITY_REVIEW_P7.md), [`MRP/P7_REGRESSION_CHECKLIST.md`](MRP/P7_REGRESSION_CHECKLIST.md).
+
+### Untested (implemented — verify on device / Play Console)
 | ID | Item | Notes |
 |---|---|---|
-| P7-1 | Timeline FlashList FPS (500+ events) | |
-| P7-2 | Hub Reanimated polish | |
-| P7-3 | Circle map pinch zoom | |
-| P7-4 | Play Data Safety form | |
-| P7-5 | Background location disclosure | |
-| P7-6 | Panic + Circle sharing indicators | |
-| P7-7 | Promotions / affiliates (+ Remote Config) | Hub links may exist; RC optional |
-| P7-8 | Full regression P1–P6 | |
-| P7-9 | Security review (no vault in Firebase; narrow Drive) | |
-| P7-10 | API load test (100 concurrent auth) | |
+| P7-1 | Timeline FlashList | `@shopify/flash-list` on TimelineScreen |
+| P7-2 | Hub Reanimated polish | `HubMenuCard` press + FadeInDown |
+| P7-3 | Circle map pinch zoom | Pinch on `CircleLiveMap` |
+| P7-4 | Play Data Safety form | Sheet ready — paste into Play Console |
+| P7-5 | Background location disclosure | Modal before enabling background tracking |
+| P7-6 | Panic + Circle sharing indicators | Home `ActivityStatusBanner` |
+| P7-7 | Promotions / affiliates | Config links in Hub (`promoConfig.ts`) |
+| P7-8 | Full regression P1–P6 | Checklist doc — run on device |
+| P7-9 | Security review | Checklist doc — tick before release |
+| P7-10 | API load test | `api`: `npm run test:load-health` (Nest must be up) |
 
 ---
 
@@ -246,6 +248,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-26 | P5 privacy sync | Firebase config-only; device_live/event_feed denied; Drive vault v2 + emergency tracking |
 | 2026-07-26 | P6 web scaffold | Independent `MRP Web/` Next.js — Auth, Drive decrypt, CSV, sync policy, admin gate |
 | 2026-07-26 | P6 Hosting + doable pack | Firebase Hosting live; Devices/Admin RTDB; admin_audit; Nest CORS + optional Admin SDK; P6 CI smoke; P5-10 closed (appData only) |
+| 2026-07-26 | P7 polish pack | FlashList timeline; Hub Reanimated; map pinch; bg location disclosure; panic/circle banners; promos; Data Safety + security + regression docs; health load script |
 
 ---
 
