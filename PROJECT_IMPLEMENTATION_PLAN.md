@@ -376,3 +376,4 @@ Living tracker for **Not started / Partial / Untested** items (updated as work p
 |---|---|
 | 2026-07-22 | Initial saved plan with per-phase test plans |
 | 2026-07-24 | Linked [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md) for open Not started / Partial / Untested work |
+| 2026-07-24 | P5 Drive Sync first slice started — see [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md) |

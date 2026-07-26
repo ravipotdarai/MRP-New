@@ -193,6 +193,21 @@ class SimRecoveryStorage(context: Context) {
 
     fun getHistoryJson(): String = prefs.getString(KEY_HISTORY, "[]") ?: "[]"
 
+    fun getPendingSyncJson(): String = prefs.getString(KEY_PENDING_SYNC, "[]") ?: "[]"
+
+    fun getPendingSyncCount(): Int {
+        return try {
+            JSONArray(getPendingSyncJson()).length()
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** After a successful Drive backup, clear the offline SIM pending queue (P5-9). */
+    fun clearPendingSync() {
+        prefs.edit().putString(KEY_PENDING_SYNC, "[]").apply()
+    }
+
     fun clearHistory() {
         prefs.edit().putString(KEY_HISTORY, "[]").apply()
     }

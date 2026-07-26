@@ -16,11 +16,13 @@ import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
 import {AccountScreen} from './AccountScreen';
 import {SubscriptionScreen} from '../subscription/SubscriptionScreen';
 import {CircleScreen} from '../circle/CircleScreen';
+import {DriveSyncScreen} from '../drive/DriveSyncScreen';
 
 export type HubSection =
   | 'menu'
   | 'account'
   | 'circle'
+  | 'drive-sync'
   | 'sim-recovery'
   | 'subscriptions'
   | 'promotions'
@@ -50,6 +52,13 @@ const MENU_ITEMS: MenuItem[] = [
     subtitle: 'Live Share — Enterprise',
     icon: '📍',
     badge: 'Enterprise',
+  },
+  {
+    id: 'drive-sync',
+    title: 'Drive Sync',
+    subtitle: 'Encrypted backup — Premium+',
+    icon: '☁️',
+    badge: 'Premium',
   },
   {
     id: 'sim-recovery',
@@ -213,6 +222,15 @@ export function HubScreen({
       <SafeAreaView style={styles.safe}>
         <HubSubheader title="Circle" onBack={goMenu} styles={styles} />
         <CircleScreen onUpgrade={() => openSection('subscriptions')} />
+      </SafeAreaView>
+    );
+  }
+
+  if (section === 'drive-sync') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <HubSubheader title="Drive Sync" onBack={goMenu} styles={styles} />
+        <DriveSyncScreen onUpgrade={() => openSection('subscriptions')} onBack={goMenu} />
       </SafeAreaView>
     );
   }

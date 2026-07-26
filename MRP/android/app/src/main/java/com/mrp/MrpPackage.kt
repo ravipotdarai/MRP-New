@@ -14,6 +14,7 @@ class MrpPackage : ReactPackage {
             MrpAuthModule(reactContext),
             BillingModule(reactContext),
             CircleLiveModule(reactContext),
+            DriveVaultModule(reactContext),
         )
     }
 

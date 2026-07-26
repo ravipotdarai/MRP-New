@@ -96,6 +96,33 @@ class TimelineStorage(private val context: Context) {
         }
     }
 
+    /** Export timeline entries as a JSON array (for encrypted Drive backup). */
+    fun exportTimelineJsonArray(): JSONArray {
+        val arr = JSONArray()
+        getTimeline().forEach { arr.put(it.toJsonObject()) }
+        return arr
+    }
+
+    /**
+     * Merge restored entries. Skips ids already present. Returns inserted count.
+     */
+    fun importTimelineJsonArray(arr: JSONArray): Int {
+        val existing = getTimeline().map { it.id }.toHashSet()
+        var inserted = 0
+        for (i in 0 until arr.length()) {
+            try {
+                val entry = jsonToEntry(arr.getJSONObject(i))
+                if (entry.id.isBlank() || existing.contains(entry.id)) continue
+                appendEntrySyncInternal(entry)
+                existing.add(entry.id)
+                inserted++
+            } catch (e: Exception) {
+                Log.w(TAG, "skip restore entry $i", e)
+            }
+        }
+        return inserted
+    }
+
     private fun timelineEntryToUnifiedEvent(entry: TimelineEntry): UnifiedEvent {
         val time = parseISO8601(entry.timestamp)
         return UnifiedEvent(

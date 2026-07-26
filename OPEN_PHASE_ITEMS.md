@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-24  
+**Last updated:** 2026-07-24 (P5 mobile complete; P5-10 web open)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -58,7 +58,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | ID | Item | Notes |
 |---|---|---|
 | P2-1 | Google Sign-In → Firebase UID | Works when Web client + SHA-1 OK; `ensureFirebaseAuth` added; Account shows Firebase UID |
-| P2-5 | Recovery acknowledgment before Drive | Recovery UI exists; Drive gate not fully wired (P5) |
+| P2-5 | Recovery acknowledgment before Drive | **Wired** — Drive connect/backup rejects without `recovery_ack` |
 
 ### Untested
 | ID | Item | Notes |
@@ -137,19 +137,21 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ## P5 — Drive sync
 
+> **Mobile complete** 2026-07-24. See [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md).  
+> **P5-10 (web)** remains open until P6.
+
 ### Not started
 | ID | Item | Notes |
 |---|---|---|
-| P5-1 | OAuth scopes audit (`drive.appdata` / `drive.file` only) | Phase not started |
-| P5-2 | Backup encrypt (ciphertext in Drive) | |
-| P5-3 | Backup + restore same device | |
-| P5-4 | Restore new device (same Google) | |
-| P5-5 | Drive full → PAUSED_QUOTA | |
-| P5-6 | Delete old MRP backups only | |
-| P5-7 | Denied Drive scope — no crash | |
-| P5-8 | Wi‑Fi only schedule | |
-| P5-9 | `pending_sync` drain into backup manifest | |
-| P5-10 | Web cannot list other Drive files | Depends on P6 web |
+| P5-10 | Web cannot list other Drive files | Needs P6 web app |
+
+### Untested (mobile — code done; formal E2E optional)
+| ID | Item | Notes |
+|---|---|---|
+| P5-2 | Backup encrypt | Ciphertext path shipped |
+| P5-3 | Same-device round-trip | Manual on Pixel recommended |
+| P5-5 | PAUSED_QUOTA | Error path present |
+| P5-7 | Denied Drive scope | Connect error path present |
 
 ---
 
@@ -235,6 +237,8 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07 | P3 FeatureGate + hardcoded catalog | Test-only billing mode |
 | 2026-07-24 | P4 shell | Categories, paywall, invite code directory, consent, AES-GCM live, OSM map, Share OFF, intervals, RTDB rules |
 | 2026-07-24 | P4 smoke | Publish invite + 2-device join + encrypted `circle_live` points observed |
+| 2026-07-24 | P5 first slice | Hub Drive Sync; `drive.appdata`; AES-GCM PIN backup/restore; recovery-ack gate; Wi‑Fi only |
+| 2026-07-24 | P5 mobile complete | Scope audit, purge old backups, pending_sync drain, new-device copy; P5-10 → P6 |
 
 ---
 
