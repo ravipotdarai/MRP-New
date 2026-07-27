@@ -208,6 +208,7 @@ See:
 | **P5** | Drive encrypted backup + restore |
 | **P6** | NestJS `api/` + Next.js `web/` + admin |
 | **P7** | Reanimated/FlashList polish; Data Safety; promos |
+| **P8** | Store release readiness — Play Data Safety, Play Billing, Nest JWT, FCM invites (see [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md)) |
 
 ---
 
@@ -356,6 +357,21 @@ Living tracker for **Not started / Partial / Untested** items (updated as work p
 | P7-8 | Full regression suite | Device | P1–P6 critical paths pass |
 | P7-9 | Security review | Manual | No vault in Firebase; no broad Drive scope |
 | P7-10 | Load test (API) | API | 100 concurrent auth requests stable on free tier |
+
+---
+
+### P8 — Store release readiness
+
+| # | Test | Type | Pass criteria |
+|---|---|---|---|
+| P8-1 | Play Data Safety form | Manual | Declarations match Class A/B/C (was P7-4) |
+| P8-2 | Play Billing live | Device | Real SKU purchase + restore on license tester |
+| P8-3 | Nest JWT guards | API | Unauthed device/admin writes → 401 |
+| P8-4 | Circle FCM invite | 2-device | Invite notification + deep link join |
+| P8-5 | Interactive map (optional) | Device | Pinch/pan if required for store UX |
+| P8-6 | circle_live TTL CF | Cloud | Stale points purged |
+| P8-7 | Circle E2E matrix | 2-device | All categories formal pass |
+| P8-8 | Drive restore PIN | Device | Clean-device restore with PIN |
 
 ---
 

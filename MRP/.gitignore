@@ -76,3 +76,8 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+*.csv
+
+# Large installers / binaries (do not commit)
+*.exe

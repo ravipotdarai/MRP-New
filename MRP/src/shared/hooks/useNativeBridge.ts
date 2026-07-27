@@ -119,6 +119,7 @@ export interface MrpNativeInterface {
   getCircleLocalJson(): Promise<string>;
   setCircleLocalJson(json: string): Promise<boolean>;
   openAppNotificationSettings(): Promise<boolean>;
+  getGoogleMapsApiKey(): Promise<string | null>;
   getAppRiskReport(): Promise<any[]>;
   runBreachPostureScan(): Promise<any>;
   getBreachPostureSummary(): Promise<any>;

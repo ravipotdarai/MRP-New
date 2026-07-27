@@ -23,7 +23,9 @@ import {
   addSimulatedPeer,
   removeMember,
   revokeAllConsent,
+  seedDemoPeers,
   setMemberConsent,
+  withLiveReady,
 } from './circleInvite';
 import {loadLocalCircles, saveLocalCircles} from './circleLocalStore';
 import {CircleLiveMap} from './CircleLiveMap';
@@ -37,8 +39,14 @@ import {
   subscribeLivePoints,
   type LivePointNative,
 } from './circleLive';
+import {
+  demoPeerCount,
+  lerpLatLng,
+  peerDisplayName,
+  peerStartLocation,
+} from './circlePeerSim';
 import type {CircleCategoryCode, LocalCircle} from './circleTypes';
-import type {LiveMapPoint} from './circleMapUrls';
+import {pinStyle, type LiveMapPoint} from './circleMapUrls';
 
 type Props = {
   onUpgrade?: () => void;
@@ -99,25 +107,57 @@ export function CircleScreen({onUpgrade}: Props) {
   const liveUnsub = useRef<{unsubscribe: () => void} | null>(null);
   const lastLoc = useRef<{lat: number; lng: number} | null>(null);
   const failBackoff = useRef(0);
+  const [seedLocation, setSeedLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  /** 0 = peers ~10 km out; 1 = peers meet at phone. */
+  const [approachProgress, setApproachProgress] = useState(0);
+  const approachTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selected = useMemo(
     () => circles.find(c => c.id === selectedId) ?? null,
     [circles, selectedId],
   );
 
-  const mapPoints: LiveMapPoint[] = useMemo(
-    () =>
-      livePoints
-        .filter(p => p.shareOn)
-        .map(p => ({
-          id: p.uid,
-          displayName: p.displayName,
-          latitude: p.lat,
-          longitude: p.lng,
-          colorIndex: p.colorIndex,
-        })),
-    [livePoints],
-  );
+  const mapPoints: LiveMapPoint[] = useMemo(() => {
+    const fromLive: LiveMapPoint[] = livePoints
+      .filter(p => p.shareOn)
+      .map(p => ({
+        id: p.uid,
+        displayName: p.displayName,
+        latitude: p.lat,
+        longitude: p.lng,
+        colorIndex: p.colorIndex,
+        atMs: p.atMs,
+      }));
+
+    if (!selected?.shareEnabled || !selected.liveReady) return fromLive;
+    const phone =
+      seedLocation ||
+      (fromLive[0]
+        ? {latitude: fromLive[0].latitude, longitude: fromLive[0].longitude}
+        : null);
+    if (!phone) return fromLive;
+
+    const peers = selected.members.filter(m => m.id.startsWith('peer_'));
+    const simulated: LiveMapPoint[] = peers.map((peer, ordinal) => {
+      const memberIndex = selected.members.findIndex(m => m.id === peer.id);
+      const start = peerStartLocation(phone, ordinal);
+      const here = lerpLatLng(start, phone, approachProgress);
+      return {
+        id: peer.id,
+        displayName: peer.displayName,
+        latitude: here.latitude,
+        longitude: here.longitude,
+        colorIndex: memberIndex >= 0 ? memberIndex : ordinal + 1,
+        atMs: Date.now(),
+      };
+    });
+
+    const withoutDup = fromLive.filter(p => !simulated.some(s => s.id === p.id));
+    return [...withoutDup, ...simulated];
+  }, [livePoints, selected, seedLocation, approachProgress]);
 
   const persist = useCallback(async (next: LocalCircle[]) => {
     setCircles(next);
@@ -140,10 +180,42 @@ export function CircleScreen({onUpgrade}: Props) {
       clearInterval(shareTimer.current);
       shareTimer.current = null;
     }
+    if (approachTimer.current) {
+      clearInterval(approachTimer.current);
+      approachTimer.current = null;
+    }
     liveUnsub.current?.unsubscribe();
     liveUnsub.current = null;
     setLivePoints([]);
+    setApproachProgress(0);
   }, []);
+
+  const startPeerApproach = useCallback(async () => {
+    if (approachTimer.current) clearInterval(approachTimer.current);
+    // Ensure phone anchor exists even before first live publish lands.
+    if (!seedLocation) {
+      try {
+        const loc = await mrpmModule.getCurrentLocationWithAddress?.();
+        if (loc && typeof loc.latitude === 'number') {
+          setSeedLocation({latitude: loc.latitude, longitude: loc.longitude});
+          lastLoc.current = {lat: loc.latitude, lng: loc.longitude};
+        }
+      } catch {
+        /* keep waiting for publishOnce */
+      }
+    }
+    setApproachProgress(0);
+    const steps = 20;
+    let step = 0;
+    approachTimer.current = setInterval(() => {
+      step += 1;
+      setApproachProgress(Math.min(1, step / steps));
+      if (step >= steps && approachTimer.current) {
+        clearInterval(approachTimer.current);
+        approachTimer.current = null;
+      }
+    }, 1500);
+  }, [seedLocation]);
 
   useEffect(() => {
     return () => clearLiveHooks();
@@ -169,6 +241,7 @@ export function CircleScreen({onUpgrade}: Props) {
         inviteCode: circle.inviteCode,
       });
       lastLoc.current = {lat: loc.latitude, lng: loc.longitude};
+      setSeedLocation({latitude: loc.latitude, longitude: loc.longitude});
       failBackoff.current = 0;
     } catch (e: any) {
       failBackoff.current = Math.min(60, (failBackoff.current || 2) * 2);
@@ -215,21 +288,33 @@ export function CircleScreen({onUpgrade}: Props) {
       shareTimer.current = setInterval(tick, effectiveIntervalSec(selected) * 1000);
     }
 
-    // Soft refresh remote roster (2-device consent)
+    // Soft refresh remote roster (2-device consent).
+    // Re-read local store after await so "Add test peer" is not wiped by a stale closure.
+    // Keep same-device simulated peers (id peer_*) — Firebase has no record of them.
     (async () => {
-      const remote = await fetchRemoteCircle(selected.id);
+      const circleId = selected.id;
+      const remote = await fetchRemoteCircle(circleId);
       if (!remote) return;
-      const updated: LocalCircle = {
-        ...selected,
-        members: remoteMembersToLocal(remote.members),
-        memberCount: remote.memberCount,
-        liveReady: remote.liveReady,
-        groupKey: remote.groupKey || selected.groupKey,
-        inviteCode: remote.inviteCode || selected.inviteCode,
+      const latestList = await loadLocalCircles();
+      const current = latestList.find(c => c.id === circleId);
+      if (!current) return;
+      const remoteMembers = remoteMembersToLocal(remote.members);
+      const simulated = current.members.filter(m => m.id.startsWith('peer_'));
+      const mergedMembers = [...remoteMembers];
+      for (const peer of simulated) {
+        if (!mergedMembers.some(m => m.id === peer.id)) {
+          mergedMembers.push(peer);
+        }
+      }
+      const updated: LocalCircle = withLiveReady({
+        ...current,
+        members: mergedMembers,
+        groupKey: remote.groupKey || current.groupKey,
+        inviteCode: remote.inviteCode || current.inviteCode,
         maxMembers: remote.maxMembers,
-        name: remote.name || selected.name,
-      };
-      const next = circles.map(c => (c.id === updated.id ? updated : c));
+        name: remote.name || current.name,
+      });
+      const next = latestList.map(c => (c.id === updated.id ? updated : c));
       await persist(next);
     })();
 
@@ -264,6 +349,41 @@ export function CircleScreen({onUpgrade}: Props) {
       displayName: auth.displayName || 'You',
     });
     return {...circle, groupKey: pub.groupKey};
+  };
+
+  const onCreateAllDemoCircles = async () => {
+    if (!requireEnterprise()) return;
+    setBusy(true);
+    try {
+      let next = [...circles];
+      const stamp = Date.now();
+      for (let i = 0; i < CIRCLE_CATEGORIES.length; i++) {
+        const catItem = CIRCLE_CATEGORIES[i];
+        if (!canUseFeature(catItem.featureKey)) continue;
+        const result = createLocalCircle(
+          {name: `P7 ${catItem.label}`, category: catItem.code},
+          stamp + i * 1000,
+        );
+        if (!result.ok) continue;
+        let circle = result.circle;
+        try {
+          circle = await publishInviteToCloud(circle);
+        } catch {
+          /* local-only still fine for map demo */
+        }
+        const count = demoPeerCount(circle.category, circle.maxMembers);
+        circle = seedDemoPeers(circle, count, ord => peerDisplayName(circle.category, ord));
+        next = [circle, ...next.filter(c => c.name !== circle.name)];
+      }
+      await persist(next);
+      Alert.alert(
+        'Demo circles ready',
+        'All categories created with consented peers. Open each → Share ON → Peers approach phone.',
+      );
+      setMode('list');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const onCreate = async () => {
@@ -463,7 +583,11 @@ export function CircleScreen({onUpgrade}: Props) {
           {cat?.label ?? selected.category} · {selected.memberCount}/{selected.maxMembers} members
         </Text>
 
-        <CircleLiveMap points={mapPoints} title="Live map (OSM)" />
+        <CircleLiveMap
+          points={mapPoints}
+          title="Live map"
+          fallbackCenter={seedLocation}
+        />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Live share</Text>
@@ -562,6 +686,37 @@ export function CircleScreen({onUpgrade}: Props) {
             }}>
             <Text style={styles.secondaryBtnText}>Add test peer</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryFull}
+            onPress={async () => {
+              const count = demoPeerCount(selected.category, selected.maxMembers);
+              const seeded = seedDemoPeers(selected, count, i =>
+                peerDisplayName(selected.category, i),
+              );
+              await updateSelected(() => seeded);
+              setApproachProgress(0);
+              Alert.alert(
+                'Demo peers seeded',
+                `${count} member(s) consented · start ~10 km out when Share is ON, then tap “Peers approach phone”.`,
+              );
+            }}>
+            <Text style={styles.secondaryBtnText}>Seed demo peers (~10 km)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.secondaryFull}
+            disabled={!selected.shareEnabled || !selected.liveReady}
+            onPress={() => {
+              startPeerApproach().catch(() => {});
+            }}>
+            <Text style={styles.secondaryBtnText}>
+              Peers approach phone
+              {approachProgress > 0 && approachProgress < 1
+                ? ` · ${Math.round(approachProgress * 100)}%`
+                : approachProgress >= 1
+                  ? ' · met'
+                  : ''}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
@@ -579,13 +734,18 @@ export function CircleScreen({onUpgrade}: Props) {
                   : 'Waiting for all consents'}
             </Text>
           </View>
-          {selected.members.map(m => (
+          {selected.members.map((m, memberIndex) => {
+            const memberColor = pinStyle(memberIndex).hex;
+            return (
             <View key={m.id} style={styles.memberRow}>
               <View style={styles.memberText}>
-                <Text style={styles.memberName}>
-                  {m.displayName}
-                  {m.role === 'owner' ? ' · owner' : ''}
-                </Text>
+                <View style={styles.memberNameRow}>
+                  <View style={[styles.memberColorDot, {backgroundColor: memberColor}]} />
+                  <Text style={styles.memberName}>
+                    {m.displayName}
+                    {m.role === 'owner' ? ' · owner' : ''}
+                  </Text>
+                </View>
                 <Text style={styles.memberMeta}>
                   {m.consentLive ? 'Consented' : 'Not consented'}
                 </Text>
@@ -623,7 +783,8 @@ export function CircleScreen({onUpgrade}: Props) {
                 </TouchableOpacity>
               ) : null}
             </View>
-          ))}
+            );
+          })}
           <TouchableOpacity
             style={styles.secondaryFull}
             onPress={async () => {
@@ -653,16 +814,26 @@ export function CircleScreen({onUpgrade}: Props) {
       </Text>
 
       {mode === 'list' ? (
-        <View style={styles.rowBtns}>
+        <View>
+          <View style={styles.rowBtns}>
+            <TouchableOpacity
+              style={[styles.primaryBtn, styles.flexBtn]}
+              onPress={() => setMode('create')}>
+              <Text style={styles.primaryBtnText}>Create</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.secondaryBtn, styles.flexBtn, {marginRight: 0}]}
+              onPress={() => setMode('join')}>
+              <Text style={styles.secondaryBtnText}>Join with code</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
-            style={[styles.primaryBtn, styles.flexBtn]}
-            onPress={() => setMode('create')}>
-            <Text style={styles.primaryBtnText}>Create</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.secondaryBtn, styles.flexBtn, {marginRight: 0}]}
-            onPress={() => setMode('join')}>
-            <Text style={styles.secondaryBtnText}>Join with code</Text>
+            style={[styles.secondaryFull, {marginTop: spacing.sm}]}
+            disabled={busy}
+            onPress={onCreateAllDemoCircles}>
+            <Text style={styles.secondaryBtnText}>
+              {busy ? 'Creating demos…' : 'Create all category demos (P7)'}
+            </Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -934,6 +1105,15 @@ function createStyles(colors: ColorPalette) {
       borderTopColor: colors.borderSubtle,
     },
     memberText: {flex: 1, paddingRight: 8},
+    memberNameRow: {flexDirection: 'row', alignItems: 'center'},
+    memberColorDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: '#fff',
+    },
     memberName: {fontSize: 15, fontWeight: '700', color: colors.textPrimary},
     memberMeta: {fontSize: 12, color: colors.textMuted, marginTop: 2},
     removeBtn: {marginLeft: 8, padding: 4},

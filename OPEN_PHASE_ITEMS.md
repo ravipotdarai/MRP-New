@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-26 (P7 polish pack)  
+**Last updated:** 2026-07-27 (P7 device regression excl. P7-4; P8 scaffold)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -194,19 +194,40 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 > Docs: [`MRP/PLAY_DATA_SAFETY.md`](MRP/PLAY_DATA_SAFETY.md), [`MRP/SECURITY_REVIEW_P7.md`](MRP/SECURITY_REVIEW_P7.md), [`MRP/P7_REGRESSION_CHECKLIST.md`](MRP/P7_REGRESSION_CHECKLIST.md).
 
-### Untested (implemented — verify on device / Play Console)
+### Deferred (explicitly out of P7 close)
 | ID | Item | Notes |
 |---|---|---|
-| P7-1 | Timeline FlashList | `@shopify/flash-list` on TimelineScreen |
-| P7-2 | Hub Reanimated polish | `HubMenuCard` press + FadeInDown |
-| P7-3 | Circle map pinch zoom | Pinch on `CircleLiveMap` |
-| P7-4 | Play Data Safety form | Sheet ready — paste into Play Console |
-| P7-5 | Background location disclosure | Modal before enabling background tracking |
-| P7-6 | Panic + Circle sharing indicators | Home `ActivityStatusBanner` |
-| P7-7 | Promotions / affiliates | Config links in Hub (`promoConfig.ts`) |
-| P7-8 | Full regression P1–P6 | Checklist doc — run on device |
-| P7-9 | Security review | Checklist doc — tick before release |
-| P7-10 | API load test | `api`: `npm run test:load-health` (Nest must be up) |
+| P7-4 | Play Data Safety form | **Deferred to end / P8** — paste guide: [`MRP/P7_PLAY_DATA_SAFETY_PASTE.md`](MRP/P7_PLAY_DATA_SAFETY_PASTE.md) |
+
+### Partial (optional P8 UX)
+| ID | Item | Notes |
+|---|---|---|
+| P7-3 | Map pinch zoom | Streets + colored paths OK (ArcGIS static). Pinch N/A; **Open in Google Maps** works |
+
+*(P7-1, P7-2, P7-5…P7-10 accepted 2026-07-27 — see Done log.)*
+
+---
+
+## P8 — Store release readiness (next)
+
+> Close deferred compliance + production blockers. Start after P7 (excl. P7-4) acceptance.
+
+### Not started
+| ID | Item | Notes |
+|---|---|---|
+| P8-1 | Play Data Safety form (was P7-4) | Paste from `P7_PLAY_DATA_SAFETY_PASTE.md` |
+| P8-2 | Play Billing live (`"mode": "play"`) | See `PLAY_BILLING_INCOMPLETE.md` |
+| P8-3 | Nest JWT auth guards on device/admin APIs | Required before public Nest host |
+| P8-4 | Circle FCM + deep-link invites | Real 2-device (demo peers are local-only) |
+| P8-5 | Interactive Circle map (optional pinch) | Upgrade static ArcGIS if store UX requires |
+| P8-6 | TTL Cloud Function for `circle_live` | P4-14 leftover |
+| P8-7 | Formal Circle 2-device E2E matrix | Deferred Circle detail pass |
+| P8-8 | Drive restore PIN smoke on clean device | Optional re-verify |
+
+### Code ready hooks (shipped with P7 close)
+- Circle: **Create all category demos (P7)**, **Seed demo peers (~10 km)**, **Peers approach phone**
+- Member color dots match map pins (`pinStyle`)
+- Local peer simulation: `circlePeerSim.ts` (does not write fake UIDs to Firebase)
 
 ---
 
@@ -249,6 +270,9 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-26 | P6 web scaffold | Independent `MRP Web/` Next.js — Auth, Drive decrypt, CSV, sync policy, admin gate |
 | 2026-07-26 | P6 Hosting + doable pack | Firebase Hosting live; Devices/Admin RTDB; admin_audit; Nest CORS + optional Admin SDK; P6 CI smoke; P5-10 closed (appData only) |
 | 2026-07-26 | P7 polish pack | FlashList timeline; Hub Reanimated; map pinch; bg location disclosure; panic/circle banners; promos; Data Safety + security + regression docs; health load script |
+| 2026-07-26 | P7-10 | Nest local up; `npm run test:load-health` → 100/100 ok (~100ms avg); `firebaseAdmin: true` |
+| 2026-07-27 | P7 close (excl. P7-4) | PIN 1111 unlock; all 5 Circle demos; peers ~10 km → meet phone; Home Circle banner; Hub promos/affiliates; Drive Connected (830+ events); P7-9 static security pass; P8 scaffold |
+| 2026-07-27 | P7-1…P7-2, P7-5…P7-9 | Device/regression accepted — see `MRP/P7_REGRESSION_CHECKLIST.md` |
 
 ---
 
@@ -257,3 +281,4 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | Date | Change |
 |---|---|
 | 2026-07-24 | Initial open-items tracker (Not started / Partial / Untested) for P0–P7 |
+| 2026-07-27 | P7 regression excl. P7-4; add P8 store-release scaffold |

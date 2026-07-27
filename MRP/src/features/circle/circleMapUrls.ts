@@ -14,6 +14,7 @@ export type LiveMapPoint = {
   latitude: number;
   longitude: number;
   colorIndex: number;
+  atMs?: number;
 };
 
 export function pinStyle(colorIndex: number) {

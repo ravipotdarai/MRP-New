@@ -130,6 +130,8 @@ export function addMemberByInvite(
 export function addSimulatedPeer(
   circle: LocalCircle,
   now = Date.now(),
+  displayName?: string,
+  consentLive = false,
 ): {ok: true; circle: LocalCircle} | {ok: false; reason: string} {
   if (circle.members.length >= circle.maxMembers) {
     return {ok: false, reason: `Circle is full (max ${circle.maxMembers})`};
@@ -137,15 +139,42 @@ export function addSimulatedPeer(
   const n = circle.members.filter(m => m.role === 'member').length + 1;
   const member: CircleMember = {
     id: makeMemberId('peer', now),
-    displayName: `Peer ${n}`,
+    displayName: (displayName || `Peer ${n}`).trim() || `Peer ${n}`,
     role: 'member',
-    consentLive: false,
+    consentLive,
     joinedAtMs: now,
   };
   return {
     ok: true,
     circle: withLiveReady({...circle, members: [...circle.members, member]}),
   };
+}
+
+/** Seed category-appropriate test peers (all consented) for same-device map demos. */
+export function seedDemoPeers(
+  circle: LocalCircle,
+  count: number,
+  nameFor: (ordinal: number) => string,
+  now = Date.now(),
+): LocalCircle {
+  let next = circle;
+  const existingPeers = next.members.filter(m => m.id.startsWith('peer_')).length;
+  for (let i = 0; i < count; i++) {
+    if (next.members.length >= next.maxMembers) break;
+    const result = addSimulatedPeer(
+      next,
+      now + i + 1,
+      nameFor(existingPeers + i),
+      true,
+    );
+    if (!result.ok) break;
+    next = result.circle;
+  }
+  // Owner consent so liveReady can become true once peers are consented.
+  const members = next.members.map(m =>
+    m.role === 'owner' ? {...m, consentLive: true} : m,
+  );
+  return withLiveReady({...next, members});
 }
 
 export function removeMember(circle: LocalCircle, memberId: string): LocalCircle {

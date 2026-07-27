@@ -1630,6 +1630,26 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
+    /** Maps key from MRP/.env → resValue google_maps_api_key (Circle WebView / SDK). */
+    @ReactMethod
+    fun getGoogleMapsApiKey(promise: Promise) {
+        try {
+            val resId = reactContext.resources.getIdentifier(
+                "google_maps_api_key",
+                "string",
+                reactContext.packageName,
+            )
+            if (resId == 0) {
+                promise.resolve(null)
+                return
+            }
+            val key = reactContext.getString(resId)
+            promise.resolve(key.ifBlank { null })
+        } catch (e: Exception) {
+            promise.resolve(null)
+        }
+    }
+
     companion object {
         private const val TAG = "MrpNative"
         private const val PERM_REQUEST_CODE_BASE = 7100

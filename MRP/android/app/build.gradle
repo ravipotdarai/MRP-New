@@ -96,6 +96,10 @@ def mrpEnv = loadMrpEnv()
 def firebaseDatabaseUrl = mrpEnv['PUBLIC_FIREBASE_DATABASE_URL']
         ?: mrpEnv['FIREBASE_DATABASE_URL']
         ?: 'https://mobileresilienceplatform-default-rtdb.firebaseio.com'
+// Maps SDK for Android — prefer dedicated key; fallback to Firebase Android key from google-services.
+def googleMapsApiKey = mrpEnv['GOOGLE_MAPS_API_KEY']
+        ?: mrpEnv['PUBLIC_GOOGLE_MAPS_API_KEY']
+        ?: 'AIzaSyBFjpiV0dHKlSTAu0VntZVpOnymLlBKqGM'
 
 android {
     ndkVersion rootProject.ext.ndkVersion
@@ -110,6 +114,7 @@ android {
         versionCode 1
         versionName "1.0"
         resValue "string", "firebase_database_url", firebaseDatabaseUrl
+        resValue "string", "google_maps_api_key", googleMapsApiKey
     }
     signingConfigs {
         debug {
