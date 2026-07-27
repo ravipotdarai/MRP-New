@@ -1,4 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { AdminPushPort } from '../push/admin-push.port';
+import {
+  circleInviteAppSchemeLink,
+  defaultCircleInviteDeepLink,
+  type PushPort,
+} from '../push/push.port';
 
 type Member = {
   uid: string;
@@ -29,9 +35,17 @@ const CAPS: Record<string, number> = {
 @Injectable()
 export class CircleService {
   private circles = new Map<string, Circle>();
+  private readonly push: PushPort = new AdminPushPort();
 
   list() {
     return [...this.circles.values()];
+  }
+
+  /** Non-admins only see circles they belong to. */
+  listForUid(uid: string, isAdmin: boolean) {
+    const all = this.list();
+    if (isAdmin) return all;
+    return all.filter((c) => c.members.some((m) => m.uid === uid));
   }
 
   create(input: { name: string; category: string; ownerUid: string }) {
@@ -92,11 +106,48 @@ export class CircleService {
     return { ok: true, liveReady, circle };
   }
 
-  invitePushStub(id: string, _targetUid?: string) {
+  async invitePush(
+    id: string,
+    requesterUid: string,
+    body: { targetUid?: string; targetFcmToken?: string },
+  ) {
+    const circle = this.circles.get(id);
+    if (!circle) return { ok: false, reason: 'not_found' };
+    if (!circle.members.some((m) => m.uid === requesterUid)) {
+      return { ok: false, reason: 'not_member' };
+    }
+
+    const httpsLink = defaultCircleInviteDeepLink(circle.inviteCode);
+    const appLink = circleInviteAppSchemeLink(circle.inviteCode);
+
+    if (!body.targetUid) {
+      return {
+        ok: false,
+        reason: 'need_target',
+        circleId: id,
+        inviteCode: circle.inviteCode,
+        deepLink: httpsLink,
+        appLink,
+        message:
+          'Pass targetUid (Firebase UID of invitee) to send FCM, or share deepLink / invite code.',
+      };
+    }
+
+    const result = await this.push.sendCircleInvite({
+      circleId: id,
+      inviteCode: circle.inviteCode,
+      fromUid: requesterUid,
+      targetUid: body.targetUid,
+      targetFcmToken: body.targetFcmToken,
+      deepLink: httpsLink,
+    });
+
     return {
-      ok: false,
-      reason: 'fcm_pending',
-      message: `FCM invite for circle ${id} ships when PushPort is wired (P6). Use invite code for now.`,
+      ...result,
+      circleId: id,
+      inviteCode: circle.inviteCode,
+      deepLink: httpsLink,
+      appLink,
     };
   }
 }

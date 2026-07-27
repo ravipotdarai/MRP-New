@@ -1,8 +1,9 @@
+import { AuthUser } from '../auth/auth.types';
 import { CircleService } from './circle.service';
 export declare class CircleController {
     private readonly circles;
     constructor(circles: CircleService);
-    list(): {
+    list(user: AuthUser): {
         id: string;
         name: string;
         category: string;
@@ -16,10 +17,10 @@ export declare class CircleController {
         }[];
         createdAtMs: number;
     }[];
-    create(body: {
+    create(user: AuthUser, body: {
         name: string;
         category: string;
-        ownerUid: string;
+        ownerUid?: string;
     }): {
         id: string;
         name: string;
@@ -34,9 +35,9 @@ export declare class CircleController {
         }[];
         createdAtMs: number;
     };
-    join(id: string, body: {
+    join(id: string, user: AuthUser, body: {
         inviteCode: string;
-        uid: string;
+        uid?: string;
         displayName: string;
     }): {
         ok: boolean;
@@ -60,8 +61,8 @@ export declare class CircleController {
         };
         reason?: undefined;
     };
-    consent(id: string, body: {
-        uid: string;
+    consent(id: string, user: AuthUser, body: {
+        uid?: string;
         consentLive: boolean;
     }): {
         ok: boolean;
@@ -87,11 +88,33 @@ export declare class CircleController {
         };
         reason?: undefined;
     };
-    invitePush(id: string, body: {
+    invitePush(id: string, user: AuthUser, body: {
         targetUid?: string;
-    }): {
+        targetFcmToken?: string;
+    }): Promise<{
         ok: boolean;
         reason: string;
+        circleId?: undefined;
+        inviteCode?: undefined;
+        deepLink?: undefined;
+        appLink?: undefined;
+        message?: undefined;
+    } | {
+        ok: boolean;
+        reason: string;
+        circleId: string;
+        inviteCode: string;
+        deepLink: string;
+        appLink: string;
         message: string;
-    };
+    } | {
+        circleId: string;
+        inviteCode: string;
+        deepLink: string;
+        appLink: string;
+        ok: true;
+        messageId: string;
+        reason?: undefined;
+        message?: undefined;
+    }>;
 }

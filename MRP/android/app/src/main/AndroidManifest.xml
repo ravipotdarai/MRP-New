@@ -69,7 +69,37 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- P8-4 custom scheme deep link -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="mrp" android:host="circle" android:pathPrefix="/join" />
+        </intent-filter>
+        <!-- P8-4 https App Link (verify later in Play Console / Digital Asset Links) -->
+        <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="mobileresilienceplatform.web.app"
+                android:pathPrefix="/circle/join" />
+        </intent-filter>
       </activity>
+
+      <!-- P8-4 Circle invite FCM -->
+      <service
+        android:name=".MrpFirebaseMessagingService"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+      </service>
+
+      <meta-data
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="mrp_circle_invites" />
 
       <activity
         android:name=".SettingsActivity"

@@ -17,6 +17,7 @@ class MrpPackage : ReactPackage {
             DriveVaultModule(reactContext),
             GeofenceModule(reactContext),
             DeviceTrackingModule(reactContext),
+            MrpFcmModule(reactContext),
         )
     }
 

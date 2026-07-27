@@ -15,7 +15,9 @@ type Circle = {
 };
 export declare class CircleService {
     private circles;
+    private readonly push;
     list(): Circle[];
+    listForUid(uid: string, isAdmin: boolean): Circle[];
     create(input: {
         name: string;
         category: string;
@@ -48,10 +50,34 @@ export declare class CircleService {
         circle: Circle;
         reason?: undefined;
     };
-    invitePushStub(id: string, _targetUid?: string): {
+    invitePush(id: string, requesterUid: string, body: {
+        targetUid?: string;
+        targetFcmToken?: string;
+    }): Promise<{
         ok: boolean;
         reason: string;
+        circleId?: undefined;
+        inviteCode?: undefined;
+        deepLink?: undefined;
+        appLink?: undefined;
+        message?: undefined;
+    } | {
+        ok: boolean;
+        reason: string;
+        circleId: string;
+        inviteCode: string;
+        deepLink: string;
+        appLink: string;
         message: string;
-    };
+    } | {
+        circleId: string;
+        inviteCode: string;
+        deepLink: string;
+        appLink: string;
+        ok: true;
+        messageId: string;
+        reason?: undefined;
+        message?: undefined;
+    }>;
 }
 export {};

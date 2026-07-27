@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-27 (P7 device regression excl. P7-4; P8 scaffold)  
+**Last updated:** 2026-07-28 (P8-3/4/6 code closed; CF schedule awaits Blaze)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -208,26 +208,32 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ---
 
-## P8 — Store release readiness (next)
+## P8 — Store release readiness (in progress)
 
-> Close deferred compliance + production blockers. Start after P7 (excl. P7-4) acceptance.
+> Close deferred compliance + production blockers. Tracker: [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md).
 
 ### Not started
 | ID | Item | Notes |
 |---|---|---|
-| P8-1 | Play Data Safety form (was P7-4) | Paste from `P7_PLAY_DATA_SAFETY_PASTE.md` |
+| P8-1 | Play Data Safety form (was P7-4) | Paste from `MRP/P7_PLAY_DATA_SAFETY_PASTE.md` — Console step |
 | P8-2 | Play Billing live (`"mode": "play"`) | See `PLAY_BILLING_INCOMPLETE.md` |
-| P8-3 | Nest JWT auth guards on device/admin APIs | Required before public Nest host |
-| P8-4 | Circle FCM + deep-link invites | Real 2-device (demo peers are local-only) |
 | P8-5 | Interactive Circle map (optional pinch) | Upgrade static ArcGIS if store UX requires |
-| P8-6 | TTL Cloud Function for `circle_live` | P4-14 leftover |
 | P8-7 | Formal Circle 2-device E2E matrix | Deferred Circle detail pass |
 | P8-8 | Drive restore PIN smoke on clean device | Optional re-verify |
+
+### Ops follow-ups (code done; infra)
+| ID | Item | Notes |
+|---|---|---|
+| P8-6-cf | Scheduled `purgeStaleCircleLive` on Firebase | Source in `api/functions` — deploy needs **Blaze** plan |
+| P8-3-sa | Live ID token mint via Admin | `npm run test:jwt-live` needs `FIREBASE_SERVICE_ACCOUNT_JSON` / ADC file |
 
 ### Code ready hooks (shipped with P7 close)
 - Circle: **Create all category demos (P7)**, **Seed demo peers (~10 km)**, **Peers approach phone**
 - Member color dots match map pins (`pinStyle`)
 - Local peer simulation: `circlePeerSim.ts` (does not write fake UIDs to Firebase)
+- P8-3 JWT guard + admin allowlist smoke passed
+- P8-4 FCM registry + deep links + assetlinks (debug SHA)
+- P8-6 Nest `POST /v1/admin/circle-live/purge` (+ CF source)
 
 ---
 
@@ -236,9 +242,9 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | Status | Item | Blocks |
 |---|---|---|
 | Partial | Play Console subscriptions + `"mode": "play"` | P3 complete, real money path |
-| Partial | NestJS hosted + Firebase JWT guards | P2-3/9/10, P3-9, P4 API caps, P6 |
-| Not started | FCM + deep links for Circle invites | P4-3 plan criteria |
-| Not started | TTL Cloud Function for `circle_live` | P4-14 |
+| Partial | NestJS hosted + Firebase JWT guards | **P8-3 done** (smoke); live mint needs SA; host optional |
+| Done (code) | FCM + deep links for Circle invites | **P8-4**; formal 2-device → P8-7 |
+| Partial | TTL for `circle_live` | **Nest purge done**; scheduled CF awaits Blaze |
 | Partial | Nest hosted + Play subscription admin | P6-1 cloud, P6-9-play |
 | Untested | Formal Circle E2E matrix (deferred to project end) | P4 sign-off |
 
@@ -273,6 +279,9 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-26 | P7-10 | Nest local up; `npm run test:load-health` → 100/100 ok (~100ms avg); `firebaseAdmin: true` |
 | 2026-07-27 | P7 close (excl. P7-4) | PIN 1111 unlock; all 5 Circle demos; peers ~10 km → meet phone; Home Circle banner; Hub promos/affiliates; Drive Connected (830+ events); P7-9 static security pass; P8 scaffold |
 | 2026-07-27 | P7-1…P7-2, P7-5…P7-9 | Device/regression accepted — see `MRP/P7_REGRESSION_CHECKLIST.md` |
+| 2026-07-27 | P8 start / P8-3 | Nest Firebase JWT global guard; device UID ownership; admin allowlist; auth smoke script; PushPort + TTL scaffolds |
+| 2026-07-27 | P8-4 | FCM token RTDB registry; AdminPushPort; mrp:// + https deep links; Share invite links; web `/circle/join` |
+| 2026-07-28 | P8-3/4/6 close | JWT smoke+admin allowlist; Admin SDK honest config; Nest circle_live purge; CF source (Blaze-blocked); assetlinks debug SHA |
 
 ---
 
@@ -282,3 +291,4 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 |---|---|
 | 2026-07-24 | Initial open-items tracker (Not started / Partial / Untested) for P0–P7 |
 | 2026-07-27 | P7 regression excl. P7-4; add P8 store-release scaffold |
+| 2026-07-27 | P8 kickoff — Nest JWT guards + release checklist doc |

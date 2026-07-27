@@ -36,4 +36,4 @@ Use short copy from `PLAY_DATA_SAFETY.md`:
 
 ### After submit
 
-Tick P7-4 in `OPEN_PHASE_ITEMS.md` / Done log when Console shows Data safety form **complete**.
+Tick **P8-1** (was P7-4) in `OPEN_PHASE_ITEMS.md` / Done log when Console shows Data safety form **complete**. See [`P8_STORE_RELEASE.md`](../P8_STORE_RELEASE.md).

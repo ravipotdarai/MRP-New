@@ -3,5 +3,6 @@ export declare class HealthController {
         ok: boolean;
         service: string;
         firebaseAdmin: boolean;
+        auth: string;
     };
 }

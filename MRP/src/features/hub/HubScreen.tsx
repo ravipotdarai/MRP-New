@@ -16,6 +16,10 @@ import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
 import {AccountScreen} from './AccountScreen';
 import {SubscriptionScreen} from '../subscription/SubscriptionScreen';
 import {CircleScreen} from '../circle/CircleScreen';
+import {
+  peekPendingCircleInvite,
+  subscribeCircleInvite,
+} from '../circle/circleInvitePending';
 import {DriveSyncScreen} from '../drive/DriveSyncScreen';
 import {GeofenceScreen} from '../geofence/GeofenceScreen';
 import {HubMenuCard} from './HubMenuCard';
@@ -178,6 +182,13 @@ export function HubScreen({
       setSection(target);
     }
   }, [route?.params?.openSection]);
+
+  useEffect(() => {
+    if (peekPendingCircleInvite()) {
+      setSection('circle');
+    }
+    return subscribeCircleInvite(() => setSection('circle'));
+  }, []);
 
   if (section === 'about') {
     return (

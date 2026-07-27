@@ -1,17 +1,30 @@
 import * as admin from 'firebase-admin';
 
 let initialized = false;
+let initAttempted = false;
+
+function hasExplicitCredentials(): boolean {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) return true;
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) return true;
+  return false;
+}
 
 /**
- * Optional Firebase Admin for Nest device_config writes.
+ * Optional Firebase Admin for Nest device_config / FCM / TTL purge.
  * Set FIREBASE_DATABASE_URL + either GOOGLE_APPLICATION_CREDENTIALS
  * or FIREBASE_SERVICE_ACCOUNT_JSON (stringified JSON).
+ *
+ * Does **not** fall back to bare applicationDefault() without an explicit
+ * credential path — that reports "configured" then hangs on RTDB/Auth.
  */
 export function getAdminApp(): admin.app.App | null {
   if (initialized) {
     return admin.apps.length ? admin.app() : null;
   }
-  initialized = true;
+  if (initAttempted) {
+    return admin.apps.length ? admin.app() : null;
+  }
+  initAttempted = true;
 
   const databaseURL =
     process.env.FIREBASE_DATABASE_URL ||
@@ -20,6 +33,7 @@ export function getAdminApp(): admin.app.App | null {
 
   try {
     if (admin.apps.length) {
+      initialized = true;
       return admin.app();
     }
 
@@ -30,6 +44,7 @@ export function getAdminApp(): admin.app.App | null {
         credential: admin.credential.cert(cred),
         databaseURL,
       });
+      initialized = true;
       return admin.app();
     }
 
@@ -38,25 +53,15 @@ export function getAdminApp(): admin.app.App | null {
         credential: admin.credential.applicationDefault(),
         databaseURL,
       });
+      initialized = true;
       return admin.app();
     }
 
-    // Project id only — works on GCP with ADC; local without creds stays null
-    const projectId =
-      process.env.PUBLIC_FIREBASE_PROJECT_ID ||
-      process.env.GCLOUD_PROJECT ||
-      'mobileresilienceplatform';
-    try {
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        databaseURL,
-        projectId,
-      });
-      return admin.app();
-    } catch {
-      return null;
-    }
+    // No explicit credentials — stay null (JWT verify / RTDB Admin unavailable)
+    initialized = true;
+    return null;
   } catch {
+    initialized = true;
     return null;
   }
 }
@@ -67,5 +72,5 @@ export function getAdminDb(): admin.database.Database | null {
 }
 
 export function isAdminSdkConfigured(): boolean {
-  return getAdminApp() !== null;
+  return hasExplicitCredentials() && getAdminApp() !== null;
 }

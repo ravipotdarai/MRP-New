@@ -1,0 +1,18 @@
+{
+  "name": "mrp-functions",
+  "description": "MRP Cloud Functions — circle_live TTL (P8-6)",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.0",
+    "mrp-api": "file:.."
+  },
+  "private": true
+}

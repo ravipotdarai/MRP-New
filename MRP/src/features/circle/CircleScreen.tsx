@@ -45,6 +45,12 @@ import {
   peerDisplayName,
   peerStartLocation,
 } from './circlePeerSim';
+import {shareInviteMessage} from './circleDeepLink';
+import {
+  consumePendingCircleInvite,
+  subscribeCircleInvite,
+} from './circleInvitePending';
+import {registerFcmForCircleInvites} from '../../native/MrpFcm.types';
 import type {CircleCategoryCode, LocalCircle} from './circleTypes';
 import {pinStyle, type LiveMapPoint} from './circleMapUrls';
 
@@ -119,6 +125,24 @@ export function CircleScreen({onUpgrade}: Props) {
     () => circles.find(c => c.id === selectedId) ?? null,
     [circles, selectedId],
   );
+
+  const applyInviteCode = useCallback((code: string) => {
+    const normalized = code.trim().toUpperCase();
+    if (normalized.length < 4) return;
+    setJoinCode(normalized);
+    setMode('join');
+  }, []);
+
+  useEffect(() => {
+    const pending = consumePendingCircleInvite();
+    if (pending) applyInviteCode(pending);
+    return subscribeCircleInvite(code => applyInviteCode(code));
+  }, [applyInviteCode]);
+
+  useEffect(() => {
+    if (!unlocked || !firebaseReady) return;
+    registerFcmForCircleInvites().catch(() => {});
+  }, [unlocked, firebaseReady]);
 
   const mapPoints: LiveMapPoint[] = useMemo(() => {
     const fromLive: LiveMapPoint[] = livePoints
@@ -524,7 +548,7 @@ export function CircleScreen({onUpgrade}: Props) {
       const synced = await publishInviteToCloud(circle);
       await updateSelected(() => synced);
       await Share.share({
-        message: `Join my MRP Circle "${synced.name}" with invite code: ${synced.inviteCode}`,
+        message: shareInviteMessage(synced.name, synced.inviteCode),
       });
     } catch (e: any) {
       Alert.alert(
@@ -592,8 +616,8 @@ export function CircleScreen({onUpgrade}: Props) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Live share</Text>
           <Text style={styles.body}>
-            Mutual consent + Google Sign-In required. Points → Firebase RTDB. NestJS handles
-            invites/FCM later.
+            Mutual consent + Google Sign-In required. Points → Firebase RTDB. Invites use
+            deep links + optional FCM when the other device has registered a token.
           </Text>
           <View style={styles.memberRow}>
             <View style={styles.memberText}>

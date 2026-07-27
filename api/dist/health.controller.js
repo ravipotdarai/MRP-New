@@ -11,6 +11,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.HealthController = void 0;
 const common_1 = require("@nestjs/common");
+const auth_decorators_1 = require("./auth/auth.decorators");
 const admin_1 = require("./firebase/admin");
 let HealthController = class HealthController {
     ok() {
@@ -18,11 +19,13 @@ let HealthController = class HealthController {
             ok: true,
             service: 'mrp-api',
             firebaseAdmin: (0, admin_1.isAdminSdkConfigured)(),
+            auth: 'firebase-jwt',
         };
     }
 };
 exports.HealthController = HealthController;
 __decorate([
+    (0, auth_decorators_1.Public)(),
     (0, common_1.Get)(),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", []),

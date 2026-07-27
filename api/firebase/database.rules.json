@@ -26,6 +26,15 @@
         }
       }
     },
+    "devices": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid == $uid || auth.token.email == 'ravipotdarai@gmail.com')",
+        "$deviceId": {
+          ".write": "auth != null && auth.uid == $uid",
+          ".validate": "newData.hasChildren(['fcmToken', 'updatedAtMs']) && newData.child('updatedAtMs').isNumber() && newData.child('fcmToken').isString()"
+        }
+      }
+    },
     "device_config": {
       ".indexOn": ["updatedAtMs", "source"],
       ".read": "auth != null && auth.token.email == 'ravipotdarai@gmail.com'",

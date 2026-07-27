@@ -5,16 +5,28 @@ exports.getAdminDb = getAdminDb;
 exports.isAdminSdkConfigured = isAdminSdkConfigured;
 const admin = require("firebase-admin");
 let initialized = false;
+let initAttempted = false;
+function hasExplicitCredentials() {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+        return true;
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS)
+        return true;
+    return false;
+}
 function getAdminApp() {
     if (initialized) {
         return admin.apps.length ? admin.app() : null;
     }
-    initialized = true;
+    if (initAttempted) {
+        return admin.apps.length ? admin.app() : null;
+    }
+    initAttempted = true;
     const databaseURL = process.env.FIREBASE_DATABASE_URL ||
         process.env.PUBLIC_FIREBASE_DATABASE_URL ||
         'https://mobileresilienceplatform-default-rtdb.firebaseio.com';
     try {
         if (admin.apps.length) {
+            initialized = true;
             return admin.app();
         }
         const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
@@ -24,6 +36,7 @@ function getAdminApp() {
                 credential: admin.credential.cert(cred),
                 databaseURL,
             });
+            initialized = true;
             return admin.app();
         }
         if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -31,24 +44,14 @@ function getAdminApp() {
                 credential: admin.credential.applicationDefault(),
                 databaseURL,
             });
+            initialized = true;
             return admin.app();
         }
-        const projectId = process.env.PUBLIC_FIREBASE_PROJECT_ID ||
-            process.env.GCLOUD_PROJECT ||
-            'mobileresilienceplatform';
-        try {
-            admin.initializeApp({
-                credential: admin.credential.applicationDefault(),
-                databaseURL,
-                projectId,
-            });
-            return admin.app();
-        }
-        catch {
-            return null;
-        }
+        initialized = true;
+        return null;
     }
     catch {
+        initialized = true;
         return null;
     }
 }
@@ -57,6 +60,6 @@ function getAdminDb() {
     return app ? admin.database(app) : null;
 }
 function isAdminSdkConfigured() {
-    return getAdminApp() !== null;
+    return hasExplicitCredentials() && getAdminApp() !== null;
 }
 //# sourceMappingURL=admin.js.map

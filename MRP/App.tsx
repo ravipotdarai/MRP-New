@@ -19,6 +19,18 @@ import {
   pullRemoteTrackingConfig,
   startDevicePresence,
 } from './src/native/DeviceTracking.types';
+import {registerFcmForCircleInvites} from './src/native/MrpFcm.types';
+import {useCircleInviteDeepLink} from './src/features/circle/useCircleInviteDeepLink';
+import {subscribeCircleInvite} from './src/features/circle/circleInvitePending';
+import {createNavigationContainerRef} from '@react-navigation/native';
+
+const navigationRef = createNavigationContainerRef();
+
+function navigateToCircleJoin() {
+  if (!navigationRef.isReady()) return;
+  // @ts-expect-error tab + params
+  navigationRef.navigate('Hub', {openSection: 'circle'});
+}
 
 const Tab = createBottomTabNavigator();
 
@@ -143,6 +155,12 @@ function AppContent(): React.JSX.Element {
       try {
         await pullRemoteTrackingConfig();
         if (!cancelled) await startDevicePresence();
+        if (!cancelled) {
+          const fcm = await registerFcmForCircleInvites();
+          if (!fcm.ok) {
+            console.warn('[fcm] register skipped', fcm.reason);
+          }
+        }
       } catch (e) {
         console.warn('[tracking] presence start skipped', e);
       }
@@ -150,6 +168,15 @@ function AppContent(): React.JSX.Element {
     return () => {
       cancelled = true;
     };
+  }, [isUnlocked, isPinSet]);
+
+  useCircleInviteDeepLink(!!(isUnlocked && isPinSet));
+
+  useEffect(() => {
+    if (!isUnlocked || !isPinSet) return;
+    return subscribeCircleInvite(() => {
+      navigateToCircleJoin();
+    });
   }, [isUnlocked, isPinSet]);
 
   const shellStyle = {flex: 1 as const, backgroundColor: colors.bg};
@@ -175,7 +202,7 @@ function AppContent(): React.JSX.Element {
           barStyle={isLight ? 'dark-content' : 'light-content'}
           backgroundColor={colors.bg}
         />
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
           <TabNavigator onLogout={handleLogout} />
         </NavigationContainer>
       </View>

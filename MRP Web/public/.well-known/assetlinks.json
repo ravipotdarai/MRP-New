@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.mrp",
+      "sha256_cert_fingerprints": [
+        "97:57:73:A1:EF:BF:71:CA:FB:00:07:29:C0:E9:A8:74:13:5C:E2:59:FE:19:88:BB:02:C8:BF:3E:AC:10:4B:62"
+      ]
+    }
+  }
+]

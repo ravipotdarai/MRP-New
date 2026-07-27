@@ -6,7 +6,7 @@
 |---|---|---|
 | Ephemeral live points (lat/lng, TTL) | **Firebase Realtime Database** | Low-latency fan-out; no Nest hop; matches “no server location history” (TTL delete) |
 | Circle CRUD, invite, consent, member caps | **NestJS** (`api/`) | AuthZ, audit, Family invites later; app uses `CircleDirectoryPort` |
-| Push invites / Panic → Circle | **FCM via NestJS** when API is up | Server holds FCM tokens; until then: share invite code |
+| Push invites / Panic → Circle | **FCM via NestJS** (`AdminPushPort`) + deep links | Tokens at `devices/{uid}/{deviceId}`; share still works offline Nest |
 | Map UI | **OSM / Yandex static** multi-pin | Same pattern as Home; colored pin per member |
 
 ```mermaid
