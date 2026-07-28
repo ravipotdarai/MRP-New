@@ -1,6 +1,6 @@
 # Play Data Safety — MRP (v1 / Drive-only)
 
-Fill Google Play Console → App content → **Data safety** using this sheet. Keep in sync with in-app disclosure (`BackgroundLocationDisclosure`) and [`V1_DRIVE_ONLY_RELEASE.md`](../V1_DRIVE_ONLY_RELEASE.md).
+Fill Google Play Console → App content → **Data safety** using this sheet. Keep in sync with in-app disclosure (`BackgroundLocationDisclosure`) and [`V1_DRIVE_ONLY_RELEASE.md`](../docs/store/V1_DRIVE_ONLY_RELEASE.md).
 
 ## Listing copy (canonical)
 

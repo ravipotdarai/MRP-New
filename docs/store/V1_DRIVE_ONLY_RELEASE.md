@@ -73,7 +73,7 @@ Latency = sync frequency (minutes), not seconds. Honest UX required.
 
 ## 5. Battery (Pixel)
 
-See `BATTERY_OPTIMIZATION_PLAN.md`. With Circle off, prioritize:
+See `docs/battery/BATTERY_OPTIMIZATION_PLAN.md`. With Circle off, prioritize:
 
 - Default emergency interval **5 min**; Find-my-device preset may use **1 min** (warns on battery)
 - Observer debounce
@@ -105,4 +105,4 @@ Theme IDs: `field` (default), `slate`, `dawn` — persisted in `localStorage`, t
 - [`PLAY_DATA_SAFETY.md`](MRP/PLAY_DATA_SAFETY.md)
 - [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md)
 - [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md)
-- [`BATTERY_OPTIMIZATION_PLAN.md`](BATTERY_OPTIMIZATION_PLAN.md)
+- [`docs/battery/BATTERY_OPTIMIZATION_PLAN.md`](../battery/BATTERY_OPTIMIZATION_PLAN.md)

@@ -45,4 +45,4 @@ https://console.firebase.google.com/project/mobileresilienceplatform/usage/detai
 - [x] Nest Admin purge endpoint
 - [x] Cloud Function source in `api/functions`
 - [ ] Scheduled CF live (blocked until Blaze plan)
-- [x] Tick P8-6 Nest path in `OPEN_PHASE_ITEMS.md`
+- [x] Tick P8-6 Nest path in `docs/plans/OPEN_PHASE_ITEMS.md`

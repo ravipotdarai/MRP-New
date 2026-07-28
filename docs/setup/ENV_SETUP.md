@@ -2,7 +2,7 @@
 
 Copy each block into the corresponding file when implementing. **Never commit real `.env` files.**
 
-See also [PROJECT_IMPLEMENTATION_PLAN.md](../PROJECT_IMPLEMENTATION_PLAN.md) §6.
+See also [PROJECT_IMPLEMENTATION_PLAN.md](../plans/PROJECT_IMPLEMENTATION_PLAN.md) §6.
 
 ---
 

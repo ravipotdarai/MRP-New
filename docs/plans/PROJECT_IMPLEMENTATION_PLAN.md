@@ -203,7 +203,7 @@ See:
 | **P0** | This doc + `.env.example` + SUBSCRIPTION amend |
 | **P1** | Tabs; Hub; Home Subscribe + Panic; MRP Guide |
 | **P2** | Firebase Auth; devices; recovery code |
-| **P3** | Play SKUs; NestJS entitlements; FeatureGate — **Play Console incomplete**; hardcoded `Subscriptions.json` for testing (see [PLAY_BILLING_INCOMPLETE.md](PLAY_BILLING_INCOMPLETE.md)) |
+| **P3** | Play SKUs; NestJS entitlements; FeatureGate — **Play Console incomplete**; hardcoded `Subscriptions.json` for testing (see [PLAY_BILLING_INCOMPLETE.md](../store/PLAY_BILLING_INCOMPLETE.md)) |
 | **P4** | Enterprise Circle (categories, E2E, reconnect) |
 | **P5** | Drive encrypted backup + restore |
 | **P6** | NestJS `api/` + Next.js `web/` + admin |
@@ -393,6 +393,6 @@ Living tracker for **Not started / Partial / Untested** items (updated as work p
 | 2026-07-22 | Initial saved plan with per-phase test plans |
 | 2026-07-24 | Linked [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md) for open Not started / Partial / Untested work |
 | 2026-07-24 | P5 Drive Sync first slice started — see [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md) |
-| 2026-07-27 | P8 store-release started — Nest JWT guards; see [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md) |
-| 2026-07-28 | V1 Drive-only release track — [`V1_DRIVE_ONLY_RELEASE.md`](V1_DRIVE_ONLY_RELEASE.md); Circle flagged off |
-| 2026-07-28 | Store v1 — [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md); hardcoded billing gate |
+| 2026-07-27 | P8 store-release started — Nest JWT guards; see [`docs/store/P8_STORE_RELEASE.md`](../store/P8_STORE_RELEASE.md) |
+| 2026-07-28 | V1 Drive-only release track — [`docs/store/V1_DRIVE_ONLY_RELEASE.md`](../store/V1_DRIVE_ONLY_RELEASE.md); Circle flagged off |
+| 2026-07-28 | Store v1 — [`docs/store/STORE_V1_CHECKLIST.md`](../store/STORE_V1_CHECKLIST.md); hardcoded billing gate |

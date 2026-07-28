@@ -39,4 +39,4 @@ Use short copy from `PLAY_DATA_SAFETY.md`:
 
 ### After submit
 
-Tick **P8-1** in `OPEN_PHASE_ITEMS.md` / Done log when Console shows Data safety form **complete**. See [`P8_STORE_RELEASE.md`](../P8_STORE_RELEASE.md) and [`STORE_V1_CHECKLIST.md`](../STORE_V1_CHECKLIST.md).
+Tick **P8-1** in `OPEN_PHASE_ITEMS.md` / Done log when Console shows Data safety form **complete**. See [`P8_STORE_RELEASE.md`](../docs/store/P8_STORE_RELEASE.md) and [`STORE_V1_CHECKLIST.md`](../docs/store/STORE_V1_CHECKLIST.md).

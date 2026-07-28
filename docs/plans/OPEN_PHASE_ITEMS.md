@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-28 (Store v1 track started — see [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md))  
+**Last updated:** 2026-07-28 (Store v1 track started — see [`docs/store/STORE_V1_CHECKLIST.md`](../store/STORE_V1_CHECKLIST.md))  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -73,7 +73,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ## P3 — Billing + entitlements
 
-> See also [`PLAY_BILLING_INCOMPLETE.md`](PLAY_BILLING_INCOMPLETE.md). **Do not mark P3 complete** until Play Console is real.
+> See also [`docs/store/PLAY_BILLING_INCOMPLETE.md`](../store/PLAY_BILLING_INCOMPLETE.md). **Do not mark P3 complete** until Play Console is real.
 
 ### Not started
 | ID | Item | Notes |
@@ -211,13 +211,13 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 ## P8 — Store release readiness (in progress)
 
 > Close deferred compliance + production blockers.  
-> **Active track:** [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md) · [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md).
+> **Active track:** [`docs/store/STORE_V1_CHECKLIST.md`](../store/STORE_V1_CHECKLIST.md) · [`docs/store/P8_STORE_RELEASE.md`](../store/P8_STORE_RELEASE.md).
 
 ### Not started (Console / human)
 | ID | Item | Notes |
 |---|---|---|
 | P8-1 | Play Data Safety form (was P7-4) | Paste from `MRP/P7_PLAY_DATA_SAFETY_PASTE.md` |
-| P8-2 | Play Billing live (`"mode": "play"`) | See `PLAY_BILLING_INCOMPLETE.md`; also set `mrpAllowHardcodedBilling=false` |
+| P8-2 | Play Billing live (`"mode": "play"`) | See `docs/store/PLAY_BILLING_INCOMPLETE.md`; also set `mrpAllowHardcodedBilling=false` |
 | P8-5 | Interactive Circle map (optional pinch) | Deferred — Circle off for v1 |
 | P8-7 | Formal Circle 2-device E2E matrix | Deferred to v2 (`CIRCLE_ENABLED`) |
 | P8-8 | Drive restore PIN smoke on clean device | Optional re-verify |
@@ -260,7 +260,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 1. After implementing something → set status **Untested** (if it was Not started/Partial) or remove when accepted.
 2. After a recorded pass (device/E2E/CI) → delete the row from this file and add one line to **Done log** below.
 3. Do not mark a phase complete while any of its **critical** open items remain (see plan §9).
-4. Keep [`PLAY_BILLING_INCOMPLETE.md`](PLAY_BILLING_INCOMPLETE.md) until Play is real.
+4. Keep [`docs/store/PLAY_BILLING_INCOMPLETE.md`](../store/PLAY_BILLING_INCOMPLETE.md) until Play is real.
 5. Circle **detail testing** stays deferred per owner; keep P4 Untested/Partial rows until that pass.
 
 ---
@@ -287,8 +287,8 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-27 | P8 start / P8-3 | Nest Firebase JWT global guard; device UID ownership; admin allowlist; auth smoke script; PushPort + TTL scaffolds |
 | 2026-07-27 | P8-4 | FCM token RTDB registry; AdminPushPort; mrp:// + https deep links; Share invite links; web `/circle/join` |
 | 2026-07-28 | P8-3/4/6 close | JWT smoke+admin allowlist; Admin SDK honest config; Nest circle_live purge; CF source (Blaze-blocked); assetlinks debug SHA |
-| 2026-07-28 | V1 Drive-only | `CIRCLE_ENABLED=false`; privacy wording; Web themes + map/find-my-device/selfies; emergency min 1; see `V1_DRIVE_ONLY_RELEASE.md` |
-| 2026-07-28 | Store v1 start | `STORE_V1_CHECKLIST.md`; billing hardcoded gate; version 1.0.0; listing/Data Safety paste aligned |
+| 2026-07-28 | V1 Drive-only | `CIRCLE_ENABLED=false`; privacy wording; Web themes + map/find-my-device/selfies; emergency min 1; see `docs/store/V1_DRIVE_ONLY_RELEASE.md` |
+| 2026-07-28 | Store v1 start | `docs/store/STORE_V1_CHECKLIST.md`; billing hardcoded gate; version 1.0.0; listing/Data Safety paste aligned |
 
 ---
 

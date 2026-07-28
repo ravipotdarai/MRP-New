@@ -1,13 +1,13 @@
 # P8 — Store release readiness
 
-Started after P7 close (excl. Data Safety form). Tracker: [`OPEN_PHASE_ITEMS.md`](../OPEN_PHASE_ITEMS.md).
+Started after P7 close (excl. Data Safety form). Tracker: [`OPEN_PHASE_ITEMS.md`](../plans/OPEN_PHASE_ITEMS.md).
 
 ## Checklist
 
 | ID | Item | Owner | Status |
 |---|---|---|---|
 | **P8-1** | Play Data Safety form | Console | Ready to paste — [`MRP/P7_PLAY_DATA_SAFETY_PASTE.md`](../MRP/P7_PLAY_DATA_SAFETY_PASTE.md) |
-| **P8-2** | Play Billing `"mode": "play"` | Console + app | Blocked on Play Developer — [`PLAY_BILLING_INCOMPLETE.md`](../PLAY_BILLING_INCOMPLETE.md) |
+| **P8-2** | Play Billing `"mode": "play"` | Console + app | Blocked on Play Developer — [`PLAY_BILLING_INCOMPLETE.md`](PLAY_BILLING_INCOMPLETE.md) |
 | **P8-3** | Nest JWT guards | API | **Done** — smoke + admin allowlist; `npm run test:auth-guard` / `test:jwt-live` (needs SA for mint) |
 | **P8-4** | Circle FCM + deep links | API + app | **Done** (code) — RTDB rules live; assetlinks ready; 2-device → P8-7 |
 | **P8-5** | Interactive Circle map | App | Optional; ArcGIS static + Google Maps open works |

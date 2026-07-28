@@ -26,4 +26,4 @@ npm run test:auth-guard
 
 Admin emails: `MRP_ADMIN_EMAILS` (or `ADMIN_EMAILS`) — same allowlist as web.
 
-See [P8_STORE_RELEASE.md](../P8_STORE_RELEASE.md), [MRP/CIRCLE_LIVE.md](../MRP/CIRCLE_LIVE.md), [firebase/CIRCLE_LIVE_TTL.md](firebase/CIRCLE_LIVE_TTL.md).
+See [P8_STORE_RELEASE.md](../docs/store/P8_STORE_RELEASE.md), [MRP/CIRCLE_LIVE.md](../MRP/CIRCLE_LIVE.md), [firebase/CIRCLE_LIVE_TTL.md](firebase/CIRCLE_LIVE_TTL.md).

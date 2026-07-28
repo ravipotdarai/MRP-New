@@ -98,7 +98,7 @@ export function AccountScreen({onBack}: Props) {
           <Text style={styles.warnTitle}>Google Sign-In not configured</Text>
           <Text style={styles.warnBody}>
             Add your Firebase Web client ID to android/app/src/main/res/values/strings.xml as
-            google_web_client_id. See ENV_SETUP.md in the repo root.
+            google_web_client_id. See docs/setup/ENV_SETUP.md.
           </Text>
         </View>
       ) : null}

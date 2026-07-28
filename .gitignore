@@ -4,3 +4,13 @@ graphify-out/
 # Logs
 logs/
 *.log
+
+# Local debug / battery dumps (do not commit)
+artifacts/
+*.db
+*_batterystats*.txt
+emergency15_batterystats.txt
+
+# Scratch captures
+**/.tmp-*
+.tmp-*

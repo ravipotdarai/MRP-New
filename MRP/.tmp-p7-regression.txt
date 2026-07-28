@@ -1,7 +1,0 @@
-P1-Home tabs/timeline: MRP | &#128205; Circle sharing ON · P7 Family | &#127384; Panic | MRP Guide
-P1-Security: Setup | Permissions | SYSTEM ACCESS &amp; PERMISSIONS | &#128274; Review permissions setup | Capture intruder selfie on security event | Security
-P7-7 Promotions: Promotions | Offers and rewards. Links are config-driven (Remote Config optional later). | Launch offer | Premium trial messaging — configure before store release | Open ? | &#127968; | Home | &#128737;? | Security | HUB | Hub | &#128202;
-P7-7 Affiliates: Affiliates | Share MRP. Referral tracking lands with Nest + Play billing. | Share MRP | Invite friends — affiliate tracking arrives with Nest billing | Open ? | &#127968; | Home | &#128737;? | Security | HUB | Hub | &#128202;
-P5-Drive: Drive Sync | Drive Sync | Encrypted backup to your Google Drive app folder only — MRP never stores vault contents. | Status | Google: ravipotdarai@gmail.com | Drive appdata: Connected | Local timeline events: 830 | Pending SIM sync items: 0 | Last backup: 7/27/2026, 1:54:00?PM | Remote file: 2026-07-27T08:23:59.219Z | Refresh status | Reconnect Drive | Settings | Wi-Fi only | Skip uploads on cellular
-P1-AppUsage: Dashboard | Timeline | Reports | Safety | App Usage Overview | MRP Screen Time | 3h 59m | Foreground time · last 24 hours | Apps Used Today | 21 | Unique apps launched | SCREEN TIME
-P4-FriendsMap: P7 Friends group | Friends group · 4/10 members | LIVE MAP · MAP + PATH | Waiting for live points… Turn Share ON after mutual consent. | Live share | Share my location

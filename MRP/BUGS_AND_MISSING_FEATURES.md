@@ -695,7 +695,7 @@ val content = timelineFile.readText(StandardCharsets.UTF_8).trim()
 ### 30. Missing Subscription System
 **Severity**: 🟢 LOW
 
-**File**: None (design: [SUBSCRIPTION_PLAN.md](SUBSCRIPTION_PLAN.md), master: [PROJECT_IMPLEMENTATION_PLAN.md](../PROJECT_IMPLEMENTATION_PLAN.md))
+**File**: None (design: [SUBSCRIPTION_PLAN.md](SUBSCRIPTION_PLAN.md), master: [PROJECT_IMPLEMENTATION_PLAN.md](../docs/plans/PROJECT_IMPLEMENTATION_PLAN.md))
 
 **Problem**:
 - No plan management
@@ -703,7 +703,7 @@ val content = timelineFile.readText(StandardCharsets.UTF_8).trim()
 - No payment integration
 
 **Fix Required**:
-- Follow [PROJECT_IMPLEMENTATION_PLAN.md](../PROJECT_IMPLEMENTATION_PLAN.md) phases P1–P7 + per-phase test plans
+- Follow [PROJECT_IMPLEMENTATION_PLAN.md](../docs/plans/PROJECT_IMPLEMENTATION_PLAN.md) phases P1–P7 + per-phase test plans
 - Follow [SUBSCRIPTION_PLAN.md](SUBSCRIPTION_PLAN.md) (Free / Premium / Family / Enterprise; Circle = Enterprise)
 - Create subscription screen
 - Implement plan selection
