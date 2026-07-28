@@ -5,25 +5,34 @@ import {useTheme} from '../../shared/ThemeContext';
 
 type Props = {
   panicActive?: boolean;
+  emergencyActive?: boolean;
   circleSharing?: boolean;
   circleName?: string;
 };
 
-/** Home status strip when Panic or Circle live share is active (P7-6). */
+/** Home status strip when Panic, Emergency, or Circle live share is active. */
 export function ActivityStatusBanner({
   panicActive,
+  emergencyActive,
   circleSharing,
   circleName,
 }: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  if (!panicActive && !circleSharing) return null;
+  if (!panicActive && !emergencyActive && !circleSharing) return null;
 
   return (
     <View style={styles.wrap}>
       {panicActive ? (
         <View style={[styles.chip, styles.panic]}>
           <Text style={styles.chipText}>🆘 Panic alert sent — contacts notified</Text>
+        </View>
+      ) : null}
+      {emergencyActive ? (
+        <View style={[styles.chip, styles.emergency]}>
+          <Text style={styles.chipText}>
+            📡 Emergency / Find-my-device tracking ON
+          </Text>
         </View>
       ) : null}
       {circleSharing ? (
@@ -49,6 +58,10 @@ function createStyles(colors: ColorPalette) {
     panic: {
       backgroundColor: colors.redSoft,
       borderColor: colors.red,
+    },
+    emergency: {
+      backgroundColor: colors.amberSoft,
+      borderColor: colors.amber,
     },
     share: {
       backgroundColor: colors.emeraldSoft,

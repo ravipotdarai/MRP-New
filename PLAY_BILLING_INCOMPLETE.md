@@ -53,5 +53,8 @@ When Play Console is ready:
 - [ ] License tester account on device  
 - [ ] Internal testing AAB installed from Play  
 - [ ] `Subscriptions.json` → `"mode": "play"`  
+- [ ] `MRP/android/gradle.properties` → `mrpAllowHardcodedBilling=false`  
 - [ ] Purchase / restore / cancel / grace tested on device  
-- [ ] Remove or disable hardcoded activate path for production  
+- [ ] Hardcoded `activateCatalogProduct` rejected on that build  
+
+See also [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md).

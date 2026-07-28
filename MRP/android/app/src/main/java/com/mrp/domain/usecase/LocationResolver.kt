@@ -78,6 +78,19 @@ object LocationResolver {
         return if (age <= CACHE_MAX_AGE_MS) loc else null
     }
 
+    /** Cached fix only — does not call fused/GPS (avoids location privacy indicator). */
+    fun resolveCacheOnly(context: Context): ResolvedLocation? {
+        if (!hasPermission(context)) return null
+        val loc = peekCache() ?: return null
+        return ResolvedLocation(
+            location = loc,
+            tier = "cache",
+            cacheHit = true,
+            durationMs = 0,
+            provider = loc.provider ?: cachedTier
+        )
+    }
+
     fun updateCache(location: Location, tier: String) {
         cached = location
         cachedAtElapsed = SystemClock.elapsedRealtime()

@@ -107,14 +107,19 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "com.mrp"
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.mrp"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0"
+        versionName "1.0.0"
         resValue "string", "firebase_database_url", firebaseDatabaseUrl
         resValue "string", "google_maps_api_key", googleMapsApiKey
+        buildConfigField "boolean", "ALLOW_HARDCODED_BILLING",
+            "${project.hasProperty('mrpAllowHardcodedBilling') ? project.property('mrpAllowHardcodedBilling') : 'true'}"
     }
     signingConfigs {
         debug {

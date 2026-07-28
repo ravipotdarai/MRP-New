@@ -51,6 +51,7 @@ import {
   subscribeCircleInvite,
 } from './circleInvitePending';
 import {registerFcmForCircleInvites} from '../../native/MrpFcm.types';
+import {CIRCLE_ENABLED} from '../../config/featureFlags';
 import type {CircleCategoryCode, LocalCircle} from './circleTypes';
 import {pinStyle, type LiveMapPoint} from './circleMapUrls';
 
@@ -96,7 +97,7 @@ export function CircleScreen({onUpgrade}: Props) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const {canUseFeature, tier, caps} = useEntitlements();
   const {auth, firebaseReady, ensureFirebaseAuth} = useAuth();
-  const unlocked = caps.circleLive;
+  const unlocked = CIRCLE_ENABLED && caps.circleLive;
 
   const [circles, setCircles] = useState<LocalCircle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +141,7 @@ export function CircleScreen({onUpgrade}: Props) {
   }, [applyInviteCode]);
 
   useEffect(() => {
-    if (!unlocked || !firebaseReady) return;
+    if (!unlocked || !firebaseReady || !CIRCLE_ENABLED) return;
     registerFcmForCircleInvites().catch(() => {});
   }, [unlocked, firebaseReady]);
 

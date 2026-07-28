@@ -2,6 +2,7 @@ package com.mrp.domain.usecase
 
 import android.content.Context
 import android.util.Log
+import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.model.*
 import kotlinx.coroutines.*
@@ -9,6 +10,10 @@ import kotlinx.coroutines.*
 /**
  * Centralized event logger that creates timeline entries with location and geofencing.
  * Location uses [LocationResolver] Wi‑Fi → cell → GPS cascade with event severity.
+ *
+ * GEOFENCE_ENTER / GEOFENCE_EXIT timeline rows are owned only by
+ * [com.mrp.presentation.receiver.GeofenceTransitionReceiver] (OS fence) and
+ * high-confidence presence paths — never invented from Wi‑Fi / screen / other events.
  */
 class TimelineEventLogger(private val context: Context) {
 
@@ -54,15 +59,36 @@ class TimelineEventLogger(private val context: Context) {
             Log.d(TAG, "Logging event: $eventType / $status")
 
             val severity = LocationResolver.severityForEvent(eventType)
-            val resolved = LocationResolver.resolveSync(context, severity)
+            // High-churn / non-security events: cache only (no fused/GPS privacy light).
+            // SIM / wrong-unlock / USB / factory / geofence still resolve fresh.
+            val resolved = if (isCacheOnlyEvent(eventType)) {
+                LocationResolver.resolveCacheOnly(context)
+            } else {
+                LocationResolver.resolveSync(context, severity)
+            }
             val location = resolved?.location
             val addressParts = location?.let {
                 locationHelper.reverseGeocodePartsSync(it.latitude, it.longitude)
             }
             val address = addressParts?.formatted
-            val geofenceResult = location?.let {
-                locationHelper.evaluateGeofence(it.latitude, it.longitude)
+
+            // Snapshot only — do not invent ENTER/EXIT from this evaluation.
+            // Prefer last OS-confirmed fence state so Wi‑Fi/screen events do not
+            // flip the row to "exit" when location is missing or stale.
+            val lastInside = DeviceTrackingPrefs.lastGeofenceInside(context)
+            val lastFenceId = DeviceTrackingPrefs.lastGeofenceId(context)
+            val isGeofenceEvent = eventType.uppercase().startsWith("GEOFENCE_")
+            val evaluated = if (isGeofenceEvent && location != null) {
+                locationHelper.evaluateGeofence(location.latitude, location.longitude)
+            } else {
+                null
             }
+            val insideFence = when {
+                evaluated != null -> evaluated.insideFence
+                lastInside != null -> lastInside
+                else -> false
+            }
+            val fenceId = evaluated?.fenceId ?: lastFenceId
 
             val enrichedMeta = buildMap {
                 putAll(metadata)
@@ -77,9 +103,9 @@ class TimelineEventLogger(private val context: Context) {
                     put("address_city", addressParts.city)
                     put("address_postal", addressParts.postalCode)
                 }
-                if (geofenceResult != null) {
-                    put("geofence_name", geofenceResult.zoneName)
-                    put("geofence_distance_m", geofenceResult.distanceToCenter)
+                if (evaluated != null) {
+                    put("geofence_name", evaluated.zoneName)
+                    put("geofence_distance_m", evaluated.distanceToCenter)
                 }
             }
 
@@ -93,42 +119,14 @@ class TimelineEventLogger(private val context: Context) {
                     detailedAddress = address ?: "Address Unavailable (Offline)"
                 ),
                 geofenceStatus = GeofenceStatus(
-                    insideFence = geofenceResult?.insideFence ?: false,
-                    fenceId = geofenceResult?.fenceId
+                    insideFence = insideFence,
+                    fenceId = fenceId
                 ),
                 metadata = enrichedMeta
             )
 
             timelineStorage.appendTimelineEntrySync(entry)
             EventSyncPublisher.publishAsync(context, entry, addressParts)
-
-            // Soft geofence ENTER/EXIT when an event's location crosses a zone
-            // (OS GeofencingClient is primary; this covers cases without Play Services trigger yet)
-            if (geofenceResult != null && !eventType.startsWith("GEOFENCE_")) {
-                val prevInside = com.mrp.data.local.DeviceTrackingPrefs.lastGeofenceInside(context)
-                val prevId = com.mrp.data.local.DeviceTrackingPrefs.lastGeofenceId(context)
-                val crossed = prevInside != null &&
-                    (prevInside != geofenceResult.insideFence ||
-                        (prevId ?: "") != (geofenceResult.fenceId ?: ""))
-                if (crossed) {
-                    GeofenceTimeline.emitTransition(
-                        context = context,
-                        entered = geofenceResult.insideFence,
-                        zoneName = geofenceResult.zoneName,
-                        fenceId = geofenceResult.fenceId,
-                        distanceM = geofenceResult.distanceToCenter,
-                        lat = location!!.latitude,
-                        lng = location.longitude,
-                        accuracy = location.accuracy,
-                        addressParts = addressParts
-                    )
-                }
-                com.mrp.data.local.DeviceTrackingPrefs.rememberGeofence(
-                    context,
-                    geofenceResult.insideFence,
-                    geofenceResult.fenceId
-                )
-            }
 
             if (location != null) {
                 DevicePresenceTracker.pingFromEvent(
@@ -145,8 +143,8 @@ class TimelineEventLogger(private val context: Context) {
                     resolved = resolved,
                     triggerSource = eventType,
                     address = address,
-                    insideGeofence = geofenceResult?.insideFence ?: false,
-                    geofenceId = geofenceResult?.fenceId
+                    insideGeofence = insideFence,
+                    geofenceId = fenceId
                 )
             }
             Log.d(TAG, "Logged event: $eventType / $status")
@@ -159,6 +157,20 @@ class TimelineEventLogger(private val context: Context) {
         private const val TAG = "TimelineEventLogger"
         private val lastEventTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
         private const val DEBOUNCE_MS = 1000L
+
+        private fun isCacheOnlyEvent(eventType: String): Boolean {
+            return when (eventType.uppercase()) {
+                "SCREEN_LOCK", "SCREEN_UNLOCK",
+                "WIFI_CONNECTED", "WIFI_DISCONNECTED",
+                "WIFI_ENABLED", "WIFI_DISABLED",
+                "BLUETOOTH_ENABLED", "BLUETOOTH_DISABLED",
+                "BLUETOOTH_CONNECTED", "BLUETOOTH_DISCONNECTED",
+                "MOBILE_DATA_ENABLED", "MOBILE_DATA_DISABLED",
+                "AIRPLANE_MODE_ENABLED", "AIRPLANE_MODE_DISABLED",
+                "HOTSPOT_ENABLED", "HOTSPOT_DISABLED" -> true
+                else -> false
+            }
+        }
 
         fun shouldDebounce(eventType: String, status: String): Boolean {
             val key = "$eventType:$status"

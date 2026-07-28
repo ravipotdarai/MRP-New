@@ -25,11 +25,12 @@ export function BackgroundLocationDisclosure({visible, onContinue, onCancel}: Pr
             <Text style={styles.title}>Background location</Text>
             <Text style={styles.body}>
               MRP uses location in the background only when you enable monitoring features such as
-              geofence alerts, emergency tracking, or Circle live share.
+              geofence alerts or emergency / find-my-device tracking.
             </Text>
             <Text style={styles.body}>
-              Location stays on this device and in your encrypted Google Drive appData vault when
-              sync is on. It is not uploaded to MRP servers as raw GPS.
+              Your security data stays on this device. If Drive sync is on, an encrypted copy is
+              stored only in your private Google Drive app folder (unlocked with your PIN). Location
+              is not uploaded to MRP servers as raw GPS. MRP does not sell your data.
             </Text>
             <Text style={styles.body}>
               You can turn off background tracking anytime in Hub → Geofence / Sync policy, or revoke

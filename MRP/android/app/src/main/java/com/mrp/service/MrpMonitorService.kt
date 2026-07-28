@@ -16,9 +16,6 @@ import android.content.pm.ServiceInfo
 import android.graphics.ImageFormat
 import android.hardware.camera2.*
 import android.media.ImageReader
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.bluetooth.BluetoothAdapter
 import android.database.ContentObserver
@@ -82,6 +79,11 @@ class MrpMonitorService : Service() {
     private var lastSimEventType: String? = null
     private var lastWifiBssid: String? = null
     private var lastAppUsageCheckTime: Long = 0
+    private var toggleEvalPending = false
+    private val toggleEvalRunnable = Runnable {
+        toggleEvalPending = false
+        evaluateAllToggles()
+    }
 
     // Handler for delayed tasks
     private val handler = Handler(Looper.getMainLooper())
@@ -178,11 +180,11 @@ class MrpMonitorService : Service() {
                             handleWifiChangeExplicit(isWifiOn = false, forceLog = false)
                             lastWifiAssociated = false
                         }
-                        scheduleToggleEvaluation()
+                        // Do not re-run evaluateAllToggles here — explicit handler already ran.
+                        // QS / screen-on often rebroadcast Wi‑Fi state without a real toggle.
                     }
                     WifiManager.NETWORK_STATE_CHANGED_ACTION -> {
                         handleWifiAssociationChange(wifiNetworkInfo)
-                        scheduleToggleEvaluation()
                     }
                     "com.mrp.TEST_WIFI_TOGGLE" -> {
                         handleWifiChangeExplicit(testWifiState, forceLog = false)
@@ -275,36 +277,32 @@ class MrpMonitorService : Service() {
     }
 
     private fun scheduleToggleEvaluation() {
-        backgroundHandler?.post { evaluateAllToggles() }
-        backgroundHandler?.postDelayed({ evaluateAllToggles() }, 500)
-        backgroundHandler?.postDelayed({ evaluateAllToggles() }, 1200)
-        backgroundHandler?.postDelayed({ evaluateAllToggles() }, 2500)
+        val bg = backgroundHandler ?: return
+        if (toggleEvalPending) {
+            bg.removeCallbacks(toggleEvalRunnable)
+        }
+        toggleEvalPending = true
+        bg.postDelayed(toggleEvalRunnable, TOGGLE_EVAL_DEBOUNCE_MS)
     }
 
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            super.onAvailable(network)
-            Log.d(TAG, "Network available")
-            scheduleToggleEvaluation()
-        }
+    // NetworkCallback removed: default callback kept radio interested on screen-on.
+    // Wi‑Fi / airplane / mobile / hotspot use explicit broadcast receivers instead.
 
-        override fun onLost(network: Network) {
-            super.onLost(network)
-            Log.d(TAG, "Network lost")
-            scheduleToggleEvaluation()
-        }
-
-        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            super.onCapabilitiesChanged(network, capabilities)
-            Log.d(TAG, "Network capabilities changed")
-            scheduleToggleEvaluation()
-        }
-    }
-
+    /**
+     * Only watch settings that map to real toggle events.
+     * Watching all of Settings.Global/Secure fires when the QS shade opens
+     * and was causing redundant selfie + location work.
+     */
     private val settingsObserver = object : ContentObserver(handler) {
         override fun onChange(selfChange: Boolean) {
             super.onChange(selfChange)
-            Log.d(TAG, "Settings content observer fired")
+            Log.d(TAG, "Toggle settings observer fired")
+            scheduleToggleEvaluation()
+        }
+
+        override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
+            super.onChange(selfChange, uri)
+            Log.d(TAG, "Toggle settings observer fired uri=$uri")
             scheduleToggleEvaluation()
         }
     }
@@ -424,6 +422,8 @@ class MrpMonitorService : Service() {
     }
 
     private fun stopBackgroundThread() {
+        backgroundHandler?.removeCallbacks(toggleEvalRunnable)
+        toggleEvalPending = false
         backgroundThread?.quitSafely()
         try {
             backgroundThread?.join()
@@ -478,11 +478,29 @@ class MrpMonitorService : Service() {
             }
             registerReceiver(packageChangeHandler.receiver, packageChangeHandler.intentFilter(), pkgFlags)
 
-            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+            // Do not registerDefaultNetworkCallback — it wakes radio on screen-on / QS.
 
-            contentResolver.registerContentObserver(Settings.Global.CONTENT_URI, true, settingsObserver)
-            contentResolver.registerContentObserver(Settings.Secure.CONTENT_URI, true, settingsObserver)
+            // Narrow observers: full Global/Secure trees fire on QS shade / status bar UI.
+            contentResolver.registerContentObserver(
+                Settings.Global.getUriFor(Settings.Global.AIRPLANE_MODE_ON),
+                false,
+                settingsObserver,
+            )
+            contentResolver.registerContentObserver(
+                Settings.Global.getUriFor("mobile_data"),
+                false,
+                settingsObserver,
+            )
+            contentResolver.registerContentObserver(
+                Settings.Global.getUriFor("bluetooth_on"),
+                false,
+                settingsObserver,
+            )
+            contentResolver.registerContentObserver(
+                Settings.Global.getUriFor("wifi_on"),
+                false,
+                settingsObserver,
+            )
 
             ensureBluetoothConnectionMonitor()
         } catch (e: Exception) {
@@ -492,6 +510,11 @@ class MrpMonitorService : Service() {
 
     private fun ensureBluetoothConnectionMonitor() {
         try {
+            val settings = try { settingsStorage.getSettings() } catch (_: Exception) { return }
+            if (!settings.captureOnBluetooth) {
+                bluetoothConnectionMonitor?.stop()
+                return
+            }
             if (bluetoothConnectionMonitor == null) {
                 bluetoothConnectionMonitor = com.mrp.domain.usecase.BluetoothConnectionMonitor(this) { connected, name, address ->
                     handleBluetoothDeviceLink(connected, name, address)
@@ -511,11 +534,6 @@ class MrpMonitorService : Service() {
         try {
             unregisterReceiver(packageChangeHandler.receiver)
         } catch (e: Exception) { Log.w(TAG, "packageChangeHandler not registered") }
-
-        try {
-            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            connectivityManager.unregisterNetworkCallback(networkCallback)
-        } catch (e: Exception) { Log.w(TAG, "networkCallback not registered") }
 
         try {
             contentResolver.unregisterContentObserver(settingsObserver)
@@ -873,7 +891,7 @@ class MrpMonitorService : Service() {
             if (associated) StatusValues.CONNECTED else StatusValues.DISCONNECTED,
             metadata
         )
-        requestPhoto(this, eventName)
+        // Log only — association flaps when screen/QS wakes; selfie stays on radio toggle.
     }
 
     private fun handleBluetoothDeviceLink(
@@ -1303,6 +1321,7 @@ class MrpMonitorService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Error closing camera", e)
         } finally {
+            releaseWakeLock()
             cameraFgsActive = false
             updateForegroundServiceTypes()
         }
@@ -1399,7 +1418,7 @@ class MrpMonitorService : Service() {
                 PowerManager.ON_AFTER_RELEASE,
                 "MRP:EventWakeLock"
             )
-            wakeLock?.acquire(15000)
+            wakeLock?.acquire(EVENT_WAKE_LOCK_MS)
             Log.d(TAG, "WakeLock acquired for event processing")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to wake device", e)
@@ -1421,6 +1440,13 @@ class MrpMonitorService : Service() {
         private const val TAG = "MrpMonitorService"
         private const val NOTIFICATION_ID = 1001
         private const val CHANNEL_ID = "mrp_monitoring_channel"
+        private const val TOGGLE_EVAL_DEBOUNCE_MS = 1500L
+        private const val EVENT_WAKE_LOCK_MS = 5000L
+        /** Skip redundant selfies from QS/shade churn (Wi‑Fi ON still uses this gap). */
+        private const val PHOTO_DEBOUNCE_MS = 12_000L
+        /** Still allow fast capture for SIM / wrong-unlock / USB / factory / panic. */
+        private const val PHOTO_DEBOUNCE_CRITICAL_MS = 2_500L
+        @Volatile private var lastPhotoRequestMs = 0L
         const val ACTION_REQUEST_PHOTO = "com.mrp.ACTION_REQUEST_PHOTO"
         const val ACTION_STOP_SERVICE = "com.mrp.ACTION_STOP_SERVICE"
 
@@ -1443,6 +1469,17 @@ class MrpMonitorService : Service() {
 
         fun requestPhoto(context: Context, eventName: String = "unknown") {
             try {
+                val now = System.currentTimeMillis()
+                val critical = eventName.uppercase().let { e ->
+                    e.contains("SIM") || e.contains("WRONG") || e.contains("USB") ||
+                        e.contains("FACTORY") || e.contains("PANIC")
+                }
+                val minGapMs = if (critical) PHOTO_DEBOUNCE_CRITICAL_MS else PHOTO_DEBOUNCE_MS
+                if (now - lastPhotoRequestMs < minGapMs) {
+                    Log.d(TAG, "requestPhoto debounced for event: $eventName")
+                    return
+                }
+                lastPhotoRequestMs = now
                 Log.d(TAG, "requestPhoto triggered for event: $eventName")
                 // Launch CameraCaptureActivity transparent overlay over lockscreen
                 val intent = Intent(context, CameraCaptureActivity::class.java).apply {

@@ -27,7 +27,9 @@ class DeviceTrackingModule(private val reactContext: ReactApplicationContext) :
             val map = readableToMap(config)
             // Clamp emergency interval
             val emergMin = (map["emergencyIntervalMinutes"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 1
-            val freq = (map["syncFrequencyMinutes"] as? Number)?.toInt()?.coerceAtLeast(1) ?: 15
+            val freq = (map["syncFrequencyMinutes"] as? Number)?.toInt()
+                ?.coerceAtLeast(DeviceTrackingPrefs.MIN_SYNC_FREQUENCY_MINUTES)
+                ?: 15
             val normalized = map.toMutableMap()
             normalized["emergencyIntervalMinutes"] = emergMin
             normalized["syncFrequencyMinutes"] = freq

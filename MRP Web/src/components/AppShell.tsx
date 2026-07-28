@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 const NAV = [
   { href: "/dashboard", label: "Overview" },
@@ -65,6 +66,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="shell-user">
+          <ThemeSwitcher />
           <p className="mono">{user.email}</p>
           {isAdmin ? <span className="badge badge-alert">Admin</span> : null}
           <button type="button" className="btn" onClick={() => void signOut()}>

@@ -235,12 +235,13 @@ object DriveVaultSync {
         val last = DeviceTrackingPrefs.lastDriveSyncMs(context)
         if (last <= 0) return true
         val elapsed = System.currentTimeMillis() - last
+        // Events + geofence transitions sync immediately so timeline hits Drive promptly.
+        // Routine / manual cadence uses syncFrequency (≥10). Emergency uses its own interval.
         val needMs = when {
-            reason.startsWith("geofence") && DeviceTrackingPrefs.syncGeofenceChanges(context) ->
-                30_000L // geofence: allow sooner
-            DeviceTrackingPrefs.isEmergencyTracking(context) || reason.startsWith("emergency") ->
+            reason.startsWith("event") -> 0L
+            reason.startsWith("geofence") && DeviceTrackingPrefs.syncGeofenceChanges(context) -> 0L
+            reason.startsWith("emergency") || DeviceTrackingPrefs.isEmergencyTracking(context) ->
                 DeviceTrackingPrefs.emergencyIntervalMinutes(context) * 60_000L
-            reason.startsWith("event") -> 60_000L
             else -> DeviceTrackingPrefs.syncFrequencyMinutes(context) * 60_000L
         }
         return elapsed >= needMs

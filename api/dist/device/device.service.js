@@ -16,11 +16,11 @@ class DeviceService {
             syncSelfiesPremium: true,
             syncFrequencyMinutes: 15,
             emergencyTracking: false,
-            emergencyIntervalMinutes: 1,
+            emergencyIntervalMinutes: 5,
         };
     }
     async patchConfig(uid, patch, source = 'web') {
-        const emerg = Math.max(1, patch.emergencyIntervalMinutes ?? 1);
+        const emerg = Math.max(5, patch.emergencyIntervalMinutes ?? 5);
         const freq = Math.max(1, patch.syncFrequencyMinutes ?? 15);
         const applied = {
             ...this.defaults(),

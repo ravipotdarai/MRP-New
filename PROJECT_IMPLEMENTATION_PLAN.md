@@ -394,3 +394,5 @@ Living tracker for **Not started / Partial / Untested** items (updated as work p
 | 2026-07-24 | Linked [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md) for open Not started / Partial / Untested work |
 | 2026-07-24 | P5 Drive Sync first slice started — see [`MRP/DRIVE_SYNC.md`](MRP/DRIVE_SYNC.md) |
 | 2026-07-27 | P8 store-release started — Nest JWT guards; see [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md) |
+| 2026-07-28 | V1 Drive-only release track — [`V1_DRIVE_ONLY_RELEASE.md`](V1_DRIVE_ONLY_RELEASE.md); Circle flagged off |
+| 2026-07-28 | Store v1 — [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md); hardcoded billing gate |

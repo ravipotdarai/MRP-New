@@ -13,6 +13,7 @@ import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
 import {getSubscriptionsCatalog} from './subscriptionCatalog';
+import {CIRCLE_ENABLED} from '../../config/featureFlags';
 
 type Props = {onBack?: () => void};
 
@@ -93,8 +94,9 @@ export function SubscriptionScreen({}: Props) {
         <View style={styles.warnCard}>
           <Text style={styles.warnTitle}>Test catalog (Play Billing incomplete)</Text>
           <Text style={styles.warnBody}>
-            Plans load from Subscriptions.json. Selecting a plan enables real FeatureGate caps
-            locally. Complete Play Console later — see PLAY_BILLING_INCOMPLETE.md.
+            Plans unlock FeatureGate caps locally — not charged. Before production: Play Console
+            SKUs, set mode to play, and mrpAllowHardcodedBilling=false (STORE_V1_CHECKLIST). Circle
+            live share stays off for this release even on Enterprise.
           </Text>
         </View>
       ) : (
@@ -103,7 +105,8 @@ export function SubscriptionScreen({}: Props) {
 
       <Text style={styles.capsLine}>
         Caps now: {caps.simContacts} SIM contacts · {caps.timelineDays}-day timeline
-        {caps.circleLive ? ' · Circle ON' : ' · Circle OFF'}
+        {caps.circleLive ? ' · Circle entitlement' : ' · Circle OFF'}
+        {' · '}app flag {CIRCLE_ENABLED ? 'ON' : 'OFF'}
       </Text>
 
       {catalog.products.map(product => {

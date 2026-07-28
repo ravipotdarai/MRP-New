@@ -27,6 +27,9 @@ object DeviceTrackingPrefs {
     private const val KEY_LAST_GEOFENCE_ID = "last_geofence_id"
     private const val KEY_LAST_SYNC_MS = "last_drive_sync_ms"
 
+    /** Non-emergency Drive cadence floor (minutes). Emergency interval stays ≥1. */
+    const val MIN_SYNC_FREQUENCY_MINUTES = 10
+
     private fun p(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -58,15 +61,22 @@ object DeviceTrackingPrefs {
         p(context).getBoolean(KEY_SYNC_SELFIES, true)
 
     /** Normal Drive sync cadence (minutes). Emergency uses its own interval. */
-    fun syncFrequencyMinutes(context: Context): Int =
-        p(context).getInt(KEY_SYNC_FREQ_MIN, 15).coerceAtLeast(1)
+    fun syncFrequencyMinutes(context: Context): Int {
+        val prefs = p(context)
+        val raw = prefs.getInt(KEY_SYNC_FREQ_MIN, 15)
+        val clamped = raw.coerceAtLeast(MIN_SYNC_FREQUENCY_MINUTES)
+        if (raw < MIN_SYNC_FREQUENCY_MINUTES) {
+            prefs.edit().putInt(KEY_SYNC_FREQ_MIN, clamped).apply()
+        }
+        return clamped
+    }
 
     fun isEmergencyTracking(context: Context): Boolean =
         p(context).getBoolean(KEY_EMERGENCY, false)
 
     /** Emergency sync interval — default 1, never less than 1. */
     fun emergencyIntervalMinutes(context: Context): Int =
-        p(context).getInt(KEY_EMERGENCY_MIN, 1).coerceAtLeast(1)
+        p(context).getInt(KEY_EMERGENCY_MIN, 5).coerceAtLeast(1)
 
     fun lastDriveSyncMs(context: Context): Long =
         p(context).getLong(KEY_LAST_SYNC_MS, 0L)
@@ -113,8 +123,10 @@ object DeviceTrackingPrefs {
         (map["syncGeofenceChanges"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_GEOFENCE, it) }
         (map["syncSelfiesPremium"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_SELFIES, it) }
         when (val v = map["syncFrequencyMinutes"]) {
-            is Number -> e.putInt(KEY_SYNC_FREQ_MIN, v.toInt().coerceAtLeast(1))
-            is String -> v.toIntOrNull()?.let { e.putInt(KEY_SYNC_FREQ_MIN, it.coerceAtLeast(1)) }
+            is Number -> e.putInt(KEY_SYNC_FREQ_MIN, v.toInt().coerceAtLeast(MIN_SYNC_FREQUENCY_MINUTES))
+            is String -> v.toIntOrNull()?.let {
+                e.putInt(KEY_SYNC_FREQ_MIN, it.coerceAtLeast(MIN_SYNC_FREQUENCY_MINUTES))
+            }
         }
         (map["emergencyTracking"] as? Boolean)?.let { e.putBoolean(KEY_EMERGENCY, it) }
         when (val v = map["emergencyIntervalMinutes"]) {

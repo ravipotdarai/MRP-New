@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-28 (P8-3/4/6 code closed; CF schedule awaits Blaze)  
+**Last updated:** 2026-07-28 (Store v1 track started — see [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md))  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -210,16 +210,22 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ## P8 — Store release readiness (in progress)
 
-> Close deferred compliance + production blockers. Tracker: [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md).
+> Close deferred compliance + production blockers.  
+> **Active track:** [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md) · [`P8_STORE_RELEASE.md`](P8_STORE_RELEASE.md).
 
-### Not started
+### Not started (Console / human)
 | ID | Item | Notes |
 |---|---|---|
-| P8-1 | Play Data Safety form (was P7-4) | Paste from `MRP/P7_PLAY_DATA_SAFETY_PASTE.md` — Console step |
-| P8-2 | Play Billing live (`"mode": "play"`) | See `PLAY_BILLING_INCOMPLETE.md` |
-| P8-5 | Interactive Circle map (optional pinch) | Upgrade static ArcGIS if store UX requires |
-| P8-7 | Formal Circle 2-device E2E matrix | Deferred Circle detail pass |
+| P8-1 | Play Data Safety form (was P7-4) | Paste from `MRP/P7_PLAY_DATA_SAFETY_PASTE.md` |
+| P8-2 | Play Billing live (`"mode": "play"`) | See `PLAY_BILLING_INCOMPLETE.md`; also set `mrpAllowHardcodedBilling=false` |
+| P8-5 | Interactive Circle map (optional pinch) | Deferred — Circle off for v1 |
+| P8-7 | Formal Circle 2-device E2E matrix | Deferred to v2 (`CIRCLE_ENABLED`) |
 | P8-8 | Drive restore PIN smoke on clean device | Optional re-verify |
+
+### Partial (code prep for store)
+| ID | Item | Notes |
+|---|---|---|
+| P8-store | Store v1 checklist + billing gate + listing draft | **Started 2026-07-28** — Internal testing still needs Console steps |
 
 ### Ops follow-ups (code done; infra)
 | ID | Item | Notes |
@@ -227,13 +233,12 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | P8-6-cf | Scheduled `purgeStaleCircleLive` on Firebase | Source in `api/functions` — deploy needs **Blaze** plan |
 | P8-3-sa | Live ID token mint via Admin | `npm run test:jwt-live` needs `FIREBASE_SERVICE_ACCOUNT_JSON` / ADC file |
 
-### Code ready hooks (shipped with P7 close)
-- Circle: **Create all category demos (P7)**, **Seed demo peers (~10 km)**, **Peers approach phone**
-- Member color dots match map pins (`pinStyle`)
-- Local peer simulation: `circlePeerSim.ts` (does not write fake UIDs to Firebase)
+### Code ready hooks (shipped)
+- V1 Drive-only + Circle flag off; Panic / Emergency / Geofence / SIM preserved
 - P8-3 JWT guard + admin allowlist smoke passed
 - P8-4 FCM registry + deep links + assetlinks (debug SHA)
 - P8-6 Nest `POST /v1/admin/circle-live/purge` (+ CF source)
+- Hardcoded billing gate: `BuildConfig.ALLOW_HARDCODED_BILLING` / `mrpAllowHardcodedBilling`
 
 ---
 
@@ -282,6 +287,8 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-27 | P8 start / P8-3 | Nest Firebase JWT global guard; device UID ownership; admin allowlist; auth smoke script; PushPort + TTL scaffolds |
 | 2026-07-27 | P8-4 | FCM token RTDB registry; AdminPushPort; mrp:// + https deep links; Share invite links; web `/circle/join` |
 | 2026-07-28 | P8-3/4/6 close | JWT smoke+admin allowlist; Admin SDK honest config; Nest circle_live purge; CF source (Blaze-blocked); assetlinks debug SHA |
+| 2026-07-28 | V1 Drive-only | `CIRCLE_ENABLED=false`; privacy wording; Web themes + map/find-my-device/selfies; emergency min 1; see `V1_DRIVE_ONLY_RELEASE.md` |
+| 2026-07-28 | Store v1 start | `STORE_V1_CHECKLIST.md`; billing hardcoded gate; version 1.0.0; listing/Data Safety paste aligned |
 
 ---
 
@@ -292,3 +299,4 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-24 | Initial open-items tracker (Not started / Partial / Untested) for P0–P7 |
 | 2026-07-27 | P7 regression excl. P7-4; add P8 store-release scaffold |
 | 2026-07-27 | P8 kickoff — Nest JWT guards + release checklist doc |
+| 2026-07-28 | Store v1 track — checklist + Play Console handoff |

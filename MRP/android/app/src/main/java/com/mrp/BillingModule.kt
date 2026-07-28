@@ -161,10 +161,18 @@ class BillingModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * Hardcoded catalog selection (Subscriptions.json) until Play Console SKUs are live.
-     * See PLAY_BILLING_INCOMPLETE.md — remove/gate for production when mode=play.
+     * Blocked when BuildConfig.ALLOW_HARDCODED_BILLING is false (production gate).
+     * See STORE_V1_CHECKLIST.md / PLAY_BILLING_INCOMPLETE.md.
      */
     @ReactMethod
     fun activateCatalogProduct(productId: String, basePlanId: String, promise: Promise) {
+        if (!BuildConfig.ALLOW_HARDCODED_BILLING) {
+            promise.reject(
+                "HARDCODED_DISABLED",
+                "Hardcoded catalog is disabled for this build. Use Play Billing (Subscriptions.json mode=play).",
+            )
+            return
+        }
         try {
             val id = productId.trim()
             if (id.isEmpty() || id == "free") {

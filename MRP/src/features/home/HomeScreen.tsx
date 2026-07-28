@@ -24,6 +24,8 @@ import {ThemePickerModal} from '../../shared/components/ThemePickerModal';
 import {useSubscriptionTier} from '../../shared/hooks/useSubscriptionTier';
 import {ActivityStatusBanner} from './ActivityStatusBanner';
 import {loadLocalCircles} from '../circle/circleLocalStore';
+import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import {getTrackingConfig} from '../../native/DeviceTracking.types';
 
 const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
@@ -172,6 +174,7 @@ export function HomeScreen({
   const [panicHoldProgress, setPanicHoldProgress] = useState(0);
   const [panicBannerUntil, setPanicBannerUntil] = useState(0);
   const [circleSharingName, setCircleSharingName] = useState<string | null>(null);
+  const [emergencyActive, setEmergencyActive] = useState(false);
   const panicHoldTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [recoveryContactOk, setRecoveryContactOk] = useState(false);
@@ -260,23 +263,33 @@ export function HomeScreen({
     } catch {
       /* keep flags from individual checks */
     }
+    try {
+      const cfg = await getTrackingConfig();
+      setEmergencyActive(!!cfg.emergencyTracking);
+    } catch {
+      setEmergencyActive(false);
+    }
   }, []);
 
   // Refresh only when Home is opened / focused — no continuous polling
   useFocusEffect(
     useCallback(() => {
       loadAll();
-      void loadLocalCircles().then(circles => {
-        const sharing = circles.find(c => c.shareEnabled);
-        setCircleSharingName(sharing ? sharing.name : null);
-      });
+      void (CIRCLE_ENABLED
+        ? loadLocalCircles().then(circles => {
+            const sharing = circles.find(c => c.shareEnabled);
+            setCircleSharingName(sharing ? sharing.name : null);
+          })
+        : Promise.resolve().then(() => setCircleSharingName(null)));
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') {
           loadAll();
-          void loadLocalCircles().then(circles => {
-            const sharing = circles.find(c => c.shareEnabled);
-            setCircleSharingName(sharing ? sharing.name : null);
-          });
+          if (CIRCLE_ENABLED) {
+            void loadLocalCircles().then(circles => {
+              const sharing = circles.find(c => c.shareEnabled);
+              setCircleSharingName(sharing ? sharing.name : null);
+            });
+          }
         }
       });
       return () => sub.remove();
@@ -634,8 +647,9 @@ export function HomeScreen({
 
       <ActivityStatusBanner
         panicActive={panicBannerUntil > Date.now()}
-        circleSharing={!!circleSharingName}
-        circleName={circleSharingName || undefined}
+        emergencyActive={emergencyActive}
+        circleSharing={CIRCLE_ENABLED && !!circleSharingName}
+        circleName={CIRCLE_ENABLED ? circleSharingName || undefined : undefined}
       />
 
       {/* Quick actions: Subscribe + Panic */}

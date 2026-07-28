@@ -1,7 +1,7 @@
 {
   "mode": "hardcoded",
   "version": 1,
-  "description": "Local catalog for P3 testing until Play Console Developer account + SKUs are live. Set mode to \"play\" later and remove reliance on activateCatalogProduct.",
+  "description": "Local catalog for internal testing until Play Console SKUs are live. Before production: set mode to \"play\" and mrpAllowHardcodedBilling=false (STORE_V1_CHECKLIST.md).",
   "incompleteStep": "PLAY_CONSOLE_SUBSCRIPTIONS",
   "products": [
     {
@@ -62,7 +62,7 @@
       "productId": "mrp_enterprise",
       "tier": "enterprise",
       "title": "Enterprise",
-      "description": "Circle live share, fleet, extended retention",
+      "description": "Extended retention, fleet/admin. Circle live share comes in a later release.",
       "basePlans": [
         {
           "basePlanId": "monthly",

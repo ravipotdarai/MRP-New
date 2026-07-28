@@ -33,6 +33,8 @@ class MrpFcmModule(private val reactContext: ReactApplicationContext) :
             return
         }
         try {
+            // Enable FCM only when Circle invite registration is requested (v1 Circle is off).
+            FirebaseMessaging.getInstance().isAutoInitEnabled = true
             FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { token ->
                     if (token.isNullOrBlank()) {

@@ -24,6 +24,7 @@ import {DriveSyncScreen} from '../drive/DriveSyncScreen';
 import {GeofenceScreen} from '../geofence/GeofenceScreen';
 import {HubMenuCard} from './HubMenuCard';
 import {PromoLinksScreen} from './PromoLinksScreen';
+import {CIRCLE_ENABLED} from '../../config/featureFlags';
 
 export type HubSection =
   | 'menu'
@@ -61,13 +62,17 @@ const MENU_ITEMS: MenuItem[] = [
     icon: '🗺️',
     badge: 'Premium',
   },
-  {
-    id: 'circle',
-    title: 'Circle',
-    subtitle: 'Live Share — Enterprise',
-    icon: '📍',
-    badge: 'Enterprise',
-  },
+  ...(CIRCLE_ENABLED
+    ? ([
+        {
+          id: 'circle',
+          title: 'Circle',
+          subtitle: 'Live Share — Enterprise',
+          icon: '📍',
+          badge: 'Enterprise',
+        },
+      ] as MenuItem[])
+    : []),
   {
     id: 'drive-sync',
     title: 'Drive Sync',
@@ -184,11 +189,18 @@ export function HubScreen({
   }, [route?.params?.openSection]);
 
   useEffect(() => {
+    if (!CIRCLE_ENABLED) return;
     if (peekPendingCircleInvite()) {
       setSection('circle');
     }
     return subscribeCircleInvite(() => setSection('circle'));
   }, []);
+
+  useEffect(() => {
+    if (!CIRCLE_ENABLED && section === 'circle') {
+      setSection('menu');
+    }
+  }, [section]);
 
   if (section === 'about') {
     return (
@@ -229,6 +241,9 @@ export function HubScreen({
   }
 
   if (section === 'circle') {
+    if (!CIRCLE_ENABLED) {
+      return null;
+    }
     return (
       <SafeAreaView style={styles.safe}>
         <HubTitleBar title="Circle" styles={styles} />

@@ -12,12 +12,14 @@ export type DeviceTrackingConfig = {
   syncGeofenceChanges: boolean;
   /** Premium+ selfie bytes in Drive vault. */
   syncSelfiesPremium: boolean;
-  /** Normal Drive sync cadence (minutes, min 1). */
+  /** Normal Drive sync cadence (minutes, min 10). Emergency uses its own interval. */
   syncFrequencyMinutes: number;
   emergencyTracking: boolean;
   /** Emergency sync interval (minutes, min 1, default 1). */
   emergencyIntervalMinutes: number;
 };
+
+const MIN_SYNC_FREQUENCY_MINUTES = 10;
 
 const defaults: DeviceTrackingConfig = {
   movementTracking: true,
@@ -50,7 +52,10 @@ export async function getTrackingConfig(): Promise<DeviceTrackingConfig> {
   return {
     ...defaults,
     ...cfg,
-    syncFrequencyMinutes: Math.max(1, Number(cfg.syncFrequencyMinutes) || 15),
+    syncFrequencyMinutes: Math.max(
+      MIN_SYNC_FREQUENCY_MINUTES,
+      Number(cfg.syncFrequencyMinutes) || 15,
+    ),
     emergencyIntervalMinutes: Math.max(1, Number(cfg.emergencyIntervalMinutes) || 1),
   };
 }
@@ -59,7 +64,10 @@ export async function setTrackingConfig(cfg: DeviceTrackingConfig): Promise<bool
   if (!native?.setConfig) return false;
   return native.setConfig({
     ...cfg,
-    syncFrequencyMinutes: Math.max(1, cfg.syncFrequencyMinutes || 15),
+    syncFrequencyMinutes: Math.max(
+      MIN_SYNC_FREQUENCY_MINUTES,
+      cfg.syncFrequencyMinutes || 15,
+    ),
     emergencyIntervalMinutes: Math.max(1, cfg.emergencyIntervalMinutes || 1),
   });
 }

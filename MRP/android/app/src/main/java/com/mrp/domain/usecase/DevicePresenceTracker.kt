@@ -102,8 +102,16 @@ object DevicePresenceTracker {
         emitGeofenceTimeline: Boolean = true
     ) {
         val helper = LocationHelper(context)
-        helper.reloadGeofencesFromStorage()
-        val parts = helper.reverseGeocodePartsSync(lat, lng)
+        // Skip reverse-geocode on event/cache seeds — avoids FLP/network on screen-on churn.
+        // Emergency oneshots and dedicated geofence paths still geocode.
+        val parts = if (
+            source.startsWith("event:") ||
+            source == "cache_seed"
+        ) {
+            null
+        } else {
+            helper.reverseGeocodePartsSync(lat, lng)
+        }
         val geo = helper.evaluateGeofence(lat, lng)
 
         val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
@@ -144,21 +152,25 @@ object DevicePresenceTracker {
 
         LiveLocationStore.save(context, payload)
 
+        // Only dedicated geofence / emergency paths may mutate fence state + timeline.
+        // Event pings (Wi‑Fi, screen, etc.) must not invent ENTER/EXIT from a soft evaluate.
+        if (!emitGeofenceTimeline) {
+            return
+        }
+
         if (geofenceChanged) {
             DeviceTrackingPrefs.rememberGeofence(context, geo.insideFence, geo.fenceId)
-            if (emitGeofenceTimeline) {
-                GeofenceTimeline.emitTransition(
-                    context,
-                    entered = geo.insideFence,
-                    zoneName = geo.zoneName,
-                    fenceId = geo.fenceId,
-                    distanceM = geo.distanceToCenter,
-                    lat = lat,
-                    lng = lng,
-                    accuracy = accuracy,
-                    addressParts = parts
-                )
-            }
+            GeofenceTimeline.emitTransition(
+                context,
+                entered = geo.insideFence,
+                zoneName = geo.zoneName,
+                fenceId = geo.fenceId,
+                distanceM = geo.distanceToCenter,
+                lat = lat,
+                lng = lng,
+                accuracy = accuracy,
+                addressParts = parts
+            )
             if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
                 EventSyncPublisher.onGeofenceChanged(context, geo.insideFence, geo.fenceId)
             }
@@ -190,7 +202,7 @@ object DevicePresenceTracker {
                                 loc.longitude,
                                 loc.accuracy,
                                 "emergency_oneshot",
-                                emitGeofenceTimeline = true
+                                emitGeofenceTimeline = false // OS GeofenceTransitionReceiver owns ENTER/EXIT
                             )
                         }
                         DriveVaultSync.requestSyncAsync(app, "emergency")

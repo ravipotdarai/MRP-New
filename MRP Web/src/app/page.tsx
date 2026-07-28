@@ -7,8 +7,10 @@ export default function HomePage() {
         <p className="hero-kicker">Mobile Resilience Platform</p>
         <h1>Your vault stays yours.</h1>
         <p className="page-lead" style={{ marginBottom: 0 }}>
-          Sign in to decrypt your encrypted Drive backup, review timeline events, and tune sync
-          policy. Firebase stores configuration only — never location or selfies.
+          MRP keeps security data on <strong>your device</strong>. With backup on, an encrypted copy
+          lives only in <strong>your private Google Drive app folder</strong>, unlocked with your
+          PIN. MRP does not sell your data and does not keep a readable vault on MRP servers.
+          Firebase holds sync policy only — never location or selfies.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">
@@ -20,7 +22,7 @@ export default function HomePage() {
         </div>
       </div>
       <div className="hero-card rise rise-delay-2">
-        <span className="badge badge-safe">Privacy MVP</span>
+        <span className="badge badge-safe">Drive-only locate</span>
         <h2 style={{ fontFamily: "var(--font-display)", marginTop: "1rem", fontSize: "1.35rem" }}>
           Two apps, one project
         </h2>
@@ -30,9 +32,12 @@ export default function HomePage() {
             backup
           </li>
           <li>
-            <strong style={{ color: "var(--text)" }}>MRP Web</strong> — this console (P6)
+            <strong style={{ color: "var(--text)" }}>MRP Web</strong> — decrypt vault, map, find
+            device, sync policy
           </li>
-          <li>Drive scope: <code className="mono">drive.appdata</code> only</li>
+          <li>
+            Drive scope: <code className="mono">drive.appdata</code> only
+          </li>
           <li>Admin tools never return vault binaries</li>
         </ul>
       </div>

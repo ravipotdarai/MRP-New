@@ -48,7 +48,7 @@ export const DEVICE_CONFIG_DEFAULTS: DeviceConfig = {
   syncSelfiesPremium: true,
   syncFrequencyMinutes: 15,
   emergencyTracking: false,
-  emergencyIntervalMinutes: 1,
+  emergencyIntervalMinutes: 5,
 };
 
 const FORBIDDEN = ["lat", "lng", "address", "timeline", "selfie", "selfies"] as const;
@@ -79,7 +79,7 @@ export async function writeDeviceConfig(
   source: "web" | "admin" = "web",
 ): Promise<void> {
   const emerg = Math.max(1, Number(patch.emergencyIntervalMinutes ?? 1));
-  const freq = Math.max(1, Number(patch.syncFrequencyMinutes ?? 15));
+  const freq = Math.max(10, Number(patch.syncFrequencyMinutes ?? 15));
   const payload: DeviceConfig = {
     ...patch,
     emergencyIntervalMinutes: emerg,

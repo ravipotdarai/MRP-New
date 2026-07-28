@@ -81,13 +81,13 @@ export function SyncPolicyPanel() {
                 />
               </View>
             ))}
-            <Text style={styles.label}>Normal sync frequency (minutes, min 1)</Text>
+            <Text style={styles.label}>Normal sync frequency (minutes, min 10)</Text>
             <TextInput
               style={styles.input}
               keyboardType="number-pad"
               value={String(cfg.syncFrequencyMinutes)}
               onChangeText={t => {
-                const n = Math.max(1, parseInt(t || '1', 10) || 1);
+                const n = Math.max(10, parseInt(t || '10', 10) || 10);
                 void updateCfg({syncFrequencyMinutes: n});
               }}
               placeholderTextColor={colors.textMuted}
@@ -104,9 +104,16 @@ export function SyncPolicyPanel() {
               placeholderTextColor={colors.textMuted}
             />
             <Text style={[styles.meta, {marginTop: 8}]}>
-              After one Hub → Drive “Back up now”, auto Drive sync can use that PIN on device. Web
-              reads Drive vault — not Firebase live nodes.
+              Security events sync to Drive immediately. Normal cadence is ≥10 min. Emergency /
+              Find-my-device uses its own interval (min 1). After one Hub → Drive “Back up now”, auto
+              Drive sync can use that PIN on device.
             </Text>
+            {!!cfg.emergencyTracking ? (
+              <Text style={[styles.meta, {marginTop: 4, color: colors.amber}]}>
+                Emergency tracking is active now. `1-4 min` gives faster find-my-device updates but
+                uses much more battery; turn it off when done.
+              </Text>
+            ) : null}
           </>
         ) : (
           <Text style={styles.meta}>Loading policy…</Text>

@@ -54,8 +54,10 @@ POST /v1/admin/circle-live/purge
 
 ## Next actions (human / console)
 
-1. Paste Data Safety answers (P8-1) in Play Console.
-2. Finish Play subscriptions + set `"mode": "play"` (P8-2).
-3. Register FCM tokens + deep link join (P8-4) — **done**; 2-device proof (P8-7).
+1. Paste Data Safety answers (P8-1) — [`MRP/P7_PLAY_DATA_SAFETY_PASTE.md`](../MRP/P7_PLAY_DATA_SAFETY_PASTE.md).
+2. Finish Play subscriptions + set `"mode": "play"` + `mrpAllowHardcodedBilling=false` (P8-2).
+3. Upload Internal testing AAB — follow [`STORE_V1_CHECKLIST.md`](STORE_V1_CHECKLIST.md).
 4. TTL: Nest purge ready; upgrade to **Blaze** then `firebase deploy --only functions` for schedule.
 5. Optional: set `FIREBASE_SERVICE_ACCOUNT_JSON` and run `npm run test:jwt-live`.
+
+**Store v1 code prep (2026-07-28):** billing gate + listing draft + version `1.0.0` — see `STORE_V1_CHECKLIST.md`.

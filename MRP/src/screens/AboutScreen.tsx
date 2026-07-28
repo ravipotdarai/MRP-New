@@ -34,6 +34,11 @@ const MOMENTS = [
     then: 'Timeline records radio and zone enter/exit events; optional Drive vault sync keeps a private backup.',
     accent: 'violet' as const,
   },
+  {
+    when: 'You need help right now',
+    then: 'Hold Panic on Home to SMS recovery contacts with your location. Find-my-device (Web or Hub) turns on emergency GPS + Drive sync.',
+    accent: 'sky' as const,
+  },
 ];
 
 const LAYERS = [
@@ -50,12 +55,12 @@ const LAYERS = [
   {
     step: '03',
     title: 'Sync (optional)',
-    body: 'Hub → Drive Sync encrypts a vault to your Google Drive appData folder. Firebase holds sync policy only.',
+    body: 'Hub → Drive Sync encrypts a vault to your Google Drive app folder. Data stays on your device and your Drive — MRP servers never hold a readable vault. Firebase holds sync policy only.',
   },
   {
     step: '04',
     title: 'Review',
-    body: 'Home, Timeline, Photos, App Usage, and web (MRP Web) help you decide what to do next.',
+    body: 'Home, Timeline, Photos, App Usage, and MRP Web (decrypt in your browser) help you decide what to do next.',
   },
 ];
 
@@ -86,18 +91,24 @@ const HOW_TO_USE = [
   },
   {
     step: '5',
-    title: 'Circle & SIM (premium / enterprise)',
-    where: 'Hub → Circle · Hub → SIM Recovery',
-    body: 'Live share with consent, or SMS recovery contacts if the SIM changes.',
+    title: 'SIM recovery & Panic',
+    where: 'Hub → SIM Recovery · Home → Panic',
+    body: 'Add SMS recovery contacts for SIM change. Hold Panic on Home to alert those contacts. Circle live share ships later (flagged off for this release).',
   },
   {
     step: '6',
+    title: 'Find my device',
+    where: 'Hub → Drive Sync · MRP Web → Monitoring',
+    body: 'Turn on Emergency tracking (interval down to 1 min). Web Find-my-device writes the same policy; refresh the Drive vault to see location.',
+  },
+  {
+    step: '7',
     title: 'Review activity',
     where: 'Home · Security → Timeline / Photos · App Usage',
     body: 'Home status + banners; Timeline/Photos for evidence; App Usage for screen-time share and App Safety posture.',
   },
   {
-    step: '7',
+    step: '8',
     title: 'Web console',
     where: 'https://mobileresilienceplatform.web.app',
     body: 'Sign in with Google, decrypt your Drive vault with PIN, and edit sync policy remotely.',
@@ -165,8 +176,9 @@ export function AboutScreen() {
           <Text style={styles.tagline}>Mobile Resilience Platform</Text>
           <Text style={styles.version}>v{VERSION}</Text>
           <Text style={styles.heroBody}>
-            On-device security monitoring with optional encrypted Drive backup, geofence, Circle live
-            share, and a private web console — without putting your vault in Firebase.
+            On-device security monitoring with Panic, SIM recovery, geofence, emergency locate, and
+            optional encrypted Drive backup — plus a private web console. Your vault stays on your
+            phone and Drive, not in Firebase.
           </Text>
         </LinearGradient>
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/lib/theme-context";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -24,7 +25,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "MRP Web",
   description:
-    "Mobile Resilience Platform — monitor your devices from Drive vaults. Firebase holds config only.",
+    "Mobile Resilience Platform — your vault stays on your device and private Drive. Decrypt in your browser.",
 };
 
 export default function RootLayout({
@@ -33,10 +34,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="field" suppressHydrationWarning>
       <body className={`${fraunces.variable} ${plex.variable} ${plexMono.variable}`}>
         <div className="grain" aria-hidden />
-        <AuthProvider>{children}</AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

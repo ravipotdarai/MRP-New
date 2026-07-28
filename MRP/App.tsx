@@ -23,10 +23,12 @@ import {registerFcmForCircleInvites} from './src/native/MrpFcm.types';
 import {useCircleInviteDeepLink} from './src/features/circle/useCircleInviteDeepLink';
 import {subscribeCircleInvite} from './src/features/circle/circleInvitePending';
 import {createNavigationContainerRef} from '@react-navigation/native';
+import {CIRCLE_ENABLED} from './src/config/featureFlags';
 
 const navigationRef = createNavigationContainerRef();
 
 function navigateToCircleJoin() {
+  if (!CIRCLE_ENABLED) return;
   if (!navigationRef.isReady()) return;
   // @ts-expect-error tab + params
   navigationRef.navigate('Hub', {openSection: 'circle'});
@@ -155,7 +157,7 @@ function AppContent(): React.JSX.Element {
       try {
         await pullRemoteTrackingConfig();
         if (!cancelled) await startDevicePresence();
-        if (!cancelled) {
+        if (!cancelled && CIRCLE_ENABLED) {
           const fcm = await registerFcmForCircleInvites();
           if (!fcm.ok) {
             console.warn('[fcm] register skipped', fcm.reason);
@@ -170,10 +172,10 @@ function AppContent(): React.JSX.Element {
     };
   }, [isUnlocked, isPinSet]);
 
-  useCircleInviteDeepLink(!!(isUnlocked && isPinSet));
+  useCircleInviteDeepLink(!!(isUnlocked && isPinSet && CIRCLE_ENABLED));
 
   useEffect(() => {
-    if (!isUnlocked || !isPinSet) return;
+    if (!isUnlocked || !isPinSet || !CIRCLE_ENABLED) return;
     return subscribeCircleInvite(() => {
       navigateToCircleJoin();
     });
