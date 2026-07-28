@@ -11,12 +11,13 @@ import {
 } from 'react-native';
 import {ColorPalette, spacing} from '../theme';
 import {useTheme} from '../ThemeContext';
+import {CIRCLE_ENABLED} from '../../config/featureFlags';
 
 export type AppMenuTarget =
   | {screen: 'Home'}
   | {screen: 'Security'; tab: 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS'}
   | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY'}
-  | {
+      | {
       screen: 'Hub';
       section?:
         | 'account'
@@ -27,6 +28,7 @@ export type AppMenuTarget =
         | 'subscriptions'
         | 'promotions'
         | 'affiliates'
+        | 'policy'
         | 'about';
     };
 
@@ -71,12 +73,15 @@ const MENU: MenuRow[] = [
     children: [
       {label: 'Account', target: {screen: 'Hub', section: 'account'}},
       {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
-      {label: 'Circle', target: {screen: 'Hub', section: 'circle'}},
+      ...(CIRCLE_ENABLED
+        ? [{label: 'Circle', target: {screen: 'Hub', section: 'circle' as const}}]
+        : []),
       {label: 'Drive Sync', target: {screen: 'Hub', section: 'drive-sync'}},
       {label: 'SIM Recovery', target: {screen: 'Hub', section: 'sim-recovery'}},
       {label: 'Subscriptions', target: {screen: 'Hub', section: 'subscriptions'}},
       {label: 'Promotions', target: {screen: 'Hub', section: 'promotions'}},
       {label: 'Affiliates', target: {screen: 'Hub', section: 'affiliates'}},
+      {label: 'Policy', target: {screen: 'Hub', section: 'policy'}},
       {label: 'About MRP', target: {screen: 'Hub', section: 'about'}},
     ],
   },

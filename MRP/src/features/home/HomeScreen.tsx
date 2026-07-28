@@ -692,8 +692,8 @@ export function HomeScreen({
         />
         <StatCard
           icon="ℹ️"
-          label="How to use →"
-          value="MRP Guide"
+          label="How to use"
+          value="Guide →"
           accent={colors.sky}
           styles={styles}
           onPress={goMrpGuide}
@@ -761,7 +761,11 @@ export function HomeScreen({
                     color: latestEvent.geofence_status?.inside_fence ? colors.emerald : colors.amber,
                   },
                 ]}>
-                {latestEvent.geofence_status?.inside_fence ? '🏠 Inside Geofence' : '📍 Outside Geofence'}
+                {latestEvent.geofence_status?.inside_fence
+                  ? `🏠 Inside ${latestEvent.metadata?.geofence_name || 'zone'}`
+                  : latestEvent.metadata?.geofence_name
+                    ? `📍 Outside ${latestEvent.metadata.geofence_name}`
+                    : '📍 Outside zone'}
               </Text>
             </View>
           </View>
@@ -770,17 +774,16 @@ export function HomeScreen({
         )}
       </View>
 
-      {/* Current Location */}
+      {/* Current Location — pin only (no map tile) */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
           <Text style={styles.sectionTitle}>CURRENT LOCATION</Text>
-          <TouchableOpacity
-            onPress={() => {
-              const loc = liveLocation ?? latestEvent?.location;
-              if (loc && loc.latitude !== 0) openMaps(loc.latitude, loc.longitude);
-            }}>
-            <Text style={styles.viewAllText}>Open Maps →</Text>
-          </TouchableOpacity>
+          {liveLocation ? (
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveBadgeText}>Live location</Text>
+            </View>
+          ) : null}
         </View>
         {(() => {
           const loc = liveLocation ??
@@ -790,7 +793,8 @@ export function HomeScreen({
           if (!loc) {
             return (
               <>
-                <View style={styles.mapPlaceholder}>
+                <View style={styles.pinPlaceholder}>
+                  <Text style={styles.pinEmoji}>📍</Text>
                   <Text style={styles.mapLabel}>Waiting for GPS…</Text>
                 </View>
                 <Text style={styles.emptyText}>No location data available yet.</Text>
@@ -802,24 +806,28 @@ export function HomeScreen({
             loc.detailed_address !== 'Address Unavailable (Offline)'
               ? loc.detailed_address
               : null;
-          // Live map preview with provider fallbacks (OSM static endpoints are flaky)
+          const isLive = !!liveLocation;
           return (
-            <>
-              <LiveMapPreview
-                latitude={loc.latitude}
-                longitude={loc.longitude}
-                hasNetwork={
-                  network?.isWifi === true ||
-                  network?.isMobile === true ||
-                  network?.connectionType === 'Mobile' ||
-                  network?.connectionType === 'WiFi'
-                }
-                styles={styles}
-                onOpenMaps={() => openMaps(loc.latitude, loc.longitude)}
-              />
+            <TouchableOpacity
+              style={styles.pinCard}
+              onPress={() => openMaps(loc.latitude, loc.longitude)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="Open current location in Google Maps">
+              <View style={styles.pinVisual}>
+                <Text style={styles.pinEmojiLarge}>📍</Text>
+                {isLive ? (
+                  <View style={styles.liveBadgeInline}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveBadgeText}>Live location</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.lastKnownLabel}>Last known</Text>
+                )}
+              </View>
               {address ? (
                 <Text style={styles.locationAddress} numberOfLines={3}>
-                  📍 {address}
+                  {address}
                 </Text>
               ) : null}
               <View style={styles.locationInfoRow}>
@@ -827,10 +835,13 @@ export function HomeScreen({
                   {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
                 </Text>
                 <Text style={styles.locationAccuracy}>
-                  Accuracy ±{Math.round(loc.accuracy_meters || 0)}m
+                  ±{Math.round(loc.accuracy_meters || 0)}m
                 </Text>
               </View>
-            </>
+              <View style={styles.mapsCta}>
+                <Text style={styles.mapsCtaText}>Tap to open in Google Maps →</Text>
+              </View>
+            </TouchableOpacity>
           );
         })()}
       </View>
@@ -939,22 +950,24 @@ function StatCard({
   onPress?: () => void;
 }) {
   const inner = (
-    <>
+    <View style={styles.statInner}>
       <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
-        <Text style={{fontSize: 16}}>{icon}</Text>
+        <Text style={{fontSize: 14}}>{icon}</Text>
       </View>
-      <Text style={styles.statValue} numberOfLines={1}>
-        {value}
-      </Text>
-      {sub ? (
-        <Text style={styles.statSub} numberOfLines={1}>
-          {sub}
+      <View style={styles.statTextCol}>
+        <Text style={styles.statValue} numberOfLines={1}>
+          {value}
         </Text>
-      ) : null}
-      <Text style={styles.statLabel} numberOfLines={1}>
-        {label}
-      </Text>
-    </>
+        {sub ? (
+          <Text style={styles.statSub} numberOfLines={1}>
+            {sub}
+          </Text>
+        ) : null}
+        <Text style={styles.statLabel} numberOfLines={1}>
+          {label}
+        </Text>
+      </View>
+    </View>
   );
 
   if (onPress) {
@@ -971,111 +984,6 @@ function StatCard({
   }
 
   return <View style={styles.statCard}>{inner}</View>;
-}
-
-function buildMapUris(lat: number, lng: number): string[] {
-  return [
-    // Yandex static maps (usually reachable without API key)
-    `https://static-maps.yandex.ru/1.x/?lang=en_US&ll=${lng},${lat}&z=15&l=map&size=600,320&pt=${lng},${lat},pm2rdm`,
-    // OSM.de fallback
-    `https://staticmap.openstreetmap.de/staticmap.php?center=${lat},${lng}&zoom=15&size=600x320&maptype=mapnik&markers=${lat},${lng},red-pushpin`,
-  ];
-}
-
-const MAP_TILE_CACHE_MS = 10 * 60 * 1000;
-const mapTileCache = new Map<string, {uri: string; at: number}>();
-
-function roundCoord(n: number): string {
-  return n.toFixed(3);
-}
-
-function LiveMapPreview({
-  latitude,
-  longitude,
-  hasNetwork = true,
-  styles,
-  onOpenMaps,
-}: {
-  latitude: number;
-  longitude: number;
-  /** Wi‑Fi or mobile data — fetch static map tile (cached ~10 min). */
-  hasNetwork?: boolean;
-  styles: ReturnType<typeof createHomeStyles>;
-  onOpenMaps: () => void;
-}) {
-  const uris = useMemo(() => buildMapUris(latitude, longitude), [latitude, longitude]);
-  const cacheKey = `${roundCoord(latitude)},${roundCoord(longitude)}`;
-  const [uriIndex, setUriIndex] = useState(0);
-  const [failed, setFailed] = useState(!hasNetwork);
-
-  useEffect(() => {
-    setUriIndex(0);
-    setFailed(!hasNetwork);
-  }, [hasNetwork, latitude, longitude]);
-
-  const onError = () => {
-    if (uriIndex + 1 < uris.length) {
-      setUriIndex(i => i + 1);
-      return;
-    }
-    setFailed(true);
-  };
-
-  const showImage = hasNetwork && !failed;
-  const activeUri = uris[uriIndex];
-  useEffect(() => {
-    if (showImage && activeUri) {
-      mapTileCache.set(cacheKey, {uri: activeUri, at: Date.now()});
-    }
-  }, [showImage, activeUri, cacheKey]);
-
-  const cached = mapTileCache.get(cacheKey);
-  const useCached =
-    !showImage &&
-    cached &&
-    Date.now() - cached.at < MAP_TILE_CACHE_MS &&
-    hasNetwork;
-
-  const displayImage = showImage || useCached;
-  const imageUri = showImage ? activeUri : cached?.uri;
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onPress={onOpenMaps}
-      style={styles.mapPlaceholder}>
-      {displayImage && imageUri ? (
-        <Image
-          key={imageUri}
-          source={{uri: imageUri}}
-          style={styles.mapImage}
-          resizeMode="cover"
-          onError={onError}
-        />
-      ) : (
-        <View style={styles.mapFallback}>
-          <Text style={styles.mapFallbackPin}>📍</Text>
-          <Text style={styles.mapFallbackTitle}>
-            {hasNetwork ? 'Map preview unavailable' : 'Offline — open Google Maps'}
-          </Text>
-          <Text style={styles.mapFallbackCoords}>
-            {latitude.toFixed(5)}, {longitude.toFixed(5)}
-          </Text>
-        </View>
-      )}
-      {displayImage ? (
-        <View style={styles.livePinWrap} pointerEvents="none">
-          <Text style={styles.livePin}>📍</Text>
-          <View style={styles.livePinDot} />
-        </View>
-      ) : null}
-      <View style={styles.mapOverlay}>
-        <Text style={styles.mapLabel}>
-          {displayImage ? 'Live location · Tap for Google Maps' : 'Tap to open Google Maps'}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
 }
 
 function createHomeStyles(colors: ColorPalette) {
@@ -1168,28 +1076,41 @@ function createHomeStyles(colors: ColorPalette) {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    marginBottom: spacing.md,
+    gap: 0,
   },
   statCard: {
-    width: '48%',
+    width: '48.5%',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  statInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statTextCol: {flex: 1, minWidth: 0},
   statIcon: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.sm,
+    marginRight: spacing.sm,
   },
-  statValue: {fontSize: 18, fontWeight: '800', color: colors.textPrimary},
-  statSub: {fontSize: 11, color: colors.sky, fontWeight: '600'},
-  statLabel: {fontSize: 11, color: colors.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5},
+  statValue: {fontSize: 15, fontWeight: '800', color: colors.textPrimary},
+  statSub: {fontSize: 10, color: colors.sky, fontWeight: '600'},
+  statLabel: {
+    fontSize: 10,
+    color: colors.textMuted,
+    marginTop: 1,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -1241,101 +1162,75 @@ function createHomeStyles(colors: ColorPalette) {
   geofenceRow: {flexDirection: 'row', marginTop: spacing.sm},
   geofencePill: {paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, fontSize: 11, fontWeight: '700'},
   emptyText: {fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.md},
-  mapPlaceholder: {
-    height: 160,
+  pinPlaceholder: {
+    height: 88,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    position: 'relative',
   },
-  mapImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-  },
-  mapFallback: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+  pinCard: {
+    borderRadius: radius.md,
     backgroundColor: colors.surfaceAlt,
-    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
   },
-  mapFallbackPin: {fontSize: 34, marginBottom: 6},
-  mapFallbackTitle: {
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: '700',
-    textAlign: 'center',
+  pinVisual: {alignItems: 'center', marginBottom: spacing.sm},
+  pinEmoji: {fontSize: 28, marginBottom: 4},
+  pinEmojiLarge: {fontSize: 40, marginBottom: 6},
+  liveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.emeraldSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
   },
-  mapFallbackCoords: {
-    color: colors.textSecondary,
+  liveBadgeInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.emeraldSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.emerald,
+    marginRight: 6,
+  },
+  liveBadgeText: {
     fontSize: 12,
-    marginTop: 4,
-    fontFamily: 'monospace',
+    fontWeight: '800',
+    color: colors.emerald,
   },
-  mapOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(15, 23, 42, 0.72)',
+  lastKnownLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+  },
+  mapsCta: {
+    marginTop: spacing.md,
+    backgroundColor: colors.sky,
+    borderRadius: radius.md,
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  livePinWrap: {
-    position: 'absolute',
-    top: '42%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  livePin: {
-    fontSize: 36,
-    textShadowColor: 'rgba(0,0,0,0.45)',
-    textShadowOffset: {width: 0, height: 1},
-    textShadowRadius: 3,
-  },
-  livePinDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#ef4444',
-    borderWidth: 2,
-    borderColor: '#fff',
-    marginTop: -8,
-  },
-  mapGrid: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'transparent',
-    borderColor: 'rgba(56, 189, 248, 0.08)',
-    borderWidth: 0,
-  },
-  mapPinWrap: {alignItems: 'center', justifyContent: 'center'},
-  mapPin: {fontSize: 18},
-  mapPinPulse: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
-    zIndex: -1,
+  mapsCtaText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
   },
   mapLabel: {fontSize: 12, color: colors.textBody, fontWeight: '600'},
   locationInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   locationAddress: {
     fontSize: 13,

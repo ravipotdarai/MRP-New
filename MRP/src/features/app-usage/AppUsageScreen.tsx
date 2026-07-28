@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
+import Animated, {FadeIn} from 'react-native-reanimated';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
@@ -223,12 +224,12 @@ export function AppUsageScreen({route}: {route?: any}) {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.content}>
+      <Animated.View style={styles.content} key={activeTab} entering={FadeIn.duration(200)}>
         {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
         {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
         {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
         {activeTab === 'SAFETY' && <AppSafetyScreen />}
-      </View>
+      </Animated.View>
     </SafeAreaView>
   );
 }

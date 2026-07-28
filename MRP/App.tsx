@@ -71,9 +71,8 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
       <Tab.Screen
         name="Hub"
         options={{
-          tabBarIcon: ({color}) => (
-            <Text style={{fontSize: 18, color, fontWeight: '700'}}>HUB</Text>
-          ),
+          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>⚙️</Text>,
+          tabBarLabel: 'Hub',
         }}>
         {({navigation, route}) => <HubScreen navigation={navigation} route={route} />}
       </Tab.Screen>

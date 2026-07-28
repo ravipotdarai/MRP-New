@@ -1,6 +1,7 @@
 import React, {useState, useEffect, useCallback, useMemo} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
+import Animated, {FadeIn} from 'react-native-reanimated';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {MonitoringScreen} from '../monitoring/MonitoringScreen';
@@ -63,12 +64,12 @@ export function SecurityScreen({route}: {route?: any}) {
         </ScrollView>
       </View>
 
-      <View style={styles.content}>
+      <Animated.View style={styles.content} key={active} entering={FadeIn.duration(200)}>
         {active === 'MONITORING' && <MonitoringScreen />}
         {active === 'TIMELINE' && <TimelineScreen />}
         {active === 'PHOTOS' && <PhotoGallery />}
         {active === 'PERMISSIONS' && <PermissionsScreen />}
-      </View>
+      </Animated.View>
     </View>
   );
 }

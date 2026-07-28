@@ -3,6 +3,7 @@ package com.mrp.domain.usecase
 import android.content.Context
 import android.util.Log
 import com.mrp.data.local.DeviceTrackingPrefs
+import com.mrp.data.local.GeofenceStorage
 import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.model.*
 import kotlinx.coroutines.*
@@ -59,10 +60,9 @@ class TimelineEventLogger(private val context: Context) {
             Log.d(TAG, "Logging event: $eventType / $status")
 
             val severity = LocationResolver.severityForEvent(eventType)
-            // High-churn / non-security events: cache only (no fused/GPS privacy light).
-            // SIM / wrong-unlock / USB / factory / geofence still resolve fresh.
+            // Prefer a usable fix for address quality; avoid fresh GPS for routine toggles.
             val resolved = if (isCacheOnlyEvent(eventType)) {
-                LocationResolver.resolveCacheOnly(context)
+                LocationResolver.resolveBestWithoutGps(context)
             } else {
                 LocationResolver.resolveSync(context, severity)
             }
@@ -78,7 +78,18 @@ class TimelineEventLogger(private val context: Context) {
             val lastInside = DeviceTrackingPrefs.lastGeofenceInside(context)
             val lastFenceId = DeviceTrackingPrefs.lastGeofenceId(context)
             val isGeofenceEvent = eventType.uppercase().startsWith("GEOFENCE_")
+            // Full evaluate only for dedicated geofence rows (avoids soft ENTER/EXIT).
+            // For other events, still attach zone name from stored fence id / light evaluate.
             val evaluated = if (isGeofenceEvent && location != null) {
+                locationHelper.evaluateGeofence(location.latitude, location.longitude)
+            } else {
+                null
+            }
+            val snapshotEval = if (
+                !isGeofenceEvent &&
+                location != null &&
+                location.accuracy in 1f..120f
+            ) {
                 locationHelper.evaluateGeofence(location.latitude, location.longitude)
             } else {
                 null
@@ -88,7 +99,23 @@ class TimelineEventLogger(private val context: Context) {
                 lastInside != null -> lastInside
                 else -> false
             }
+            // Name only from this event's evaluate or last OS fence id — never invent
+            // "first zone in storage" or nearest-outside when status is from lastInside.
             val fenceId = evaluated?.fenceId ?: lastFenceId
+            val zoneName = evaluated?.zoneName
+                ?: fenceId?.let { id ->
+                    GeofenceStorage.list(context).firstOrNull { it.id == id }?.name
+                }
+            val distanceM = when {
+                evaluated != null && evaluated.distanceToCenter.isFinite() ->
+                    evaluated.distanceToCenter.toDouble()
+                snapshotEval != null &&
+                    fenceId != null &&
+                    snapshotEval.fenceId == fenceId &&
+                    snapshotEval.distanceToCenter.isFinite() ->
+                    snapshotEval.distanceToCenter.toDouble()
+                else -> null
+            }
 
             val enrichedMeta = buildMap {
                 putAll(metadata)
@@ -96,6 +123,7 @@ class TimelineEventLogger(private val context: Context) {
                     put("location_tier", resolved.tier)
                     put("location_cache_hit", resolved.cacheHit)
                     put("location_duration_ms", resolved.durationMs)
+                    put("location_accuracy_m", location?.accuracy?.toDouble() ?: 0.0)
                 }
                 if (addressParts != null) {
                     put("address_country", addressParts.country)
@@ -103,9 +131,14 @@ class TimelineEventLogger(private val context: Context) {
                     put("address_city", addressParts.city)
                     put("address_postal", addressParts.postalCode)
                 }
-                if (evaluated != null) {
-                    put("geofence_name", evaluated.zoneName)
-                    put("geofence_distance_m", evaluated.distanceToCenter)
+                if (!zoneName.isNullOrBlank()) {
+                    put("geofence_name", zoneName)
+                }
+                if (fenceId != null) {
+                    put("geofence_id", fenceId)
+                }
+                if (distanceM != null) {
+                    put("geofence_distance_m", distanceM)
                 }
             }
 

@@ -40,9 +40,17 @@ object LocationResolver {
 
     private const val WIFI_TIMEOUT_MS = 3_500L
     private const val CELL_TIMEOUT_MS = 4_500L
-    private const val GPS_TIMEOUT_UI_MS = 8_000L
+    private const val GPS_TIMEOUT_UI_MS = 10_000L
     private const val GPS_TIMEOUT_SECURITY_MS = 12_000L
     private const val GPS_TIMEOUT_SIM_MS = 15_000L
+
+    /**
+     * Wi‑Fi / cell often return 200–500 m tower/SSID centroids. For UI / security /
+     * SIM we escalate to GPS when accuracy is worse than this.
+     */
+    private const val GOOD_ACCURACY_M = 50f
+    /** Soft cap when GPS is not allowed (informational / cache-only). */
+    private const val SOFT_ACCURACY_M = 120f
 
     enum class Severity {
         /** Timeline toggles / screen lock — never force GPS. */
@@ -91,6 +99,47 @@ object LocationResolver {
         )
     }
 
+    /**
+     * Best fix without fresh GPS: accurate process cache, else last-known (accuracy-first).
+     * Used for routine timeline events — avoids privacy-indicator / GPS wake.
+     */
+    @SuppressLint("MissingPermission")
+    fun resolveBestWithoutGps(context: Context): ResolvedLocation? {
+        if (!hasPermission(context)) return null
+        val start = SystemClock.elapsedRealtime()
+        val cachedLoc = peekCache()
+        if (cachedLoc != null && isGoodEnough(cachedLoc, Severity.INFORMATIONAL)) {
+            return ResolvedLocation(
+                location = cachedLoc,
+                tier = "cache",
+                cacheHit = true,
+                durationMs = 0,
+                provider = cachedLoc.provider ?: cachedTier
+            )
+        }
+        val last = getLastKnownAny(context)
+        val best = pickBetter(cachedLoc, last)
+        if (best != null && best === last && last !== cachedLoc) {
+            updateCache(last, "last_known")
+            return ResolvedLocation(
+                location = last,
+                tier = "last_known",
+                cacheHit = false,
+                durationMs = SystemClock.elapsedRealtime() - start,
+                provider = last.provider ?: "last_known"
+            )
+        }
+        return best?.let {
+            ResolvedLocation(
+                location = it,
+                tier = if (it === cachedLoc) "cache" else "last_known",
+                cacheHit = it === cachedLoc,
+                durationMs = SystemClock.elapsedRealtime() - start,
+                provider = it.provider ?: cachedTier
+            )
+        }
+    }
+
     fun updateCache(location: Location, tier: String) {
         cached = location
         cachedAtElapsed = SystemClock.elapsedRealtime()
@@ -109,42 +158,74 @@ object LocationResolver {
             return null
         }
 
-        // 0) Process cache
+        var best: Location? = null
+        var bestTier = "none"
+
+        fun consider(loc: Location?, tier: String) {
+            if (loc == null) return
+            if (pickBetter(best, loc) === loc) {
+                best = loc
+                bestTier = tier
+            }
+        }
+
+        // 0) Process cache — only short-circuit when accuracy is good enough
         peekCache()?.let { loc ->
             val age = SystemClock.elapsedRealtime() - cachedAtElapsed
-            val resolved = ResolvedLocation(
-                location = loc,
-                tier = "cache",
+            if (isGoodEnough(loc, severity)) {
+                val resolved = ResolvedLocation(
+                    location = loc,
+                    tier = "cache",
+                    cacheHit = true,
+                    durationMs = SystemClock.elapsedRealtime() - start,
+                    provider = loc.provider ?: cachedTier
+                )
+                logBattery(
+                    severity,
+                    "cache",
+                    cacheHit = true,
+                    durationMs = resolved.durationMs,
+                    provider = resolved.provider,
+                    extra = "ageMs=$age acc=${loc.accuracy}"
+                )
+                return resolved
+            }
+            consider(loc, "cache")
+            logBattery(
+                severity,
+                "cache_skip",
                 cacheHit = true,
-                durationMs = SystemClock.elapsedRealtime() - start,
-                provider = loc.provider ?: cachedTier
+                durationMs = 0,
+                provider = loc.provider ?: cachedTier,
+                extra = "acc=${loc.accuracy} escalate"
             )
-            logBattery(severity, "cache", cacheHit = true, durationMs = resolved.durationMs, provider = resolved.provider, extra = "ageMs=$age")
-            return resolved
         }
 
         val wifi = isWifiConnected(context)
         val cellular = isCellularAvailable(context)
 
-        // 1) Wi‑Fi tier
+        // 1) Wi‑Fi tier (low power) — escalate if coarse
         if (wifi) {
             val wifiLoc = requestFused(context, Priority.PRIORITY_LOW_POWER, WIFI_TIMEOUT_MS)
-            if (wifiLoc != null) {
+            consider(wifiLoc, "wifi")
+            if (wifiLoc != null && isGoodEnough(wifiLoc, severity)) {
                 return finish(context, wifiLoc, "wifi", start, severity)
             }
         }
 
-        // 2) Cellular / balanced network tier
+        // 2) Cellular / balanced — escalate if still coarse
         if (cellular || (!wifi && hasAnyNetwork(context))) {
             val cellLoc = requestFused(context, Priority.PRIORITY_BALANCED_POWER_ACCURACY, CELL_TIMEOUT_MS)
-            if (cellLoc != null) {
+            consider(cellLoc, "cell")
+            if (cellLoc != null && isGoodEnough(cellLoc, severity)) {
                 return finish(context, cellLoc, "cell", start, severity)
             }
         }
 
-        // Soft last-known (any provider) before GPS
+        // Soft last-known before GPS
         val lastKnown = getLastKnownAny(context)
-        if (lastKnown != null) {
+        consider(lastKnown, "last_known")
+        if (lastKnown != null && isGoodEnough(lastKnown, severity)) {
             val age = System.currentTimeMillis() - lastKnown.time
             val allowAsFinal = severity == Severity.INFORMATIONAL ||
                 (severity != Severity.SIM_RECOVERY && age < SECURITY_STALE_MS)
@@ -153,8 +234,8 @@ object LocationResolver {
             }
         }
 
-        // 3) GPS last — only when severity allows
-        if (shouldAttemptGps(severity)) {
+        // 3) GPS / high accuracy when cheaper tiers are missing or too coarse
+        if (shouldAttemptGps(severity) && (best == null || !isGoodEnough(best!!, severity))) {
             val gpsTimeout = when (severity) {
                 Severity.UI -> GPS_TIMEOUT_UI_MS
                 Severity.SECURITY -> GPS_TIMEOUT_SECURITY_MS
@@ -170,14 +251,36 @@ object LocationResolver {
             }
         }
 
-        // Absolute fallback
-        if (lastKnown != null) {
-            return finish(context, lastKnown, "last_known", start, severity)
+        // Absolute fallback — best candidate we saw (may still be coarse)
+        if (best != null) {
+            return finish(context, best!!, bestTier, start, severity)
         }
 
         val duration = SystemClock.elapsedRealtime() - start
         logBattery(severity, "none", cacheHit = false, durationMs = duration, provider = "none")
         return null
+    }
+
+    /** Accuracy gate: UI/security escalate past coarse Wi‑Fi/cell centroids. */
+    private fun isGoodEnough(loc: Location, severity: Severity): Boolean {
+        if (!loc.hasAccuracy() || loc.accuracy <= 0f) return false
+        return when (severity) {
+            Severity.UI, Severity.SECURITY, Severity.SIM_RECOVERY ->
+                loc.accuracy <= GOOD_ACCURACY_M
+            Severity.INFORMATIONAL ->
+                loc.accuracy <= SOFT_ACCURACY_M
+        }
+    }
+
+    /** Prefer significantly better accuracy; otherwise fresher fix. */
+    private fun pickBetter(a: Location?, b: Location?): Location? {
+        if (a == null) return b
+        if (b == null) return a
+        val aAcc = if (a.hasAccuracy() && a.accuracy > 0f) a.accuracy else 9_999f
+        val bAcc = if (b.hasAccuracy() && b.accuracy > 0f) b.accuracy else 9_999f
+        if (bAcc + 20f < aAcc) return b
+        if (aAcc + 20f < bAcc) return a
+        return if (b.time >= a.time) b else a
     }
 
     private fun finish(
@@ -338,15 +441,16 @@ object LocationResolver {
             latch.await(2, TimeUnit.SECONDS)
             var best = ref.get()
             val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            // Prefer GPS last-known over newer but coarse network centroids.
             for (provider in listOf(
-                LocationManager.NETWORK_PROVIDER,
                 LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER,
                 LocationManager.PASSIVE_PROVIDER
             )) {
                 try {
                     if (!lm.isProviderEnabled(provider) && provider != LocationManager.PASSIVE_PROVIDER) continue
                     val loc = lm.getLastKnownLocation(provider) ?: continue
-                    if (best == null || loc.time > best.time) best = loc
+                    best = pickBetter(best, loc)
                 } catch (_: Exception) {
                 }
             }

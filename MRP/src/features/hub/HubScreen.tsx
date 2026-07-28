@@ -24,7 +24,9 @@ import {DriveSyncScreen} from '../drive/DriveSyncScreen';
 import {GeofenceScreen} from '../geofence/GeofenceScreen';
 import {HubMenuCard} from './HubMenuCard';
 import {PromoLinksScreen} from './PromoLinksScreen';
+import {PolicyScreen} from './PolicyScreen';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import Animated, {FadeIn} from 'react-native-reanimated';
 
 export type HubSection =
   | 'menu'
@@ -36,6 +38,7 @@ export type HubSection =
   | 'subscriptions'
   | 'promotions'
   | 'affiliates'
+  | 'policy'
   | 'about';
 
 type HubRouteParams = {openSection?: HubSection};
@@ -105,12 +108,37 @@ const MENU_ITEMS: MenuItem[] = [
     icon: '🔗',
   },
   {
+    id: 'policy',
+    title: 'Policy',
+    subtitle: 'Privacy, Play & permissions',
+    icon: '📜',
+  },
+  {
     id: 'about',
     title: 'About MRP',
     subtitle: 'Guide, trust & version',
     icon: 'ℹ️',
   },
 ];
+
+function HubSectionShell({
+  title,
+  styles,
+  children,
+}: {
+  title: string;
+  styles: ReturnType<typeof createStyles>;
+  children: React.ReactNode;
+}) {
+  return (
+    <SafeAreaView style={styles.safe}>
+      <HubTitleBar title={title} styles={styles} />
+      <Animated.View style={{flex: 1}} entering={FadeIn.duration(220)}>
+        {children}
+      </Animated.View>
+    </SafeAreaView>
+  );
+}
 
 type HubNav = {
   setParams?: (params: {openSection?: HubSection | undefined}) => void;
@@ -204,39 +232,43 @@ export function HubScreen({
 
   if (section === 'about') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="About MRP" styles={styles} />
+      <HubSectionShell title="About MRP" styles={styles}>
         <AboutScreen />
-      </SafeAreaView>
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'policy') {
+    return (
+      <HubSectionShell title="Policy" styles={styles}>
+        <PolicyScreen />
+      </HubSectionShell>
     );
   }
 
   if (section === 'account') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="Account" styles={styles} />
+      <HubSectionShell title="Account" styles={styles}>
         <AccountScreen onBack={goMenu} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
   if (section === 'sim-recovery') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="SIM Recovery" styles={styles} />
+      <HubSectionShell title="SIM Recovery" styles={styles}>
         <ScrollView contentContainerStyle={styles.scrollPad} showsVerticalScrollIndicator={false}>
           <SimRecoveryPanel onUpgrade={() => openSection('subscriptions')} />
         </ScrollView>
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
   if (section === 'subscriptions') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="Subscriptions" styles={styles} />
+      <HubSectionShell title="Subscriptions" styles={styles}>
         <SubscriptionScreen onBack={goMenu} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
@@ -245,40 +277,35 @@ export function HubScreen({
       return null;
     }
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="Circle" styles={styles} />
+      <HubSectionShell title="Circle" styles={styles}>
         <CircleScreen onUpgrade={() => openSection('subscriptions')} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
   if (section === 'drive-sync') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="Drive Sync" styles={styles} />
+      <HubSectionShell title="Drive Sync" styles={styles}>
         <DriveSyncScreen onUpgrade={() => openSection('subscriptions')} onBack={goMenu} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
   if (section === 'geofence') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar title="Geofence" styles={styles} />
+      <HubSectionShell title="Geofence" styles={styles}>
         <GeofenceScreen onUpgrade={() => openSection('subscriptions')} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 
   if (section === 'promotions' || section === 'affiliates') {
     return (
-      <SafeAreaView style={styles.safe}>
-        <HubTitleBar
-          title={section === 'promotions' ? 'Promotions' : 'Affiliates'}
-          styles={styles}
-        />
+      <HubSectionShell
+        title={section === 'promotions' ? 'Promotions' : 'Affiliates'}
+        styles={styles}>
         <PromoLinksScreen kind={section} />
-      </SafeAreaView>
+      </HubSectionShell>
     );
   }
 

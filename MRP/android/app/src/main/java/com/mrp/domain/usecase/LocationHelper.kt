@@ -160,31 +160,53 @@ class LocationHelper(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             var result: Address? = null
             val latch = java.util.concurrent.CountDownLatch(1)
-            geocoder.getFromLocation(latitude, longitude, 1) { addresses ->
-                result = addresses.firstOrNull()
+            geocoder.getFromLocation(latitude, longitude, 3) { addresses ->
+                result = addresses.firstOrNull { addr ->
+                    val line = addr.getAddressLine(0).orEmpty()
+                    !line.contains("near", ignoreCase = true) ||
+                        !addr.thoroughfare.isNullOrBlank() ||
+                        !addr.locality.isNullOrBlank()
+                } ?: addresses.firstOrNull()
                 latch.countDown()
             }
             latch.await(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
             return result
         }
-        return geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
+        return geocoder.getFromLocation(latitude, longitude, 3)?.firstOrNull { addr ->
+            val line = addr.getAddressLine(0).orEmpty()
+            !line.contains("near", ignoreCase = true) ||
+                !addr.thoroughfare.isNullOrBlank() ||
+                !addr.locality.isNullOrBlank()
+        } ?: geocoder.getFromLocation(latitude, longitude, 1)?.firstOrNull()
     }
 
     private fun addressToParts(address: Address): AddressParts {
-        val formatted = address.getAddressLine(0)
-            ?: listOfNotNull(
-                address.thoroughfare,
-                address.locality,
-                address.adminArea,
-                address.countryName
-            ).joinToString(", ").ifBlank { "Unknown address" }
+        val streetLine = listOfNotNull(address.subThoroughfare, address.thoroughfare)
+            .joinToString(" ")
+            .ifBlank { null }
+        val structured = listOfNotNull(
+            streetLine ?: address.featureName?.takeIf { !it.contains("near", ignoreCase = true) },
+            address.subLocality,
+            address.locality ?: address.subAdminArea,
+            address.adminArea,
+            address.postalCode,
+            address.countryName
+        ).joinToString(", ").ifBlank { null }
+        val line0 = address.getAddressLine(0)?.trim()
+        val formatted = when {
+            !structured.isNullOrBlank() && structured.length >= 6 -> structured
+            !line0.isNullOrBlank() && !line0.contains("near", ignoreCase = true) -> line0
+            !structured.isNullOrBlank() -> structured
+            !line0.isNullOrBlank() -> line0
+            else -> "Unknown address"
+        }
         return AddressParts(
             formatted = formatted,
             country = address.countryName,
             state = address.adminArea,
             city = address.locality ?: address.subAdminArea,
             postalCode = address.postalCode,
-            street = address.thoroughfare ?: address.featureName
+            street = streetLine ?: address.thoroughfare ?: address.featureName
         )
     }
 

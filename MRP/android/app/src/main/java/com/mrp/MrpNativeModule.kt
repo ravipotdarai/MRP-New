@@ -581,8 +581,12 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                                 is String -> putString(key, value)
                                 is Boolean -> putBoolean(key, value)
                                 is Int -> putInt(key, value)
+                                is Long -> putDouble(key, value.toDouble())
+                                is Float -> putDouble(key, value.toDouble())
                                 is Double -> putDouble(key, value)
+                                is Number -> putDouble(key, value.toDouble())
                                 null -> putNull(key)
+                                else -> putString(key, value.toString())
                             }
                         }
                     })

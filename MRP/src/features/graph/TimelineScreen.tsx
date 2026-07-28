@@ -223,8 +223,11 @@ export function TimelineScreen() {
           <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
           <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
           {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
-            <Text style={styles.location} numberOfLines={1}>
+            <Text style={styles.location} numberOfLines={2}>
               📍 {item.location.detailed_address}
+              {item.location?.accuracy_meters
+                ? ` (±${Math.round(Number(item.location.accuracy_meters))}m)`
+                : ''}
             </Text>
           )}
           <Text style={styles.description}>Status: {item.status || 'N/A'}</Text>
@@ -264,11 +267,16 @@ export function TimelineScreen() {
                 },
               ]}>
               {item.geofence_status?.inside_fence
-                ? `🏠 ${item.metadata?.geofence_name || 'Inside'}`
-                : item.metadata?.geofence_distance_m != null &&
+                ? `🏠 ${item.metadata?.geofence_name || 'Inside zone'}`
+                : item.metadata?.geofence_name
+                  ? item.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(item.metadata.geofence_distance_m))
-                  ? `📍 ${Math.round(Number(item.metadata.geofence_distance_m))}m away`
-                  : '📍 Away'}
+                    ? `📍 ${item.metadata.geofence_name} · ${Math.round(Number(item.metadata.geofence_distance_m))}m`
+                    : `📍 Outside ${item.metadata.geofence_name}`
+                  : item.metadata?.geofence_distance_m != null &&
+                      Number.isFinite(Number(item.metadata.geofence_distance_m))
+                    ? `📍 ${Math.round(Number(item.metadata.geofence_distance_m))}m away`
+                    : '📍 Outside zone'}
             </Text>
           </View>
         </View>
@@ -367,16 +375,25 @@ export function TimelineScreen() {
                     <Text style={styles.detailLabel}>Geofence Status</Text>
                     <Text style={styles.detailValue}>
                       {selectedEntry.geofence_status?.inside_fence
-                        ? `🏠 Inside ${selectedEntry.metadata?.geofence_name || 'zone'}`
+                        ? `🏠 Inside zone${
+                            selectedEntry.metadata?.geofence_name
+                              ? `: ${selectedEntry.metadata.geofence_name}`
+                              : ''
+                          }`
                         : selectedEntry.metadata?.geofence_name
-                          ? `📍 Outside ${selectedEntry.metadata.geofence_name}`
-                          : '📍 Outside fence'}
+                          ? `📍 Outside zone: ${selectedEntry.metadata.geofence_name}`
+                          : '📍 Outside zone'}
                     </Text>
                     {selectedEntry.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m)) ? (
                       <Text style={styles.detailSubvalue}>
                         Distance to zone center:{' '}
                         {Math.round(Number(selectedEntry.metadata.geofence_distance_m))} m
+                      </Text>
+                    ) : null}
+                    {selectedEntry.location?.accuracy_meters ? (
+                      <Text style={styles.detailSubvalue}>
+                        Location accuracy: ±{Math.round(Number(selectedEntry.location.accuracy_meters))} m
                       </Text>
                     ) : null}
                     {(selectedEntry.metadata?.address_city ||
