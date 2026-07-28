@@ -14,3 +14,6 @@ emergency15_batterystats.txt
 # Scratch captures
 **/.tmp-*
 .tmp-*
+
+# TypeScript incremental build info
+*.tsbuildinfo
