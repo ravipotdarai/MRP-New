@@ -259,14 +259,6 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Dashboard Notes</Text>
-        <View style={styles.noteCard}>
-          <Text style={styles.noteText}>
-            • Distance tracking requires continuous GPS polling which is currently battery-intensive. Only point-in-time locations are logged with events.
-          </Text>
-        </View>
-      </View>
     </ScrollView>
   );
 }

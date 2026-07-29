@@ -117,16 +117,22 @@ export function TimelineScreen() {
     }
   }, []);
 
-  // Refresh only when Timeline is opened / focused — no continuous polling
+  // Poll while Timeline is open so new events appear without manual pull
   useFocusEffect(
     useCallback(() => {
       loadTimeline();
+      const poll = setInterval(() => {
+        loadTimeline();
+      }, 4000);
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') {
           loadTimeline();
         }
       });
-      return () => sub.remove();
+      return () => {
+        clearInterval(poll);
+        sub.remove();
+      };
     }, [loadTimeline]),
   );
   const findMatchingPhoto = (entry: TimelineEntry): PhotoItem | null => {
@@ -267,16 +273,13 @@ export function TimelineScreen() {
                 },
               ]}>
               {item.geofence_status?.inside_fence
-                ? `🏠 ${item.metadata?.geofence_name || 'Inside zone'}`
+                ? `🏠 Inside ${item.metadata?.geofence_name || 'zone'}`
                 : item.metadata?.geofence_name
                   ? item.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(item.metadata.geofence_distance_m))
-                    ? `📍 ${item.metadata.geofence_name} · ${Math.round(Number(item.metadata.geofence_distance_m))}m`
+                    ? `📍 Outside ${item.metadata.geofence_name} · ${Math.round(Number(item.metadata.geofence_distance_m))}m`
                     : `📍 Outside ${item.metadata.geofence_name}`
-                  : item.metadata?.geofence_distance_m != null &&
-                      Number.isFinite(Number(item.metadata.geofence_distance_m))
-                    ? `📍 ${Math.round(Number(item.metadata.geofence_distance_m))}m away`
-                    : '📍 Outside zone'}
+                  : '📍 Outside zone'}
             </Text>
           </View>
         </View>
@@ -375,13 +378,9 @@ export function TimelineScreen() {
                     <Text style={styles.detailLabel}>Geofence Status</Text>
                     <Text style={styles.detailValue}>
                       {selectedEntry.geofence_status?.inside_fence
-                        ? `🏠 Inside zone${
-                            selectedEntry.metadata?.geofence_name
-                              ? `: ${selectedEntry.metadata.geofence_name}`
-                              : ''
-                          }`
+                        ? `🏠 Inside ${selectedEntry.metadata?.geofence_name || 'zone'}`
                         : selectedEntry.metadata?.geofence_name
-                          ? `📍 Outside zone: ${selectedEntry.metadata.geofence_name}`
+                          ? `📍 Outside ${selectedEntry.metadata.geofence_name}`
                           : '📍 Outside zone'}
                     </Text>
                     {selectedEntry.metadata?.geofence_distance_m != null &&

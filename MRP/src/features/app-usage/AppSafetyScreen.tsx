@@ -266,14 +266,6 @@ export function AppSafetyScreen() {
           ))
         )}
       </View>
-
-      {/* Misuse rules moved to Security → Setup */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>MISUSE RULES</Text>
-        <Text style={styles.muted}>
-          Configure misuse alerts under Security → Setup (same screen as monitoring toggles).
-        </Text>
-      </View>
     </ScrollView>
   );
 }

@@ -41,6 +41,7 @@ interface TimelineEntry {
     inside_fence: boolean;
     fence_id: string | null;
   };
+  metadata?: Record<string, any>;
 }
 
 type SortOption = 'NEWEST' | 'OLDEST' | 'MONTH' | 'WEEK' | 'DAY';
@@ -465,7 +466,10 @@ export function PhotoGallery() {
                               <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>🌐 GPS Coordinates</Text>
                                 <Text style={styles.detailValue}>
-                                  {lat.toFixed(5)}, {lng.toFixed(5)} (±1m)
+                                  {lat.toFixed(5)}, {lng.toFixed(5)}
+                                  {loc!.accuracy_meters
+                                    ? ` (±${Math.round(Number(loc!.accuracy_meters))}m)`
+                                    : ''}
                                 </Text>
                               </View>
                             </>
@@ -476,9 +480,22 @@ export function PhotoGallery() {
                           <Text style={styles.detailLabel}>🏠 Geofence</Text>
                           <Text style={styles.detailValue}>
                             {matchedEvent.geofence_status?.inside_fence
-                              ? 'Inside fence'
-                              : 'Outside fence'}
+                              ? `Inside ${
+                                  matchedEvent.metadata?.geofence_name ||
+                                  matchedEvent.geofence_status?.fence_id ||
+                                  'zone'
+                                }`
+                              : matchedEvent.metadata?.geofence_name
+                                ? `Outside ${matchedEvent.metadata.geofence_name}`
+                                : 'Outside zone'}
                           </Text>
+                          {matchedEvent.metadata?.geofence_distance_m != null &&
+                          Number.isFinite(Number(matchedEvent.metadata.geofence_distance_m)) ? (
+                            <Text style={styles.detailPath}>
+                              Distance{' '}
+                              {Math.round(Number(matchedEvent.metadata.geofence_distance_m))} m
+                            </Text>
+                          ) : null}
                         </View>
                       </>
                     ) : (
@@ -728,7 +745,7 @@ function createStyles(colors: ColorPalette) {
     },
     modalScroll: {
       paddingHorizontal: 16,
-      paddingTop: 16,
+      paddingTop: 20,
       paddingBottom: 16,
     },
     modalHeader: {
@@ -736,8 +753,9 @@ function createStyles(colors: ColorPalette) {
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingTop: 8,
-      paddingBottom: 12,
+      paddingTop: 16,
+      paddingBottom: 14,
+      marginTop: 8,
       borderBottomWidth: 1,
       borderBottomColor: colors.borderSubtle,
       backgroundColor: colors.surface,
@@ -769,6 +787,7 @@ function createStyles(colors: ColorPalette) {
       borderRadius: 16,
       backgroundColor: '#000000',
       overflow: 'hidden',
+      marginTop: 8,
       marginBottom: 16,
       borderWidth: 1,
       borderColor: colors.border,

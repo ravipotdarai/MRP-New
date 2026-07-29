@@ -15,6 +15,7 @@ import com.mrp.domain.usecase.LocationHelper
 
 /**
  * OS geofence ENTER/EXIT → dedicated timeline rows with address.
+ * Owns global inside prefs; never lets EXIT of zone A wipe Inside zone B.
  */
 class GeofenceTransitionReceiver : BroadcastReceiver() {
 
@@ -69,7 +70,48 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
                 Float.NaN
             }
 
-            DeviceTrackingPrefs.rememberGeofence(context, entered, gf.requestId)
+            val badgeInside: Boolean
+            val badgeFenceId: String?
+            val badgeZoneName: String?
+
+            if (entered) {
+                DeviceTrackingPrefs.rememberGeofence(context, true, gf.requestId)
+                badgeInside = true
+                badgeFenceId = gf.requestId
+                badgeZoneName = name
+            } else {
+                // EXIT of zone A must not clear "inside" if still inside Home (or another zone).
+                val stillInside = helper.findContainingZone(
+                    latitude = lat,
+                    longitude = lng,
+                    excludeId = gf.requestId,
+                    allowMissingCoords = true,
+                    accuracyPad = maxOf(accuracy, 40f),
+                )
+                if (stillInside != null) {
+                    DeviceTrackingPrefs.rememberGeofence(context, true, stillInside.id)
+                    badgeInside = true
+                    badgeFenceId = stillInside.id
+                    badgeZoneName = stillInside.name
+                    Log.i(TAG, "EXIT $name but still inside ${stillInside.name}")
+                } else {
+                    val prevId = DeviceTrackingPrefs.lastGeofenceId(context)
+                    val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
+                    if (prevInside == true && prevId != null && prevId != gf.requestId && zones.containsKey(prevId)) {
+                        DeviceTrackingPrefs.rememberGeofence(context, true, prevId)
+                        badgeInside = true
+                        badgeFenceId = prevId
+                        badgeZoneName = zones[prevId]?.name
+                        Log.i(TAG, "EXIT $name; kept inside ${zones[prevId]?.name ?: prevId}")
+                    } else {
+                        DeviceTrackingPrefs.rememberGeofence(context, false, gf.requestId)
+                        badgeInside = false
+                        badgeFenceId = gf.requestId
+                        badgeZoneName = name
+                    }
+                }
+            }
+
             GeofenceTimeline.emitTransition(
                 context = context,
                 entered = entered,
@@ -79,12 +121,17 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
                 lat = lat,
                 lng = lng,
                 accuracy = accuracy,
-                addressParts = parts
+                addressParts = parts,
+                badgeInside = badgeInside,
+                badgeFenceId = badgeFenceId,
+                badgeZoneName = badgeZoneName
             )
             if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
-                EventSyncPublisher.onGeofenceChanged(context, entered, gf.requestId)
+                val insideNow = DeviceTrackingPrefs.lastGeofenceInside(context) == true
+                val idNow = DeviceTrackingPrefs.lastGeofenceId(context)
+                EventSyncPublisher.onGeofenceChanged(context, insideNow, idNow)
             }
-            Log.i(TAG, "${if (entered) "ENTER" else "EXIT"} $name")
+            Log.i(TAG, "${if (entered) "ENTER" else "EXIT"} $name badge=$badgeZoneName inside=$badgeInside")
         }
     }
 

@@ -13,6 +13,7 @@ export type GeofenceEval = {
   latitude: number;
   longitude: number;
   accuracyMeters: number;
+  locationTier?: string;
   address?: string;
   country?: string;
   state?: string;
@@ -36,6 +37,13 @@ type Native = {
   ): Promise<string>;
   removeZone(id: string): Promise<boolean>;
   evaluateHere(): Promise<GeofenceEval | null>;
+  getCurrentLocationForZone(): Promise<{
+    latitude: number;
+    longitude: number;
+    accuracyMeters: number;
+    locationTier?: string;
+    address?: string;
+  } | null>;
   distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): Promise<number>;
 };
 

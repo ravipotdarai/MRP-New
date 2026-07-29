@@ -91,6 +91,8 @@ interface GpsStatus {
   networkLocationActive: boolean;
   permissionGranted: boolean;
   isLocationAvailable: boolean;
+  provider?: string;
+  accuracyMeters?: number;
 }
 
 interface NetworkInfo {
@@ -98,7 +100,11 @@ interface NetworkInfo {
   connectionType: string;
   isWifi: boolean;
   isMobile: boolean;
+  wifiSsid?: string;
+  simCarrier?: string;
 }
+
+const WEB_CONSOLE_URL = 'https://mobileresilienceplatform.web.app';
 
 const formatEventType = (type: string | undefined): string => {
   if (!type) return 'Unknown Event';
@@ -153,6 +159,8 @@ export function HomeScreen({
     longitude: number;
     accuracy_meters: number;
     detailed_address: string;
+    provider?: string;
+    location_tier?: string;
   } | null>(null);
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [gps, setGps] = useState<GpsStatus | null>(null);
@@ -164,6 +172,7 @@ export function HomeScreen({
     usageStats: false,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [locRefreshing, setLocRefreshing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const {colors} = useTheme();
@@ -578,6 +587,47 @@ export function HomeScreen({
     navigation?.navigate?.('Hub', {openSection: 'about'});
   };
 
+  const goPromotions = () => {
+    navigation?.navigate?.('Hub', {openSection: 'promotions'});
+  };
+
+  const openWebConsole = () => {
+    Linking.openURL(WEB_CONSOLE_URL).catch(() =>
+      Alert.alert('Web console', 'Could not open the web console.'),
+    );
+  };
+
+  const refreshLiveLocation = useCallback(async () => {
+    if (!mrpmModule?.getCurrentLocationWithAddress) return;
+    setLocRefreshing(true);
+    try {
+      const loc = await mrpmModule.getCurrentLocationWithAddress();
+      if (loc) {
+        setLiveLocation(loc as typeof liveLocation);
+      }
+    } catch {
+      /* keep previous */
+    } finally {
+      setLocRefreshing(false);
+    }
+  }, []);
+
+  const wifiName = network?.isWifi
+    ? network.wifiSsid || 'Connected'
+    : network?.isMobile
+      ? network.connectionType || 'Mobile'
+      : network
+        ? 'Offline'
+        : '--';
+
+  const carrierName =
+    (network?.simCarrier || network?.carrierName || '').trim() &&
+    (network?.simCarrier || network?.carrierName) !== 'Unknown'
+      ? network?.simCarrier || network?.carrierName
+      : network?.isMobile
+        ? network.connectionType || 'Mobile'
+        : '--';
+
   return (
     <ScrollView
       style={styles.container}
@@ -681,37 +731,52 @@ export function HomeScreen({
         </Pressable>
       </View>
 
-      {/* Stat cards: Security score, MRP Guide, Network, GPS */}
+      {/* Quick tiles: Icon + Title / value on next line */}
       <View style={styles.statGrid}>
         <StatCard
+          icon="📶"
+          label="Wifi"
+          value={wifiName}
+          accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
+          styles={styles}
+        />
+        <StatCard
           icon="🔒"
-          label="Security Score"
+          label="Security"
           value={`${securityScore}%`}
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
           styles={styles}
         />
         <StatCard
+          icon="📡"
+          label="GPS"
+          value={carrierName || '--'}
+          accent={gps?.isLocationAvailable || liveLocation ? colors.emerald : colors.red}
+          styles={styles}
+        />
+        <StatCard
+          icon="🎁"
+          label="Hub"
+          value="Offers"
+          accent={colors.amber}
+          styles={styles}
+          onPress={goPromotions}
+        />
+        <StatCard
           icon="ℹ️"
-          label="How to use"
-          value="Guide →"
+          label="How to Use"
+          value="Guide"
           accent={colors.sky}
           styles={styles}
           onPress={goMrpGuide}
         />
         <StatCard
-          icon="📶"
-          label="Network"
-          value={network ? network.connectionType : '--'}
-          sub={network && network.carrierName && network.carrierName !== 'Unknown' ? network.carrierName : undefined}
-          accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
+          icon="🌐"
+          label="Portal"
+          value="MRP Web"
+          accent={colors.violet}
           styles={styles}
-        />
-        <StatCard
-          icon="📡"
-          label="GPS"
-          value={gps?.gpsActive ? 'Active' : gps?.isLocationAvailable ? 'Network' : 'Off'}
-          accent={gps?.isLocationAvailable ? colors.emerald : colors.red}
-          styles={styles}
+          onPress={openWebConsole}
         />
       </View>
 
@@ -774,16 +839,27 @@ export function HomeScreen({
         )}
       </View>
 
-      {/* Current Location — pin only (no map tile) */}
+      {/* Current Location — address + coords + refresh (no map tile) */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
           <Text style={styles.sectionTitle}>CURRENT LOCATION</Text>
-          {liveLocation ? (
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBadgeText}>Live location</Text>
-            </View>
-          ) : null}
+          <View style={styles.locHeaderActions}>
+            {liveLocation ? (
+              <View style={styles.liveBadge}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeText}>Live</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={styles.refreshLocBtn}
+              onPress={refreshLiveLocation}
+              disabled={locRefreshing}
+              accessibilityLabel="Refresh location">
+              <Text style={styles.refreshLocBtnText}>
+                {locRefreshing ? '…' : '↻'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {(() => {
           const loc = liveLocation ??
@@ -792,13 +868,9 @@ export function HomeScreen({
               : null);
           if (!loc) {
             return (
-              <>
-                <View style={styles.pinPlaceholder}>
-                  <Text style={styles.pinEmoji}>📍</Text>
-                  <Text style={styles.mapLabel}>Waiting for GPS…</Text>
-                </View>
-                <Text style={styles.emptyText}>No location data available yet.</Text>
-              </>
+              <View style={styles.locTextBlock}>
+                <Text style={styles.emptyText}>No location yet. Tap ↻ to refresh.</Text>
+              </View>
             );
           }
           const address =
@@ -806,30 +878,14 @@ export function HomeScreen({
             loc.detailed_address !== 'Address Unavailable (Offline)'
               ? loc.detailed_address
               : null;
-          const isLive = !!liveLocation;
           return (
-            <TouchableOpacity
-              style={styles.pinCard}
-              onPress={() => openMaps(loc.latitude, loc.longitude)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel="Open current location in Google Maps">
-              <View style={styles.pinVisual}>
-                <Text style={styles.pinEmojiLarge}>📍</Text>
-                {isLive ? (
-                  <View style={styles.liveBadgeInline}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveBadgeText}>Live location</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.lastKnownLabel}>Last known</Text>
-                )}
-              </View>
-              {address ? (
-                <Text style={styles.locationAddress} numberOfLines={3}>
-                  {address}
+            <View style={styles.locTextBlock}>
+              <View style={styles.locAddressRow}>
+                <Text style={styles.locPinIcon}>📍</Text>
+                <Text style={styles.locationAddress} numberOfLines={4}>
+                  {address || 'Coordinates only'}
                 </Text>
-              ) : null}
+              </View>
               <View style={styles.locationInfoRow}>
                 <Text style={styles.locationCoord}>
                   {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
@@ -838,10 +894,13 @@ export function HomeScreen({
                   ±{Math.round(loc.accuracy_meters || 0)}m
                 </Text>
               </View>
-              <View style={styles.mapsCta}>
-                <Text style={styles.mapsCtaText}>Tap to open in Google Maps →</Text>
-              </View>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.mapsLinkBtn}
+                onPress={() => openMaps(loc.latitude, loc.longitude)}
+                activeOpacity={0.8}>
+                <Text style={styles.mapsLinkBtnText}>Open in Google Maps →</Text>
+              </TouchableOpacity>
+            </View>
           );
         })()}
       </View>
@@ -936,7 +995,6 @@ function StatCard({
   icon,
   label,
   value,
-  sub,
   accent,
   styles,
   onPress,
@@ -944,36 +1002,33 @@ function StatCard({
   icon: string;
   label: string;
   value: string;
-  sub?: string;
   accent: string;
   styles: ReturnType<typeof createHomeStyles>;
   onPress?: () => void;
 }) {
   const inner = (
-    <View style={styles.statInner}>
-      <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
-        <Text style={{fontSize: 14}}>{icon}</Text>
-      </View>
-      <View style={styles.statTextCol}>
-        <Text style={styles.statValue} numberOfLines={1}>
-          {value}
-        </Text>
-        {sub ? (
-          <Text style={styles.statSub} numberOfLines={1}>
-            {sub}
+    <>
+      <View style={styles.statTopRow}>
+        <View style={styles.statLabelLeft}>
+          <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
+            <Text style={{fontSize: 14}}>{icon}</Text>
+          </View>
+          <Text style={styles.statTitle} numberOfLines={1}>
+            {label}
           </Text>
-        ) : null}
-        <Text style={styles.statLabel} numberOfLines={1}>
-          {label}
-        </Text>
+        </View>
+        {onPress ? <Text style={[styles.statChevron, {color: accent}]}>›</Text> : null}
       </View>
-    </View>
+      <Text style={styles.statValue} numberOfLines={1}>
+        {value}
+      </Text>
+    </>
   );
 
   if (onPress) {
     return (
       <TouchableOpacity
-        style={styles.statCard}
+        style={[styles.statCard, {borderColor: accent + '55'}]}
         onPress={onPress}
         activeOpacity={0.75}
         accessibilityRole="button"
@@ -983,7 +1038,9 @@ function StatCard({
     );
   }
 
-  return <View style={styles.statCard}>{inner}</View>;
+  return (
+    <View style={[styles.statCard, {borderColor: accent + '40'}]}>{inner}</View>
+  );
 }
 
 function createHomeStyles(colors: ColorPalette) {
@@ -1077,17 +1134,35 @@ function createHomeStyles(colors: ColorPalette) {
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     marginBottom: spacing.md,
-    gap: 0,
   },
   statCard: {
     width: '48.5%',
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
+    borderRadius: radius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
     marginBottom: spacing.sm,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: colors.border,
+    minHeight: 76,
+  },
+  statTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  statLabelLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  statInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
   },
   statInner: {
     flexDirection: 'row',
@@ -1095,21 +1170,72 @@ function createHomeStyles(colors: ColorPalette) {
   },
   statTextCol: {flex: 1, minWidth: 0},
   statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: radius.sm,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
   },
-  statValue: {fontSize: 15, fontWeight: '800', color: colors.textPrimary},
-  statSub: {fontSize: 10, color: colors.sky, fontWeight: '600'},
+  statChevron: {fontSize: 18, fontWeight: '700', lineHeight: 20},
+  statTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  statValue: {
+    marginTop: 8,
+    marginLeft: 32,
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    textAlign: 'left',
+    width: '100%',
+    paddingRight: 8,
+  },
+  statSub: {fontSize: 11, fontWeight: '700', marginTop: 4},
   statLabel: {
     fontSize: 10,
     color: colors.textMuted,
-    marginTop: 1,
+    marginTop: 4,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
+    fontWeight: '700',
+  },
+  locHeaderActions: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  refreshLocBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.sky,
+    backgroundColor: colors.skySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshLocBtnText: {fontSize: 16, color: colors.sky, fontWeight: '800'},
+  locTextBlock: {gap: 8},
+  locAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  locPinIcon: {fontSize: 18, lineHeight: 22, marginTop: 1},
+  mapsLinkBtn: {
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.md,
+    backgroundColor: colors.skySoft,
+    borderWidth: 1,
+    borderColor: colors.sky + '44',
+  },
+  mapsLinkBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.sky,
   },
   card: {
     backgroundColor: colors.surface,
@@ -1162,25 +1288,6 @@ function createHomeStyles(colors: ColorPalette) {
   geofenceRow: {flexDirection: 'row', marginTop: spacing.sm},
   geofencePill: {paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill, fontSize: 11, fontWeight: '700'},
   emptyText: {fontSize: 13, color: colors.textMuted, textAlign: 'center', paddingVertical: spacing.md},
-  pinPlaceholder: {
-    height: 88,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  pinCard: {
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-  },
-  pinVisual: {alignItems: 'center', marginBottom: spacing.sm},
-  pinEmoji: {fontSize: 28, marginBottom: 4},
-  pinEmojiLarge: {fontSize: 40, marginBottom: 6},
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1214,29 +1321,17 @@ function createHomeStyles(colors: ColorPalette) {
     fontWeight: '700',
     color: colors.textMuted,
   },
-  mapsCta: {
-    marginTop: spacing.md,
-    backgroundColor: colors.sky,
-    borderRadius: radius.md,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  mapsCtaText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  mapLabel: {fontSize: 12, color: colors.textBody, fontWeight: '600'},
   locationInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: spacing.sm,
   },
   locationAddress: {
-    fontSize: 13,
+    flex: 1,
+    fontSize: 14,
     color: colors.emerald,
-    marginTop: spacing.md,
-    lineHeight: 19,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   locationCoord: {fontSize: 12, color: colors.textBody, fontFamily: 'monospace'},
   locationAccuracy: {fontSize: 12, color: colors.emerald, fontWeight: '600'},

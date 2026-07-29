@@ -932,6 +932,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             val map = Arguments.createMap().apply {
                 putString("carrierName", "Unknown")
                 putString("connectionType", "Offline")
+                putString("wifiSsid", "")
                 putBoolean("isWifi", false)
                 putBoolean("isMobile", false)
             }
@@ -945,16 +946,34 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> {
                                 map.putBoolean("isWifi", true)
                                 map.putString("connectionType", "Wi-Fi")
+                                try {
+                                    @Suppress("DEPRECATION")
+                                    val wifiMgr =
+                                        reactContext.applicationContext.getSystemService(Context.WIFI_SERVICE)
+                                            as? android.net.wifi.WifiManager
+                                    val raw = wifiMgr?.connectionInfo?.ssid
+                                    val ssid = raw
+                                        ?.trim()
+                                        ?.removePrefix("\"")
+                                        ?.removeSuffix("\"")
+                                        ?.takeIf {
+                                            it.isNotBlank() &&
+                                                !it.equals("<unknown ssid>", ignoreCase = true)
+                                        }
+                                    if (ssid != null) {
+                                        map.putString("wifiSsid", ssid)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "Wi-Fi SSID read failed", e)
+                                }
                             }
                             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> {
                                 map.putBoolean("isMobile", true)
                                 var type = "Mobile Data"
-                                // Refine using TelephonyManager (carrier + data network type)
+                                // Refine using TelephonyManager (data network type)
                                 try {
                                     val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
                                     if (tm != null) {
-                                        val carrier = tm.networkOperatorName
-                                        if (!carrier.isNullOrBlank()) map.putString("carrierName", carrier)
                                         type = when (tm.dataNetworkType) {
                                             13 -> "4G/LTE"
                                             20 -> "5G"
@@ -970,6 +989,16 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                         }
                     }
                 }
+                // SIM / operator name (Idea, Jio, Airtel…) — independent of Wi‑Fi SSID
+                try {
+                    val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                    val carrier = tm?.networkOperatorName?.trim()
+                    if (!carrier.isNullOrBlank()) {
+                        map.putString("carrierName", carrier)
+                        map.putString("simCarrier", carrier)
+                    }
+                } catch (_: Exception) {
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Connectivity check failed", e)
             }
@@ -979,6 +1008,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             promise.resolve(Arguments.createMap().apply {
                 putString("carrierName", "Unknown")
                 putString("connectionType", "Offline")
+                putString("wifiSsid", "")
                 putBoolean("isWifi", false)
                 putBoolean("isMobile", false)
             })
@@ -995,11 +1025,25 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 reactContext,
                 android.Manifest.permission.ACCESS_FINE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
+            val cached = com.mrp.domain.usecase.LocationResolver.peekCache()
+            val providerRaw = cached?.provider?.lowercase() ?: ""
+            val providerLabel = when {
+                providerRaw.contains("gps") -> "GPS"
+                providerRaw.contains("fused") -> "Fused"
+                providerRaw.contains("network") -> "Network"
+                providerRaw.contains("wifi") -> "Wi-Fi"
+                providerRaw.isNotBlank() -> providerRaw.replaceFirstChar { it.uppercase() }
+                gps -> "GPS ready"
+                network -> "Network ready"
+                else -> "Off"
+            }
             val map = Arguments.createMap().apply {
                 putBoolean("gpsActive", gps)
                 putBoolean("networkLocationActive", network)
                 putBoolean("permissionGranted", granted)
                 putBoolean("isLocationAvailable", gps || network)
+                putString("provider", providerLabel)
+                putDouble("accuracyMeters", (cached?.accuracy ?: 0f).toDouble())
             }
             promise.resolve(map)
         } catch (e: Exception) {
@@ -1009,6 +1053,8 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putBoolean("networkLocationActive", false)
                 putBoolean("permissionGranted", false)
                 putBoolean("isLocationAvailable", false)
+                putString("provider", "Off")
+                putDouble("accuracyMeters", 0.0)
             })
         }
     }

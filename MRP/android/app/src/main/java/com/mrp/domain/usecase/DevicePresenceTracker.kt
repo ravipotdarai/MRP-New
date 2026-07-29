@@ -116,6 +116,17 @@ object DevicePresenceTracker {
 
         val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
         val prevId = DeviceTrackingPrefs.lastGeofenceId(context)
+
+        // Soft heal: accurate or mid fixes that land inside a zone update prefs
+        // without inventing EXIT from coarse Magarpatta pings.
+        val accurateEnough = accuracy in 0.1f..50f
+        if (geo.insideFence && geo.fenceId != null) {
+            if (prevInside != true || prevId != geo.fenceId) {
+                DeviceTrackingPrefs.rememberGeofence(context, true, geo.fenceId)
+                Log.i(TAG, "presence heal → inside ${geo.zoneName} ($source acc=$accuracy)")
+            }
+        }
+
         val geofenceChanged =
             prevInside != null &&
                 (prevInside != geo.insideFence || (prevId ?: "") != (geo.fenceId ?: ""))
@@ -152,30 +163,81 @@ object DevicePresenceTracker {
 
         LiveLocationStore.save(context, payload)
 
-        // Only dedicated geofence / emergency paths may mutate fence state + timeline.
-        // Event pings (Wi‑Fi, screen, etc.) must not invent ENTER/EXIT from a soft evaluate.
-        if (!emitGeofenceTimeline) {
+        // Seed prefs once if never set and we have a clear evaluate.
+        if (prevInside == null && (geo.insideFence || accurateEnough)) {
+            DeviceTrackingPrefs.rememberGeofence(context, geo.insideFence, geo.fenceId)
+        }
+
+        // Auto ENTER/EXIT from high-accuracy presence only (OS receiver is primary).
+        // Coarse event pings must not invent EXIT.
+        val mayEmit =
+            emitGeofenceTimeline ||
+                (accurateEnough && geofenceChanged && accuracy <= 40f)
+
+        if (!mayEmit) {
             return
         }
 
-        if (geofenceChanged) {
-            DeviceTrackingPrefs.rememberGeofence(context, geo.insideFence, geo.fenceId)
-            GeofenceTimeline.emitTransition(
-                context,
-                entered = geo.insideFence,
-                zoneName = geo.zoneName,
-                fenceId = geo.fenceId,
-                distanceM = geo.distanceToCenter,
-                lat = lat,
-                lng = lng,
-                accuracy = accuracy,
-                addressParts = parts
-            )
-            if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
-                EventSyncPublisher.onGeofenceChanged(context, geo.insideFence, geo.fenceId)
+        if (!geofenceChanged && prevInside != null) {
+            return
+        }
+
+        // Leaving a zone: confirm not still inside another before global Outside.
+        val badgeInside: Boolean
+        val badgeFenceId: String?
+        val badgeZoneName: String?
+        if (geo.insideFence) {
+            DeviceTrackingPrefs.rememberGeofence(context, true, geo.fenceId)
+            badgeInside = true
+            badgeFenceId = geo.fenceId
+            badgeZoneName = geo.zoneName
+        } else if (prevInside == true && prevId != null && accurateEnough) {
+            val stillOther = helper.findContainingZone(lat, lng, excludeId = prevId)
+            if (stillOther != null) {
+                DeviceTrackingPrefs.rememberGeofence(context, true, stillOther.id)
+                badgeInside = true
+                badgeFenceId = stillOther.id
+                badgeZoneName = stillOther.name
+            } else {
+                DeviceTrackingPrefs.rememberGeofence(context, false, prevId)
+                badgeInside = false
+                badgeFenceId = prevId
+                badgeZoneName = geo.zoneName
             }
-        } else if (prevInside == null) {
-            DeviceTrackingPrefs.rememberGeofence(context, geo.insideFence, geo.fenceId)
+        } else if (!accurateEnough) {
+            // Don't emit Outside from coarse evaluate.
+            return
+        } else {
+            DeviceTrackingPrefs.rememberGeofence(context, false, geo.fenceId)
+            badgeInside = false
+            badgeFenceId = geo.fenceId
+            badgeZoneName = geo.zoneName
+        }
+
+        val entered = badgeInside && prevInside != true
+        val exited = !badgeInside && prevInside == true
+        if (!entered && !exited && (prevId ?: "") == (badgeFenceId ?: "")) {
+            return
+        }
+        // Zone-to-zone move while still inside overall: emit ENTER for new zone.
+        val transitionEntered = badgeInside
+
+        GeofenceTimeline.emitTransition(
+            context,
+            entered = transitionEntered,
+            zoneName = badgeZoneName,
+            fenceId = badgeFenceId,
+            distanceM = geo.distanceToCenter,
+            lat = lat,
+            lng = lng,
+            accuracy = accuracy,
+            addressParts = parts,
+            badgeInside = badgeInside,
+            badgeFenceId = badgeFenceId,
+            badgeZoneName = badgeZoneName
+        )
+        if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
+            EventSyncPublisher.onGeofenceChanged(context, badgeInside, badgeFenceId)
         }
     }
 

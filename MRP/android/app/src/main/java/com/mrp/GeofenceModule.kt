@@ -79,9 +79,11 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
     fun evaluateHere(promise: Promise) {
         Thread {
             try {
+                // Geofence evaluation requires accurate GPS; Wi-Fi/cell centroids
+                // can be 100-300 m off, causing false "Outside" for small radii.
                 val resolved = LocationResolver.resolveSync(
                     reactContext,
-                    LocationResolver.Severity.UI
+                    LocationResolver.Severity.SECURITY
                 )
                 val helper = LocationHelper(reactContext)
                 helper.reloadGeofencesFromStorage()
@@ -97,6 +99,7 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
                         putDouble("latitude", loc.latitude)
                         putDouble("longitude", loc.longitude)
                         putDouble("accuracyMeters", loc.accuracy.toDouble())
+                        putString("locationTier", resolved.tier)
                         putString("address", parts?.formatted)
                         putString("country", parts?.country)
                         putString("state", parts?.state)
@@ -114,6 +117,36 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
                 )
             } catch (e: Exception) {
                 promise.reject("GEOFENCE_EVAL", e.message, e)
+            }
+        }.start()
+    }
+
+    @ReactMethod
+    fun getCurrentLocationForZone(promise: Promise) {
+        Thread {
+            try {
+                // High-accuracy fix used when placing a zone — ensures zone center
+                // matches where the user actually is, not a cell/Wi-Fi centroid.
+                val resolved = LocationResolver.resolveSync(
+                    reactContext,
+                    LocationResolver.Severity.SECURITY
+                )
+                if (resolved == null) {
+                    promise.resolve(null)
+                    return@Thread
+                }
+                val loc = resolved.location
+                val helper = LocationHelper(reactContext)
+                val parts = helper.reverseGeocodePartsSync(loc.latitude, loc.longitude)
+                promise.resolve(Arguments.createMap().apply {
+                    putDouble("latitude", loc.latitude)
+                    putDouble("longitude", loc.longitude)
+                    putDouble("accuracyMeters", loc.accuracy.toDouble())
+                    putString("locationTier", resolved.tier)
+                    putString("address", parts?.formatted)
+                })
+            } catch (e: Exception) {
+                promise.reject("GEOFENCE_LOC", e.message, e)
             }
         }.start()
     }

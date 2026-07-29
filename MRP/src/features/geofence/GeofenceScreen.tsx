@@ -13,6 +13,7 @@ import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
 import {PaywallModal} from '../subscription/PaywallModal';
+import {NativeModules} from 'react-native';
 import {
   evaluateGeofenceHere,
   listGeofenceZones,
@@ -23,6 +24,8 @@ import {
 } from '../../native/Geofence.types';
 import {startDevicePresence} from '../../native/DeviceTracking.types';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+
+const native = NativeModules.MrpGeofence as any;
 
 type Props = {onUpgrade?: () => void};
 
@@ -81,26 +84,37 @@ export function GeofenceScreen({onUpgrade}: Props) {
   const addAtCurrent = async () => {
     setBusy(true);
     try {
-      let lat = here?.latitude;
-      let lng = here?.longitude;
+      // Use GPS-level fix so zone center matches actual location, not a Wi-Fi/cell centroid.
+      const gpsFix = await (native as any)?.getCurrentLocationForZone?.().catch(() => null);
+      let lat: number | undefined = gpsFix?.latitude;
+      let lng: number | undefined = gpsFix?.longitude;
+      const acc: number | undefined = gpsFix?.accuracyMeters;
+      const tier: string | undefined = gpsFix?.locationTier;
+
       if (lat == null || lng == null) {
-        const live = await (mrpmModule as any).getCurrentLocationWithAddress?.();
-        lat = live?.latitude;
-        lng = live?.longitude;
+        // Fallback to existing here eval
+        lat = here?.latitude;
+        lng = here?.longitude;
       }
       if (lat == null || lng == null) {
-        Alert.alert('No location', 'Enable location and try again.');
+        Alert.alert('No location', 'Enable location permission and try again.');
         return;
       }
+
+      const r = Math.max(30, parseFloat(radiusMeters) || 150);
       await upsertGeofenceZone({
         name: name.trim() || 'Home',
         latitude: lat,
         longitude: lng,
-        radiusMeters: Math.max(30, parseFloat(radiusMeters) || 150),
+        radiusMeters: r,
         enabled: true,
       });
       await refresh();
-      Alert.alert('Zone saved', 'Timeline events will show Inside / Away for this zone.');
+      const accStr = acc != null ? `\n\nAccuracy: ±${Math.round(acc)}m (${tier ?? 'unknown'})` : '';
+      Alert.alert(
+        'Zone saved',
+        `"${name.trim() || 'Home"'} — ${r}m radius at ${lat.toFixed(5)}, ${lng.toFixed(5)}${accStr}\n\nTimeline will show Inside / Away for this zone.`,
+      );
     } catch (e: any) {
       Alert.alert('Save failed', e?.message || 'Could not save zone');
     } finally {
@@ -126,15 +140,19 @@ export function GeofenceScreen({onUpgrade}: Props) {
                 'Address parts pending'}
             </Text>
             <Text style={styles.meta}>
+              GPS accuracy: ±{Math.round(here.accuracyMeters)}m
+              {here.locationTier ? ` (${here.locationTier})` : ''}
+            </Text>
+            <Text style={[styles.meta, {fontWeight: '700', color: here.insideGeofence ? '#22c55e' : '#f97316'}]}>
               {here.insideGeofence
-                ? `Inside ${here.geofenceName || 'zone'}`
+                ? `✓ Inside ${here.geofenceName || 'zone'}`
                 : here.distanceToFenceM >= 0
-                  ? `Away · ${Math.round(here.distanceToFenceM)} m from nearest zone`
+                  ? `✗ Away · ${Math.round(here.distanceToFenceM)} m from nearest zone`
                   : 'No zones yet'}
             </Text>
           </>
         ) : (
-          <Text style={styles.body}>Waiting for location…</Text>
+          <Text style={styles.body}>Fetching GPS fix… (takes up to 12s)</Text>
         )}
         <TouchableOpacity style={styles.secondaryFull} onPress={refresh} disabled={busy}>
           <Text style={styles.secondaryBtnText}>Refresh</Text>

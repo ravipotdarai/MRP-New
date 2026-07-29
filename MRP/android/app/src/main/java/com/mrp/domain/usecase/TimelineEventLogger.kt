@@ -60,61 +60,178 @@ class TimelineEventLogger(private val context: Context) {
             Log.d(TAG, "Logging event: $eventType / $status")
 
             val severity = LocationResolver.severityForEvent(eventType)
-            // Prefer a usable fix for address quality; avoid fresh GPS for routine toggles.
-            val resolved = if (isCacheOnlyEvent(eventType)) {
+            val isGeoFenceEvt = eventType.uppercase().startsWith("GEOFENCE_")
+            // For address display: cache / Wi-Fi is fine.
+            // For geofence evaluation: we need GPS-level accuracy; otherwise a 150m
+            // cell centroid places us outside a 50-100m zone even when we are inside.
+            val addressResolved = if (isCacheOnlyEvent(eventType)) {
                 LocationResolver.resolveBestWithoutGps(context)
             } else {
                 LocationResolver.resolveSync(context, severity)
             }
-            val location = resolved?.location
-            val addressParts = location?.let {
+            // Geofence uses GPS-tier fix; fall back to address fix if GPS unavailable.
+            val geoResolved = if (!isGeoFenceEvt) {
+                LocationResolver.resolveSync(context, LocationResolver.Severity.SECURITY)
+                    ?: addressResolved
+            } else {
+                addressResolved
+            }
+            val resolved = addressResolved
+            // Geofence uses high-accuracy GPS fix; address uses whatever we have.
+            val location = geoResolved?.location
+            val addrLocation = addressResolved?.location ?: location
+            val addressParts = addrLocation?.let {
                 locationHelper.reverseGeocodePartsSync(it.latitude, it.longitude)
             }
             val address = addressParts?.formatted
 
-            // Snapshot only — do not invent ENTER/EXIT from this evaluation.
-            // Prefer last OS-confirmed fence state so Wi‑Fi/screen events do not
-            // flip the row to "exit" when location is missing or stale.
-            val lastInside = DeviceTrackingPrefs.lastGeofenceInside(context)
-            val lastFenceId = DeviceTrackingPrefs.lastGeofenceId(context)
+            // Geofence badge priority:
+            // 1) GEOFENCE_* → use badge metadata from GeofenceTimeline (global inside).
+            // 2) Distance says inside ANY zone → Inside (heal prefs).
+            // 3) Prefs say inside → keep unless accurate GPS clearly left all zones.
+            // 4) Accurate GPS → distance evaluate.
+            // 5) Else prefs / unknown. Never let coarse Magarpatta wipe Home.
+            var lastInside = DeviceTrackingPrefs.lastGeofenceInside(context)
+            var lastFenceId = DeviceTrackingPrefs.lastGeofenceId(context)
+            val metaName = (metadata["geofence_name"] as? String)?.takeIf { it.isNotBlank() }
+            val metaId = (metadata["geofence_id"] as? String)?.takeIf { it.isNotBlank() }
             val isGeofenceEvent = eventType.uppercase().startsWith("GEOFENCE_")
-            // Full evaluate only for dedicated geofence rows (avoids soft ENTER/EXIT).
-            // For other events, still attach zone name from stored fence id / light evaluate.
-            val evaluated = if (isGeofenceEvent && location != null) {
+
+            val zones = GeofenceStorage.list(context)
+            val hasCoords = location != null &&
+                (kotlin.math.abs(location.latitude) > 1e-7 || kotlin.math.abs(location.longitude) > 1e-7)
+            val accuracy = location?.accuracy?.takeIf { it > 0f } ?: 999f
+
+            val distanceEval = if (hasCoords && location != null && zones.isNotEmpty()) {
                 locationHelper.evaluateGeofence(location.latitude, location.longitude)
             } else {
                 null
             }
-            val snapshotEval = if (
-                !isGeofenceEvent &&
-                location != null &&
-                location.accuracy in 1f..120f
-            ) {
-                locationHelper.evaluateGeofence(location.latitude, location.longitude)
-            } else {
-                null
-            }
-            val insideFence = when {
-                evaluated != null -> evaluated.insideFence
-                lastInside != null -> lastInside
-                else -> false
-            }
-            // Name only from this event's evaluate or last OS fence id — never invent
-            // "first zone in storage" or nearest-outside when status is from lastInside.
-            val fenceId = evaluated?.fenceId ?: lastFenceId
-            val zoneName = evaluated?.zoneName
-                ?: fenceId?.let { id ->
-                    GeofenceStorage.list(context).firstOrNull { it.id == id }?.name
+
+            // Heal / seed prefs whenever distance places us inside a zone.
+            if (distanceEval?.insideFence == true && distanceEval.fenceId != null) {
+                if (lastInside != true || lastFenceId != distanceEval.fenceId) {
+                    DeviceTrackingPrefs.rememberGeofence(context, true, distanceEval.fenceId)
+                    Log.i(TAG, "Healed geofence state → inside ${distanceEval.zoneName}")
                 }
-            val distanceM = when {
-                evaluated != null && evaluated.distanceToCenter.isFinite() ->
-                    evaluated.distanceToCenter.toDouble()
-                snapshotEval != null &&
-                    fenceId != null &&
-                    snapshotEval.fenceId == fenceId &&
-                    snapshotEval.distanceToCenter.isFinite() ->
-                    snapshotEval.distanceToCenter.toDouble()
-                else -> null
+                lastInside = true
+                lastFenceId = distanceEval.fenceId
+            } else if (lastInside != true && zones.isNotEmpty()) {
+                val healCandidates = buildList {
+                    LocationResolver.peekCache()?.let { add(it) }
+                    if (hasCoords && location != null && accuracy <= 80f) add(location)
+                }
+                for (healLoc in healCandidates) {
+                    val insideZone = locationHelper.findContainingZone(
+                        healLoc.latitude,
+                        healLoc.longitude,
+                    ) ?: continue
+                    DeviceTrackingPrefs.rememberGeofence(context, true, insideZone.id)
+                    lastInside = true
+                    lastFenceId = insideZone.id
+                    Log.i(TAG, "Healed geofence state → inside ${insideZone.name}")
+                    break
+                }
+            }
+
+            val insideFence: Boolean
+            val fenceId: String?
+            val zoneName: String?
+            val distanceM: Double?
+
+            when {
+                isGeofenceEvent -> {
+                    // GEOFENCE_* rows are usually written by GeofenceTimeline; if we land here,
+                    // prefer already-healed prefs (multi-zone EXIT must stay Inside Home).
+                    insideFence = lastInside == true ||
+                        eventType.uppercase().contains("ENTER") ||
+                        metadata["transition"] == "enter"
+                    fenceId = when {
+                        lastInside == true && lastFenceId != null -> lastFenceId
+                        else -> metaId ?: lastFenceId
+                    }
+                    zoneName = fenceId?.let { id -> zones.firstOrNull { it.id == id }?.name }
+                        ?: metaName
+                    distanceM = (metadata["geofence_distance_m"] as? Number)?.toDouble()
+                        ?: if (hasCoords && fenceId != null && location != null) {
+                            locationHelper.distanceToZone(
+                                fenceId,
+                                location.latitude,
+                                location.longitude
+                            ).takeIf { it.isFinite() }?.toDouble()
+                        } else {
+                            null
+                        }
+                }
+                distanceEval?.insideFence == true -> {
+                    insideFence = true
+                    fenceId = distanceEval.fenceId
+                    zoneName = distanceEval.zoneName
+                    distanceM = distanceEval.distanceToCenter.takeIf { it.isFinite() }?.toDouble()
+                }
+                lastInside == true && lastFenceId != null &&
+                    zones.any { it.id == lastFenceId } -> {
+                    val homeZone = zones.first { it.id == lastFenceId }
+                    val distToHome = if (hasCoords && location != null) {
+                        locationHelper.distanceToZone(
+                            lastFenceId,
+                            location.latitude,
+                            location.longitude
+                        )
+                    } else {
+                        Float.NaN
+                    }
+                    val pad = maxOf(accuracy, 150f)
+                    val clearlyOutside = distToHome.isFinite() &&
+                        distToHome > homeZone.radiusMeters + pad &&
+                        accuracy <= 40f
+                    if (clearlyOutside) {
+                        if (distanceEval != null && distanceEval.insideFence) {
+                            insideFence = true
+                            fenceId = distanceEval.fenceId
+                            zoneName = distanceEval.zoneName
+                            distanceM =
+                                distanceEval.distanceToCenter.takeIf { it.isFinite() }?.toDouble()
+                            DeviceTrackingPrefs.rememberGeofence(context, true, distanceEval.fenceId)
+                        } else {
+                            insideFence = false
+                            fenceId = lastFenceId
+                            zoneName = homeZone.name
+                            distanceM = distToHome.takeIf { it.isFinite() }?.toDouble()
+                            DeviceTrackingPrefs.rememberGeofence(context, false, lastFenceId)
+                        }
+                    } else {
+                        insideFence = true
+                        fenceId = lastFenceId
+                        zoneName = homeZone.name
+                        distanceM = distToHome.takeIf { it.isFinite() }?.toDouble()
+                    }
+                }
+                accuracy <= 50f && distanceEval != null -> {
+                    insideFence = distanceEval.insideFence
+                    fenceId = distanceEval.fenceId
+                    zoneName = distanceEval.zoneName
+                    distanceM = distanceEval.distanceToCenter.takeIf { it.isFinite() }?.toDouble()
+                    if (distanceEval.insideFence && distanceEval.fenceId != null) {
+                        DeviceTrackingPrefs.rememberGeofence(context, true, distanceEval.fenceId)
+                    }
+                }
+                else -> {
+                    // Coarse / missing fix: trust prefs; never invent Outside from Magarpatta.
+                    insideFence = lastInside == true
+                    fenceId = lastFenceId?.takeIf { id -> zones.any { it.id == id } }
+                    zoneName = fenceId?.let { id -> zones.firstOrNull { it.id == id }?.name }
+                        ?: distanceEval?.zoneName
+                    distanceM = if (hasCoords && fenceId != null && location != null) {
+                        locationHelper.distanceToZone(
+                            fenceId,
+                            location.latitude,
+                            location.longitude
+                        ).takeIf { it.isFinite() }?.toDouble()
+                    } else {
+                        distanceEval?.distanceToCenter?.takeIf { it.isFinite() }?.toDouble()
+                    }
+                }
             }
 
             val enrichedMeta = buildMap {

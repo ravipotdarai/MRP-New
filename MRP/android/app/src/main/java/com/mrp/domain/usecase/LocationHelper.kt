@@ -211,6 +211,54 @@ class LocationHelper(private val context: Context) {
     }
 
     /**
+     * First enabled zone that contains the point (optionally skipping [excludeId]).
+     * When coords are missing/zero and [allowMissingCoords], falls back to process location cache.
+     */
+    fun findContainingZone(
+        latitude: Double,
+        longitude: Double,
+        excludeId: String? = null,
+        allowMissingCoords: Boolean = false,
+        /** Extra meters beyond zone radius (use location accuracy on EXIT checks). */
+        accuracyPad: Float = 0f
+    ): GeofenceZone? {
+        reloadGeofencesFromStorage()
+        var lat = latitude
+        var lng = longitude
+        val missing = kotlin.math.abs(lat) < 1e-7 && kotlin.math.abs(lng) < 1e-7
+        if (missing && allowMissingCoords) {
+            val cached = LocationResolver.peekCache() ?: return null
+            lat = cached.latitude
+            lng = cached.longitude
+        } else if (missing) {
+            return null
+        }
+        // Prefer nearest containing zone (important when zones are close).
+        var best: GeofenceZone? = null
+        var bestDist = Float.MAX_VALUE
+        for (zone in geofenceZones) {
+            if (excludeId != null && zone.id == excludeId) continue
+            val results = FloatArray(1)
+            Location.distanceBetween(lat, lng, zone.latitude, zone.longitude, results)
+            val limit = zone.radiusMeters + accuracyPad.coerceAtLeast(0f)
+            if (results[0] <= limit && results[0] < bestDist) {
+                bestDist = results[0]
+                best = zone
+            }
+        }
+        return best
+    }
+
+    /** Distance in meters from a point to a zone center, or NaN if unknown. */
+    fun distanceToZone(zoneId: String, latitude: Double, longitude: Double): Float {
+        reloadGeofencesFromStorage()
+        val zone = geofenceZones.firstOrNull { it.id == zoneId } ?: return Float.NaN
+        val results = FloatArray(1)
+        Location.distanceBetween(latitude, longitude, zone.latitude, zone.longitude, results)
+        return results[0]
+    }
+
+    /**
      * Evaluate if a location is inside any defined geofence zone
      */
     fun evaluateGeofence(latitude: Double, longitude: Double): GeofenceResult {

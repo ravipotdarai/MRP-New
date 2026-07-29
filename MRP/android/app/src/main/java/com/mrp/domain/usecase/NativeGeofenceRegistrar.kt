@@ -41,16 +41,19 @@ object NativeGeofenceRegistrar {
             val geofences = zones.map { z ->
                 Geofence.Builder()
                     .setRequestId(z.id)
-                    .setCircularRegion(z.latitude, z.longitude, z.radiusMeters.coerceIn(30f, 5000f))
+                    .setCircularRegion(z.latitude, z.longitude, z.radiusMeters.coerceIn(50f, 5000f))
                     .setExpirationDuration(Geofence.NEVER_EXPIRE)
                     .setTransitionTypes(
                         Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT
                     )
-                    .setNotificationResponsiveness(15_000)
+                    .setNotificationResponsiveness(5_000)
                     .build()
             }
             val request = GeofencingRequest.Builder()
-                .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+                .setInitialTrigger(
+                    GeofencingRequest.INITIAL_TRIGGER_ENTER or
+                        GeofencingRequest.INITIAL_TRIGGER_EXIT
+                )
                 .addGeofences(geofences)
                 .build()
             try {
