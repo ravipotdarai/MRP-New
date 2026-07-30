@@ -1,5 +1,8 @@
 # Battery Optimization Implementation Summary
 
+> **2026-07-30 — Timeline geofence GPS strategies:**  
+> See [`GEOFENCE_GPS_STRATEGIES.md`](./GEOFENCE_GPS_STRATEGIES.md) for the archived **GPS-every-event** approach and the current **lock/unlock middle-path** (prefs + GPS only when accuracy &gt; 50 m / throttled).
+
 ## ✅ Completed Optimizations
 
 ### 1. LocationHelper.kt - Flow-Based Location Updates
