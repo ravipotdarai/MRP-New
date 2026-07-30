@@ -53,13 +53,26 @@ class CameraCaptureActivity : Activity() {
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
 
-        // Set window to transparent and minimize size to avoid blank screen flash on lockscreen
+        // Transparent overlay for lock-screen capture. Only use a 1×1 window when the
+        // keyguard is locked — a 1×1 window over the open MRP UI makes MainActivity look
+        // "small" / resized.
         window.setBackgroundDrawableResource(android.R.color.transparent)
         window.setDimAmount(0f)
         val params = window.attributes
         params.alpha = 0.0f
-        params.width = 1
-        params.height = 1
+        val keyguardLocked = try {
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            km?.isKeyguardLocked == true
+        } catch (_: Exception) {
+            false
+        }
+        if (keyguardLocked) {
+            params.width = 1
+            params.height = 1
+        } else {
+            params.width = WindowManager.LayoutParams.MATCH_PARENT
+            params.height = WindowManager.LayoutParams.MATCH_PARENT
+        }
         window.attributes = params
 
         eventName = intent?.getStringExtra("eventName") ?: "unknown"

@@ -25,16 +25,27 @@ import java.io.FileOutputStream
 object SelfieCaptureUtil {
 
     private const val TAG = "SelfieCapture"
-    /** Target ~1.5–2MP for clearer faces without huge files. */
-    private const val TARGET_PIXELS = 1280 * 960
+    /**
+     * Prefer a wider FOV still (~2–3MP / 16:9 when available) without huge files.
+     * Picking larger JPEG outputs uses more of the sensor than a tight 1.2MP center crop.
+     */
+    private const val TARGET_PIXELS = 1920 * 1080
+    private const val MIN_WIDTH = 1280
+    private const val MIN_HEIGHT = 720
     private const val JPEG_QUALITY = 92
 
     fun chooseJpegSize(sizes: Array<Size>): Size {
-        if (sizes.isEmpty()) return Size(1280, 960)
-        val candidates = sizes.filter { it.width >= 800 && it.height >= 600 }
-        val pool = if (candidates.isNotEmpty()) candidates else sizes.toList()
+        if (sizes.isEmpty()) return Size(1920, 1080)
+        // Prefer landscape / wide-ish frames ≥ 720p, closest to ~1080p target
+        val wide = sizes.filter {
+            it.width >= MIN_WIDTH && it.height >= MIN_HEIGHT && it.width.toFloat() / it.height >= 1.3f
+        }
+        val pool = when {
+            wide.isNotEmpty() -> wide
+            else -> sizes.filter { it.width >= 800 && it.height >= 600 }.ifEmpty { sizes.toList() }
+        }
         return pool.minByOrNull { kotlin.math.abs(it.width * it.height - TARGET_PIXELS) }
-            ?: Size(1280, 960)
+            ?: Size(1920, 1080)
     }
 
     fun sensorOrientation(chars: CameraCharacteristics): Int =

@@ -891,7 +891,8 @@ class MrpMonitorService : Service() {
             if (associated) StatusValues.CONNECTED else StatusValues.DISCONNECTED,
             metadata
         )
-        // Log only — association flaps when screen/QS wakes; selfie stays on radio toggle.
+        // Association changes are security events when Wi‑Fi capture is enabled
+        requestPhoto(this, eventName)
     }
 
     private fun handleBluetoothDeviceLink(
@@ -1442,11 +1443,14 @@ class MrpMonitorService : Service() {
         private const val CHANNEL_ID = "mrp_monitoring_channel"
         private const val TOGGLE_EVAL_DEBOUNCE_MS = 1500L
         private const val EVENT_WAKE_LOCK_MS = 5000L
-        /** Skip redundant selfies from QS/shade churn (Wi‑Fi ON still uses this gap). */
-        private const val PHOTO_DEBOUNCE_MS = 12_000L
-        /** Still allow fast capture for SIM / wrong-unlock / USB / factory / panic. */
+        /** Per-event gap for routine selfies (same event type only). */
+        private const val PHOTO_DEBOUNCE_MS = 4_000L
+        /** Still allow fast capture for SIM / wrong-unlock / USB / factory / panic / misuse. */
         private const val PHOTO_DEBOUNCE_CRITICAL_MS = 2_500L
+        /** Global floor so the camera is not opened twice at once. */
+        private const val PHOTO_GLOBAL_MIN_GAP_MS = 800L
         @Volatile private var lastPhotoRequestMs = 0L
+        private val lastPhotoByEvent = java.util.concurrent.ConcurrentHashMap<String, Long>()
         const val ACTION_REQUEST_PHOTO = "com.mrp.ACTION_REQUEST_PHOTO"
         const val ACTION_STOP_SERVICE = "com.mrp.ACTION_STOP_SERVICE"
 
@@ -1470,18 +1474,54 @@ class MrpMonitorService : Service() {
         fun requestPhoto(context: Context, eventName: String = "unknown") {
             try {
                 val now = System.currentTimeMillis()
-                val critical = eventName.uppercase().let { e ->
-                    e.contains("SIM") || e.contains("WRONG") || e.contains("USB") ||
-                        e.contains("FACTORY") || e.contains("PANIC")
+                val key = eventName.uppercase(java.util.Locale.US)
+                if (key == "SCREEN_LOCK" || key == "SCREEN_UNLOCK" || key == "APP_MISUSE") {
+                    Log.d(TAG, "requestPhoto skipped for $eventName (no-selfie event)")
+                    return
                 }
+                val critical = key.contains("SIM") || key.contains("WRONG") || key.contains("USB") ||
+                    key.contains("FACTORY") || key.contains("PANIC")
                 val minGapMs = if (critical) PHOTO_DEBOUNCE_CRITICAL_MS else PHOTO_DEBOUNCE_MS
-                if (now - lastPhotoRequestMs < minGapMs) {
+                val lastForEvent = lastPhotoByEvent[key] ?: 0L
+                if (now - lastForEvent < minGapMs) {
                     Log.d(TAG, "requestPhoto debounced for event: $eventName")
                     return
                 }
+                if (now - lastPhotoRequestMs < PHOTO_GLOBAL_MIN_GAP_MS) {
+                    Log.d(TAG, "requestPhoto global camera gap for event: $eventName")
+                    return
+                }
+                lastPhotoByEvent[key] = now
                 lastPhotoRequestMs = now
                 Log.d(TAG, "requestPhoto triggered for event: $eventName")
-                // Launch CameraCaptureActivity transparent overlay over lockscreen
+
+                // While MRP is open, capture in the FGS — do NOT launch the 1×1 translucent
+                // CameraCaptureActivity (that shrinks / covers MainActivity).
+                if (isMrpUiInForeground(context)) {
+                    Log.d(TAG, "requestPhoto via service (UI foreground) for $eventName")
+                    val svc = Intent(context, MrpMonitorService::class.java).apply {
+                        action = ACTION_REQUEST_PHOTO
+                        putExtra("eventName", eventName)
+                    }
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(svc)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            context.startService(svc)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "startForegroundService for photo failed, broadcast fallback", e)
+                        context.sendBroadcast(
+                            Intent(ACTION_REQUEST_PHOTO)
+                                .setPackage(context.packageName)
+                                .putExtra("eventName", eventName)
+                        )
+                    }
+                    return
+                }
+
+                // Background / lock screen: transparent capture activity
                 val intent = Intent(context, CameraCaptureActivity::class.java).apply {
                     putExtra("eventName", eventName)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -1511,6 +1551,23 @@ class MrpMonitorService : Service() {
                 } catch (e2: Exception) {
                     Log.e(TAG, "All camera launch attempts failed", e2)
                 }
+            }
+        }
+
+        /** True when MRP's UI process is foreground (user is looking at the app). */
+        private fun isMrpUiInForeground(context: Context): Boolean {
+            return try {
+                val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+                    ?: return false
+                @Suppress("DEPRECATION")
+                val procs = am.runningAppProcesses ?: return false
+                val pkg = context.packageName
+                procs.any {
+                    it.processName == pkg &&
+                        it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+                }
+            } catch (_: Exception) {
+                false
             }
         }
     }

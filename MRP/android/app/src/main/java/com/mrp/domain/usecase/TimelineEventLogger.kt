@@ -299,6 +299,9 @@ class TimelineEventLogger(private val context: Context) {
                     fenceId = distanceEval.fenceId
                     zoneName = distanceEval.zoneName
                     distanceM = distanceEval.distanceToCenter.takeIf { it.isFinite() }?.toDouble()
+                    if (distanceEval.fenceId != null) {
+                        DeviceTrackingPrefs.rememberGeofence(context, true, distanceEval.fenceId)
+                    }
                 }
                 lastInside == true && lastFenceId != null &&
                     zones.any { it.id == lastFenceId } -> {
@@ -315,7 +318,9 @@ class TimelineEventLogger(private val context: Context) {
                     val pad = maxOf(accuracy, 150f)
                     val clearlyOutside = distToHome.isFinite() &&
                         distToHome > homeZone.radiusMeters + pad &&
-                        accuracy <= 40f
+                        accuracy <= 40f &&
+                        // Never flip Inside→Outside from Wi‑Fi/cell/cache centroids
+                        (resolveResult.usedGps || resolveResult.strategy.contains("gps"))
                     if (clearlyOutside) {
                         if (distanceEval != null && distanceEval.insideFence) {
                             insideFence = true
@@ -338,6 +343,7 @@ class TimelineEventLogger(private val context: Context) {
                         distanceM = distToHome.takeIf { it.isFinite() }?.toDouble()
                     }
                 }
+                // Trust Outside only when accuracy is good (post network-floor → usually GPS)
                 accuracy <= LOCK_GOOD_ACCURACY_M && distanceEval != null -> {
                     insideFence = distanceEval.insideFence
                     fenceId = distanceEval.fenceId
@@ -348,6 +354,7 @@ class TimelineEventLogger(private val context: Context) {
                     }
                 }
                 else -> {
+                    // Coarse network fix: keep prior Inside; do not invent Outside Home
                     insideFence = lastInside == true
                     fenceId = lastFenceId?.takeIf { id -> zones.any { it.id == id } }
                     zoneName = fenceId?.let { id -> zones.firstOrNull { it.id == id }?.name }
@@ -521,7 +528,7 @@ class TimelineEventLogger(private val context: Context) {
             addressLocation = addressResolved?.location,
             geoLocation = geoResolved?.location,
             strategy = "gps_every_event",
-            usedGps = true
+            usedGps = geoResolved?.tier == "gps"
         )
     }
 

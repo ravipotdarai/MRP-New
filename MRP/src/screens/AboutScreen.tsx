@@ -55,7 +55,7 @@ const LAYERS = [
   {
     step: '03',
     title: 'Sync (optional)',
-    body: 'Hub → Drive Sync encrypts a vault to your Google Drive app folder. Data stays on your device and your Drive — MRP servers never hold a readable vault. Firebase holds sync policy only.',
+    body: 'Hub → Drive Sync encrypts a vault to your Google Drive app folder. Data stays on your device and your Drive — MRP servers never hold a readable vault. MRP holds sync policy only.',
   },
   {
     step: '04',
@@ -87,7 +87,7 @@ const HOW_TO_USE = [
     step: '4',
     title: 'Zones & sync policy',
     where: 'Hub → Geofence · Hub → Drive Sync',
-    body: 'Geofence defines zones. Drive Sync backs up the vault and holds Firebase sync policy (wifi/mobile/emergency).',
+    body: 'Geofence defines zones. Drive Sync backs up the vault and holds MRP sync policy (wifi/mobile/emergency).',
   },
   {
     step: '5',
@@ -122,7 +122,7 @@ const TRUST = [
   },
   {
     title: 'Your phone + your Drive are the vault',
-    body: 'Events stay on-device by default. Optional encrypted Drive appData backup. No vault bytes in Firebase.',
+    body: 'Events stay on-device by default. Optional encrypted Drive appData backup. No vault bytes in MRP.',
   },
   {
     title: 'You choose how deep it goes',
@@ -178,7 +178,7 @@ export function AboutScreen() {
           <Text style={styles.heroBody}>
             On-device security monitoring with Panic, SIM recovery, geofence, emergency locate, and
             optional encrypted Drive backup — plus a private web console. Your vault stays on your
-            phone and Drive, not in Firebase.
+            phone and Drive, not in MRP.
           </Text>
         </LinearGradient>
 

@@ -210,9 +210,22 @@ export function PermissionsScreen() {
     }
   };
 
+  /** Many OEMs hide SMS/Phone under Permissions → ⋮ → All permissions / Allow all. */
+  const SMS_PHONE_MANUAL_PATH =
+    'Settings → Apps → MRP → Permissions\n' +
+    'If SMS / Phone is missing: tap the ⋮ (three-dot) menu → All permissions or Allow all permissions\n' +
+    'Then enable SMS / Messages and Phone / Phone numbers';
+
   const requestSmsPermission = async () => {
     if (Platform.OS !== 'android') return;
     try {
+      const already = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.SEND_SMS,
+      );
+      if (already) {
+        setSmsPermission(true);
+        return;
+      }
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.SEND_SMS,
         {
@@ -227,11 +240,11 @@ export function PermissionsScreen() {
       setSmsPermission(ok);
       if (!ok) {
         Alert.alert(
-          'Permission Denied',
-          'To enable SMS:\n\n1. Settings → Apps → MRP\n2. Permissions\n3. Enable SMS / Messages',
+          'Enable SMS in App Permissions',
+          `Android may hide SMS under the three-dot menu.\n\n${SMS_PHONE_MANUAL_PATH}\n\nGrant Access opens MRP’s app permission page directly.`,
           [
             {text: 'Cancel', style: 'cancel'},
-            {text: 'Open Settings', onPress: openAppDetails},
+            {text: 'Grant Access', onPress: openAppDetails},
           ],
         );
       } else {
@@ -246,6 +259,19 @@ export function PermissionsScreen() {
   const requestPhonePermission = async () => {
     if (Platform.OS !== 'android') return;
     try {
+      const stateAlready = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+      );
+      let numbersAlready = true;
+      if (Platform.Version >= 33) {
+        numbersAlready = await PermissionsAndroid.check(
+          'android.permission.READ_PHONE_NUMBERS' as any,
+        );
+      }
+      if (stateAlready && numbersAlready) {
+        setPhonePermission(true);
+        return;
+      }
       const perms: string[] = [PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE];
       if (Platform.Version >= 33) {
         perms.push('android.permission.READ_PHONE_NUMBERS');
@@ -262,11 +288,11 @@ export function PermissionsScreen() {
       setPhonePermission(ok);
       if (!ok) {
         Alert.alert(
-          'Permission Denied',
-          'To read the SIM phone number:\n\n1. Settings → Apps → MRP\n2. Permissions\n3. Enable Phone / Phone numbers',
+          'Enable Phone in App Permissions',
+          `Android may hide Phone under the three-dot menu.\n\n${SMS_PHONE_MANUAL_PATH}\n\nGrant Access opens MRP’s app permission page directly.`,
           [
             {text: 'Cancel', style: 'cancel'},
-            {text: 'Open Settings', onPress: openAppDetails},
+            {text: 'Grant Access', onPress: openAppDetails},
           ],
         );
       } else {
@@ -553,11 +579,14 @@ export function PermissionsScreen() {
       name: 'Phone / SIM Number',
       icon: '📱',
       description:
-        'Required to read the phone number on the inserted SIM so recovery SMS can include "New Number".',
+        'Required to read the phone number on the inserted SIM so recovery SMS can include "New Number". On many phones this is hidden until you open the ⋮ menu on the Permissions screen.',
       granted: phonePermission === true,
       grantSteps: [
-        'Tap "Allow Phone" below to show the system dialog',
-        'Path: Settings → Apps → MRP → Permissions → Phone / Phone numbers → Allow',
+        'Tap Allow Phone for the system dialog (not shown again if already granted)',
+        'Settings → Apps → MRP → Permissions',
+        'If Phone is missing: ⋮ (three-dot) → All permissions / Allow all permissions',
+        'Enable Phone / Phone numbers → Allow',
+        'Grant Access opens the MRP app permission page directly',
       ],
       onOpen: requestPhonePermission,
       buttonLabel: 'Allow Phone',
@@ -566,11 +595,14 @@ export function PermissionsScreen() {
       name: 'SMS / Messages',
       icon: '💬',
       description:
-        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read your SMS inbox.',
+        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read your SMS inbox. SMS is often under Permissions → ⋮ on Samsung, Xiaomi, Oppo, Vivo, and others.',
       granted: smsPermission === true,
       grantSteps: [
-        'Tap "Allow SMS" below to show the system dialog',
-        'Path: Settings → Apps → MRP → Permissions → SMS / Messages → Allow',
+        'Tap Allow SMS for the system dialog (not shown again if already granted)',
+        'Settings → Apps → MRP → Permissions',
+        'If SMS is missing: ⋮ (three-dot) → All permissions / Allow all permissions',
+        'Enable SMS / Messages → Allow',
+        'Grant Access opens the MRP app permission page directly',
       ],
       onOpen: requestSmsPermission,
       buttonLabel: 'Allow SMS',
@@ -737,6 +769,20 @@ export function PermissionsScreen() {
           <Text style={styles.instructionSteps}>
             Settings → Apps → MRP → Permissions → Location → Allow all the time
           </Text>
+        </View>
+
+        <View style={styles.instructionCard}>
+          <Text style={styles.instructionTitle}>💬 SMS & 📱 Phone (hidden on many OEMs)</Text>
+          <Text style={styles.instructionDescription}>
+            Android often hides SMS and Phone until you open the three-dot menu on the app
+            Permissions screen. Grant Access jumps to Settings → Apps → MRP (permission page).
+          </Text>
+          <Text style={styles.instructionSteps}>
+            Settings → Apps → MRP → Permissions → ⋮ → All permissions / Allow all → SMS + Phone
+          </Text>
+          <TouchableOpacity style={styles.requestButton} onPress={openAppDetails}>
+            <Text style={styles.requestButtonText}>Grant Access (App Permissions)</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.instructionCard}>

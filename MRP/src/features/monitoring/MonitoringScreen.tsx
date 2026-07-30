@@ -440,7 +440,7 @@ export function MonitoringScreen() {
             <View style={styles.textContainer}>
               <Text style={styles.itemTitle}>Nearby devices (Bluetooth)</Text>
               <Text style={styles.itemSubtitle}>
-                Required for BLUETOOTH_CONNECTED / DISCONNECTED timeline events
+                Required for Bluetooth device connection timeline events
               </Text>
             </View>
             <PermissionSwitch
@@ -675,7 +675,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="📶"
           title="Wi-Fi Toggles"
-          subtitle="Log event when Wi-Fi state is changed"
+          subtitle="Log event and capture selfie on Wi‑Fi radio / association changes"
           value={settings.captureOnWifiToggle}
           onValueChange={v => updateSetting('captureOnWifiToggle', v)}
         />
@@ -683,7 +683,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="✈️"
           title="Airplane Mode"
-          subtitle="Log event when Airplane Mode is toggled"
+          subtitle="Log event and capture selfie when Airplane Mode is toggled"
           value={settings.captureOnAirplaneMode}
           onValueChange={v => updateSetting('captureOnAirplaneMode', v)}
         />
@@ -691,7 +691,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="📱"
           title="Mobile Data State"
-          subtitle="Log event when cellular data is toggled"
+          subtitle="Log event and capture selfie when cellular data is toggled"
           value={settings.captureOnMobileData}
           onValueChange={v => updateSetting('captureOnMobileData', v)}
         />
@@ -699,15 +699,23 @@ export function MonitoringScreen() {
         <SettingItem
           icon="🔥"
           title="Personal Hotspot"
-          subtitle="Log event when tethering is toggled"
+          subtitle="Log event and capture selfie when tethering is toggled"
           value={settings.captureOnHotspot}
           onValueChange={v => updateSetting('captureOnHotspot', v)}
         />
 
         <SettingItem
+          icon="🎧"
+          title="Bluetooth"
+          subtitle="Log event and capture selfie on Bluetooth radio / device link"
+          value={settings.captureOnBluetooth ?? true}
+          onValueChange={v => updateSetting('captureOnBluetooth', v)}
+        />
+
+        <SettingItem
           icon="🔄"
           title="SIM Card Tampering"
-          subtitle="Trigger alert when SIM card is removed or changed"
+          subtitle="Trigger alert and selfie when SIM card is removed or changed"
           value={settings.captureOnSimChange}
           onValueChange={v => updateSetting('captureOnSimChange', v)}
         />
@@ -715,7 +723,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="💣"
           title="Factory Reset Protection"
-          subtitle="Log alert on unauthorized device wipe attempts"
+          subtitle="Log alert and capture selfie on unauthorized wipe attempts"
           value={settings.captureOnFactoryReset}
           isLast={false}
           onValueChange={v => updateSetting('captureOnFactoryReset', v)}
@@ -739,7 +747,7 @@ export function MonitoringScreen() {
         <SettingItem
           icon="📵"
           title="App misuse alerts"
-          subtitle="Timeline alerts when misuse rules match (configure below)"
+          subtitle="Timeline alert when misuse rules match (no selfie)"
           value={settings.captureOnAppMisuse ?? true}
           isLast={true}
           onValueChange={v => updateSetting('captureOnAppMisuse', v)}

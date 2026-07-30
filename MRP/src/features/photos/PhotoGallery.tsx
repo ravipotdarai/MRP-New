@@ -234,7 +234,7 @@ export function PhotoGallery() {
         <Image
           source={{uri: imageUri}}
           style={styles.photo}
-          resizeMode="cover"
+          resizeMode="contain"
           onError={(e) => console.warn('Image load failed:', imageUri, e.nativeEvent.error)}
         />
         <View style={styles.photoOverlay}>

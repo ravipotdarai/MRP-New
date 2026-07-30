@@ -10,7 +10,7 @@ export default function HomePage() {
           MRP keeps security data on <strong>your device</strong>. With backup on, an encrypted copy
           lives only in <strong>your private Google Drive app folder</strong>, unlocked with your
           PIN. MRP does not sell your data and does not keep a readable vault on MRP servers.
-          Firebase holds sync policy only — never location or selfies.
+          MRP holds sync policy only — never location or selfies.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">

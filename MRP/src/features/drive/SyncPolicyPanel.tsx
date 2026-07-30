@@ -63,9 +63,9 @@ export function SyncPolicyPanel() {
   return (
     <>
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Sync policy (Firebase config only)</Text>
+        <Text style={styles.cardTitle}>Sync policy (MRP config only)</Text>
         <Text style={styles.body}>
-          Location and events stay on this device and sync to Drive. Firebase stores only these
+          Location and events stay on this device and sync to Drive. MRP stores only these
           toggles (what / when / how often) — never coordinates or selfies.
         </Text>
         {cfg ? (

@@ -1,79 +1,38 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# MRP (Mobile Resilience Platform)
 
-# Getting Started
+Android security companion: timeline events, surveillance selfies, geofence, SIM recovery SMS, and optional Google Drive vault sync.
 
->**Note**: Make sure you have completed the [React Native - Environment Setup](https://reactnative.dev/docs/environment-setup) instructions till "Creating a new application" step, before proceeding.
+Built with **React Native** + native **Kotlin** (Clean Architecture / vertical slices).
 
-## Step 1: Start the Metro Server
+## Docs (start here)
 
-First, you will need to start **Metro**, the JavaScript _bundler_ that ships _with_ React Native.
+| Guide | Path |
+|---|---|
+| Installation | [`../docs/setup/INSTALLATION.md`](../docs/setup/INSTALLATION.md) |
+| Onboarding | [`../docs/setup/ONBOARDING.md`](../docs/setup/ONBOARDING.md) |
+| Permissions & Trust | [`../docs/setup/PERMISSIONS_AND_TRUST.md`](../docs/setup/PERMISSIONS_AND_TRUST.md) |
+| FAQ | [`../docs/setup/FAQ.md`](../docs/setup/FAQ.md) |
+| Troubleshooting | [`../docs/setup/TROUBLESHOOTING.md`](../docs/setup/TROUBLESHOOTING.md) |
+| All docs index | [`../docs/README.md`](../docs/README.md) |
 
-To start Metro, run the following command from the _root_ of your React Native project:
+## Quick start (dev)
 
 ```bash
-# using npm
+# from MRP/
+npm install
 npm start
-
-# OR using Yarn
-yarn start
-```
-
-## Step 2: Start your Application
-
-Let Metro Bundler run in its _own_ terminal. Open a _new_ terminal from the _root_ of your React Native project. Run the following command to start your _Android_ or _iOS_ app:
-
-### For Android
-
-```bash
-# using npm
+# other terminal
 npm run android
-
-# OR using Yarn
-yarn android
+# or
+cd android && gradlew.bat app:installDebug
 ```
 
-### For iOS
+## Product notes
 
-```bash
-# using npm
-npm run ios
+- **Selfies:** Most configured security events capture via `MrpMonitorService.requestPhoto`. **Screen lock/unlock do not.**
+- **App Misuse:** Requires Usage Access; events store app name, package, foreground status, and time.
+- **SMS/Phone:** Often under Permissions → **⋮** → All permissions on OEM skins — see Permissions guide.
 
-# OR using Yarn
-yarn ios
-```
+## RN environment
 
-If everything is set up _correctly_, you should see your new app running in your _Android Emulator_ or _iOS Simulator_ shortly provided you have set up your emulator/simulator correctly.
-
-This is one way to run your app — you can also run it directly from within Android Studio and Xcode respectively.
-
-## Step 3: Modifying your App
-
-Now that you have successfully run the app, let's modify it.
-
-1. Open `App.tsx` in your text editor of choice and edit some lines.
-2. For **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Developer Menu** (<kbd>Ctrl</kbd> + <kbd>M</kbd> (on Window and Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (on macOS)) to see your changes!
-
-   For **iOS**: Hit <kbd>Cmd ⌘</kbd> + <kbd>R</kbd> in your iOS Simulator to reload the app and see your changes!
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [Introduction to React Native](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you can't get this to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+Complete the [React Native Environment Setup](https://reactnative.dev/docs/environment-setup) before first build.

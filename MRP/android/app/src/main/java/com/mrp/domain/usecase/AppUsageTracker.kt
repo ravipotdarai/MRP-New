@@ -72,6 +72,25 @@ class AppUsageTracker(private val context: Context) {
 
                 // Update last query time to include events we just processed
                 lastQueryTime = currentTime
+
+                // Evaluate misuse rules against recent on-device sessions (background path)
+                try {
+                    val recent = appUsageDao.getAllSessions()
+                        .filter { it.startTime >= currentTime - 24L * 60L * 60L * 1000L }
+                        .map {
+                            MisuseRuleEngine.UsageSlice(
+                                packageName = it.packageName,
+                                appName = it.appName?.takeIf { n -> n.isNotBlank() } ?: it.packageName,
+                                startMs = it.startTime,
+                                durationSeconds = it.durationSeconds.coerceAtLeast(0L)
+                            )
+                        }
+                    if (recent.isNotEmpty()) {
+                        MisuseRuleEngine(context).evaluateSessions(recent)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "MisuseRuleEngine evaluate failed", e)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to track app usage", e)
             }

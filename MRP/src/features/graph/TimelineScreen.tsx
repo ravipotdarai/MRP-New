@@ -1,4 +1,4 @@
-import React, {useState, useCallback, useMemo} from 'react';
+import React, {useState, useCallback, useMemo, useRef} from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,9 @@ import {
   AppState,
   useWindowDimensions,
   SafeAreaView,
+  FlatList,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import {FlashList} from '@shopify/flash-list';
 import {useFocusEffect} from '@react-navigation/native';
@@ -91,7 +94,7 @@ interface PhotoItem {
 export function TimelineScreen() {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const {height: windowHeight} = useWindowDimensions();
+  const {height: windowHeight, width: windowWidth} = useWindowDimensions();
   const sheetHeight = Math.round(windowHeight * 0.9);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -99,6 +102,9 @@ export function TimelineScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<TimelineEntry | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selfieZoom, setSelfieZoom] = useState(1);
+  const [selfiePage, setSelfiePage] = useState(0);
+  const [fullSelfieVisible, setFullSelfieVisible] = useState(false);
 
   const loadTimeline = useCallback(async () => {
     try {
@@ -227,6 +233,15 @@ export function TimelineScreen() {
 
         <View style={styles.entryContent}>
           <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
+          {item.event_type === 'APP_MISUSE' && (
+            <Text style={styles.description} numberOfLines={1}>
+              {item.metadata?.app_name ||
+                item.metadata?.application_name ||
+                item.metadata?.package_name ||
+                item.metadata?.package ||
+                'Unknown app'}
+            </Text>
+          )}
           <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
           {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
             <Text style={styles.location} numberOfLines={2}>
@@ -249,6 +264,7 @@ export function TimelineScreen() {
             <Image
               source={{uri: `file://${matchedPhoto.path}`}}
               style={styles.rowSelfieThumb}
+              resizeMode="contain"
             />
           ) : null}
           <View
@@ -290,6 +306,7 @@ export function TimelineScreen() {
   const renderDetailModal = () => {
     const matchedPhoto = selectedEntry ? findMatchingPhoto(selectedEntry) : null;
     return (
+      <>
       <Modal
         visible={detailModalVisible}
         animationType="slide"
@@ -313,11 +330,54 @@ export function TimelineScreen() {
                       <Text style={styles.selfieEvidenceTitle}>
                         📸 SURVEILLANCE SELFIE EVIDENCE
                       </Text>
-                      <Image
-                        source={{uri: `file://${matchedPhoto.path}`}}
-                        style={styles.modalSelfieImage}
-                        resizeMode="cover"
-                      />
+                      <TouchableOpacity
+                        activeOpacity={0.95}
+                        onPress={() => {
+                          setSelfieZoom(1);
+                          setSelfiePage(0);
+                          setFullSelfieVisible(true);
+                        }}
+                        style={styles.selfiePreviewTap}>
+                        <View style={styles.selfiePreviewFrame}>
+                          <Image
+                            source={{
+                              uri: matchedPhoto.path.startsWith('file://')
+                                ? matchedPhoto.path
+                                : `file://${matchedPhoto.path}`,
+                            }}
+                            style={{
+                              width: Math.max(windowWidth - 72, 200),
+                              height: 280 * Math.min(Math.max(selfieZoom, 1), 2),
+                              alignSelf: 'center',
+                            }}
+                            resizeMode="contain"
+                            onError={e =>
+                              console.warn(
+                                'Selfie preview failed',
+                                matchedPhoto.path,
+                                e.nativeEvent.error,
+                              )
+                            }
+                          />
+                        </View>
+                      </TouchableOpacity>
+                      <View style={styles.selfieZoomRow}>
+                        <TouchableOpacity
+                          style={styles.zoomBtn}
+                          onPress={() => setSelfieZoom(z => Math.max(1, +(z - 0.5).toFixed(1)))}>
+                          <Text style={styles.zoomBtnText}>−</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.zoomBtn}
+                          onPress={() => setFullSelfieVisible(true)}>
+                          <Text style={styles.zoomBtnText}>Full screen / swipe</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.zoomBtn}
+                          onPress={() => setSelfieZoom(z => Math.min(4, +(z + 0.5).toFixed(1)))}>
+                          <Text style={styles.zoomBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
                       <Text style={styles.selfiePathLabel}>File Path:</Text>
                       <Text style={styles.selfiePathValue} selectable>
                         {matchedPhoto.path}
@@ -332,6 +392,36 @@ export function TimelineScreen() {
                       {formatEventType(selectedEntry.event_type)}
                     </Text>
                   </View>
+
+                  {selectedEntry.event_type === 'APP_MISUSE' ? (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailLabel}>Application</Text>
+                      <Text style={styles.detailValue}>
+                        {selectedEntry.metadata?.app_name ||
+                          selectedEntry.metadata?.application_name ||
+                          'Unknown app'}
+                      </Text>
+                      <Text style={styles.detailSubvalue}>
+                        Package:{' '}
+                        {selectedEntry.metadata?.package_name ||
+                          selectedEntry.metadata?.package ||
+                          '—'}
+                      </Text>
+                      <Text style={styles.detailSubvalue}>
+                        Foreground:{' '}
+                        {String(
+                          selectedEntry.metadata?.foreground_status ||
+                            selectedEntry.metadata?.foreground ||
+                            '—',
+                        )}
+                      </Text>
+                      {selectedEntry.metadata?.rule_title ? (
+                        <Text style={styles.detailSubvalue}>
+                          Rule: {String(selectedEntry.metadata.rule_title)}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Status</Text>
@@ -440,6 +530,61 @@ export function TimelineScreen() {
           </SafeAreaView>
         </View>
       </Modal>
+      {fullSelfieVisible && selectedEntry ? (
+        <Modal
+          visible={fullSelfieVisible}
+          animationType="fade"
+          onRequestClose={() => setFullSelfieVisible(false)}>
+          <SafeAreaView style={styles.fullSelfieRoot}>
+            <View style={styles.fullSelfieHeader}>
+              <TouchableOpacity onPress={() => setFullSelfieVisible(false)} hitSlop={12}>
+                <Text style={styles.fullSelfieClose}>Close</Text>
+              </TouchableOpacity>
+              <Text style={styles.fullSelfieTitle}>Surveillance selfie</Text>
+              <View style={{width: 48}} />
+            </View>
+            <FlatList
+              data={(() => {
+                const matched = findMatchingPhoto(selectedEntry);
+                if (!matched) return [] as PhotoItem[];
+                const nearby = photos
+                  .filter(p => Math.abs(p.timestamp - matched.timestamp) <= 120_000)
+                  .sort((a, b) => a.timestamp - b.timestamp);
+                return nearby.length ? nearby : [matched];
+              })()}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={(item, idx) => `${item.path}-${idx}`}
+              onMomentumScrollEnd={e => {
+                const page = Math.round(
+                  e.nativeEvent.contentOffset.x / Math.max(windowWidth, 1),
+                );
+                setSelfiePage(page);
+              }}
+              renderItem={({item}) => (
+                <ScrollView
+                  style={{width: windowWidth, backgroundColor: '#000'}}
+                  contentContainerStyle={styles.fullSelfiePage}
+                  maximumZoomScale={4}
+                  minimumZoomScale={1}
+                  centerContent
+                  showsVerticalScrollIndicator={false}>
+                  <Image
+                    source={{uri: `file://${item.path}`}}
+                    style={{width: windowWidth, height: windowHeight * 0.82}}
+                    resizeMode="contain"
+                  />
+                </ScrollView>
+              )}
+            />
+            <Text style={styles.fullSelfieFooter}>
+              Pinch or use +/− on detail · swipe for nearby · {selfiePage + 1}
+            </Text>
+          </SafeAreaView>
+        </Modal>
+      ) : null}
+    </>
     );
   };
 
@@ -768,9 +913,55 @@ function createStyles(colors: ColorPalette) {
     },
     modalSelfieImage: {
       width: '100%',
-      height: 180,
+      height: 280,
       borderRadius: 10,
-      backgroundColor: colors.surfaceAlt,
+      backgroundColor: '#000',
+    },
+    selfiePreviewTap: {
+      width: '100%',
+      alignItems: 'center',
+    },
+    selfiePreviewFrame: {
+      width: '100%',
+      minHeight: 280,
+      borderRadius: 10,
+      backgroundColor: '#000',
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selfieZoomRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      marginTop: 10,
+    },
+    zoomBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.skySoft,
+      borderWidth: 1,
+      borderColor: colors.sky,
+    },
+    zoomBtnText: {color: colors.sky, fontWeight: '800', fontSize: 13},
+    fullSelfieRoot: {flex: 1, backgroundColor: '#000'},
+    fullSelfieHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    fullSelfieClose: {color: '#fff', fontWeight: '700', fontSize: 16},
+    fullSelfieTitle: {color: '#fff', fontWeight: '700', fontSize: 14},
+    fullSelfiePage: {flexGrow: 1, justifyContent: 'center', alignItems: 'center'},
+    fullSelfieFooter: {
+      color: '#94a3b8',
+      textAlign: 'center',
+      paddingBottom: 16,
+      fontSize: 12,
     },
     selfiePathLabel: {
       fontSize: 11,

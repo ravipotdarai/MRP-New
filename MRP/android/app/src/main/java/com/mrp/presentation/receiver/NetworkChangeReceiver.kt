@@ -104,14 +104,16 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Airplane mode changed: enabled=$isEnabled")
 
         val eventLogger = TimelineEventLogger(context)
+        val eventType = if (isEnabled) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED"
         eventLogger.logEvent(
-            eventType = if (isEnabled) "AIRPLANE_MODE_ENABLED" else "AIRPLANE_MODE_DISABLED",
+            eventType = eventType,
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "previous_state" to (previous?.toString() ?: "unknown"),
                 "source" to "NetworkChangeReceiver"
             )
         )
+        requestSelfie(context, eventType)
     }
 
     private fun handleWifiChange(context: Context, wifiState: Int) {
@@ -134,11 +136,13 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         if (previous == null || previous != wifiState || bssidChanged) {
             Log.d(TAG, "WiFi state changed: state=$wifiState, enabled=$isEnabled, bssidChanged=$bssidChanged")
             val eventLogger = TimelineEventLogger(context)
+            val eventType = if (isEnabled) "WIFI_ENABLED" else "WIFI_DISABLED"
             eventLogger.logEvent(
-                eventType = if (isEnabled) "WIFI_ENABLED" else "WIFI_DISABLED",
+                eventType = eventType,
                 status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
                 metadata = metadata
             )
+            requestSelfie(context, eventType)
         }
     }
 
@@ -157,14 +161,16 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Mobile data changed: enabled=$isMobileEnabled")
 
         val eventLogger = TimelineEventLogger(context)
+        val eventType = if (isMobileEnabled) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED"
         eventLogger.logEvent(
-            eventType = if (isMobileEnabled) "MOBILE_DATA_ENABLED" else "MOBILE_DATA_DISABLED",
+            eventType = eventType,
             status = if (isMobileEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "network_type" to (capabilities?.toString() ?: "unknown"),
                 "source" to "NetworkChangeReceiver"
             )
         )
+        requestSelfie(context, eventType)
     }
 
     private fun handleHotspotChangeExplicit(context: Context, isEnabled: Boolean) {
@@ -177,13 +183,24 @@ class NetworkChangeReceiver : BroadcastReceiver() {
         Log.d(TAG, "Hotspot state changed explicit: enabled=$isEnabled")
 
         val eventLogger = TimelineEventLogger(context)
+        val eventType = if (isEnabled) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED"
         eventLogger.logEvent(
-            eventType = if (isEnabled) "HOTSPOT_ENABLED" else "HOTSPOT_DISABLED",
+            eventType = eventType,
             status = if (isEnabled) StatusValues.ENABLED else StatusValues.DISABLED,
             metadata = mapOf(
                 "source" to "NetworkChangeReceiver"
             )
         )
+        requestSelfie(context, eventType)
+    }
+
+    /** Mirror MrpMonitorService: log then capture selfie for configured security events. */
+    private fun requestSelfie(context: Context, eventType: String) {
+        try {
+            com.mrp.service.MrpMonitorService.requestPhoto(context, eventType)
+        } catch (e: Exception) {
+            Log.w(TAG, "requestPhoto failed for $eventType", e)
+        }
     }
 
     private fun getWifiNetworkMetadata(context: Context, isWifiOn: Boolean): Map<String, String> {

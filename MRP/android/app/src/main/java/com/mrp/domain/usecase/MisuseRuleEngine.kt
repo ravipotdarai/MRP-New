@@ -47,35 +47,48 @@ class MisuseRuleEngine(private val context: Context) {
             val last = prefs.getLong(keyFired(preset.id), 0L)
             if (now - last < DEBOUNCE_MS) continue
 
-            val hit = when (preset.id) {
-                RULE_NIGHT_SOCIAL -> sessions.any { isNight(it.startMs) && isSocialish(it.packageName, it.appName) && it.durationSeconds >= 60 }
+            val triggering: UsageSlice? = when (preset.id) {
+                RULE_NIGHT_SOCIAL -> sessions.firstOrNull {
+                    isNight(it.startMs) && isSocialish(it.packageName, it.appName) && it.durationSeconds >= 60
+                }
                 RULE_SOCIAL_CAP -> {
                     val todayStart = startOfDayMs()
-                    val total = sessions
-                        .filter { it.startMs >= todayStart && isSocialish(it.packageName, it.appName) }
-                        .sumOf { it.durationSeconds }
-                    total >= 3 * 3600
+                    val socialToday = sessions.filter {
+                        it.startMs >= todayStart && isSocialish(it.packageName, it.appName)
+                    }
+                    val total = socialToday.sumOf { it.durationSeconds }
+                    if (total >= 3 * 3600) socialToday.maxByOrNull { it.durationSeconds } else null
                 }
-                RULE_CAMERA_NIGHT -> sessions.any {
+                RULE_CAMERA_NIGHT -> sessions.firstOrNull {
                     isNight(it.startMs) && isCameraish(it.packageName, it.appName) && it.durationSeconds >= 30
                 }
-                else -> false
+                else -> null
             }
-            if (!hit) continue
+            if (triggering == null) continue
 
             prefs.edit().putLong(keyFired(preset.id), now).apply()
-            val sample = sessions.firstOrNull()
+            val foreground = triggering.durationSeconds > 0
             eventLogger.logEvent(
                 eventType = "APP_MISUSE",
                 status = "alert",
                 metadata = mapOf(
                     "rule_id" to preset.id,
                     "rule_title" to preset.title,
-                    "package" to (sample?.packageName ?: ""),
-                    "app_name" to (sample?.appName ?: "")
+                    "package" to triggering.packageName,
+                    "package_name" to triggering.packageName,
+                    "app_name" to triggering.appName,
+                    "application_name" to triggering.appName,
+                    "event_time_ms" to triggering.startMs,
+                    "duration_seconds" to triggering.durationSeconds,
+                    "foreground" to foreground,
+                    "foreground_status" to if (foreground) "foreground" else "background"
                 )
             )
-            Log.i(TAG, "Misuse rule fired: ${preset.id}")
+            // App Misuse logs timeline only — no surveillance selfie
+            Log.i(
+                TAG,
+                "Misuse rule fired: ${preset.id} app=${triggering.appName} pkg=${triggering.packageName}"
+            )
         }
     }
 

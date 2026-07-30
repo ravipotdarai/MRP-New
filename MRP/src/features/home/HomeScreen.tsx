@@ -921,7 +921,14 @@ export function HomeScreen({
                 <Text style={styles.todayIcon}>{EVENT_ICONS[e.event_type] || '📋'}</Text>
               </View>
               <Text style={styles.todayLabel} numberOfLines={2}>
-                {formatEventType(e.event_type)}
+                {e.event_type === 'APP_MISUSE'
+                  ? `App Misuse · ${
+                      e.metadata?.app_name ||
+                      e.metadata?.application_name ||
+                      e.metadata?.package_name ||
+                      'Unknown app'
+                    }`
+                  : formatEventType(e.event_type)}
               </Text>
             </View>
           ))

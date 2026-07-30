@@ -119,7 +119,16 @@ object DevicePresenceTracker {
 
         // Soft heal: accurate or mid fixes that land inside a zone update prefs
         // without inventing EXIT from coarse Magarpatta pings.
-        val accurateEnough = accuracy in 0.1f..50f
+        // Floor optimistic Wi‑Fi/cell (±2 m) so event seeds cannot invent EXIT at 1 km+.
+        val networkSeed =
+            source.contains("wifi", ignoreCase = true) ||
+                source.contains("cell", ignoreCase = true) ||
+                source.contains("cache", ignoreCase = true) ||
+                source.contains("network", ignoreCase = true) ||
+                source.startsWith("event:")
+        val effectiveAccuracy =
+            if (networkSeed && accuracy > 0f) maxOf(accuracy, 85f) else accuracy
+        val accurateEnough = effectiveAccuracy in 0.1f..50f
         if (geo.insideFence && geo.fenceId != null) {
             if (prevInside != true || prevId != geo.fenceId) {
                 DeviceTrackingPrefs.rememberGeofence(context, true, geo.fenceId)

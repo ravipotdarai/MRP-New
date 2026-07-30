@@ -49,6 +49,11 @@ object LocationResolver {
      * SIM we escalate to GPS when accuracy is worse than this.
      */
     private const val GOOD_ACCURACY_M = 50f
+    /**
+     * Fused Wi‑Fi/cell can claim ±2–30 m while the point is 100 m–2 km wrong
+     * (Magarpatta-style). Floor cheap-tier accuracy so SECURITY escalates to GPS.
+     */
+    private const val NETWORK_ACCURACY_FLOOR_M = 85f
     /** Soft cap when GPS is not allowed (informational / cache-only). */
     private const val SOFT_ACCURACY_M = 120f
 
@@ -107,7 +112,7 @@ object LocationResolver {
     fun resolveBestWithoutGps(context: Context): ResolvedLocation? {
         if (!hasPermission(context)) return null
         val start = SystemClock.elapsedRealtime()
-        val cachedLoc = peekCache()
+        val cachedLoc = peekCache()?.let { withNetworkAccuracyFloor(it, "cache") }
         if (cachedLoc != null && isGoodEnough(cachedLoc, Severity.INFORMATIONAL)) {
             return ResolvedLocation(
                 location = cachedLoc,
@@ -117,7 +122,7 @@ object LocationResolver {
                 provider = cachedLoc.provider ?: cachedTier
             )
         }
-        val last = getLastKnownAny(context)
+        val last = getLastKnownAny(context)?.let { withNetworkAccuracyFloor(it, "last_known") }
         val best = pickBetter(cachedLoc, last)
         if (best != null && best === last && last !== cachedLoc) {
             updateCache(last, "last_known")
@@ -170,7 +175,8 @@ object LocationResolver {
         }
 
         // 0) Process cache — only short-circuit when accuracy is good enough
-        peekCache()?.let { loc ->
+        peekCache()?.let { raw ->
+            val loc = withNetworkAccuracyFloor(raw, "cache")
             val age = SystemClock.elapsedRealtime() - cachedAtElapsed
             if (isGoodEnough(loc, severity)) {
                 val resolved = ResolvedLocation(
@@ -207,6 +213,7 @@ object LocationResolver {
         // 1) Wi‑Fi tier (low power) — escalate if coarse
         if (wifi) {
             val wifiLoc = requestFused(context, Priority.PRIORITY_LOW_POWER, WIFI_TIMEOUT_MS)
+                ?.let { withNetworkAccuracyFloor(it, "wifi") }
             consider(wifiLoc, "wifi")
             if (wifiLoc != null && isGoodEnough(wifiLoc, severity)) {
                 return finish(context, wifiLoc, "wifi", start, severity)
@@ -216,6 +223,7 @@ object LocationResolver {
         // 2) Cellular / balanced — escalate if still coarse
         if (cellular || (!wifi && hasAnyNetwork(context))) {
             val cellLoc = requestFused(context, Priority.PRIORITY_BALANCED_POWER_ACCURACY, CELL_TIMEOUT_MS)
+                ?.let { withNetworkAccuracyFloor(it, "cell") }
             consider(cellLoc, "cell")
             if (cellLoc != null && isGoodEnough(cellLoc, severity)) {
                 return finish(context, cellLoc, "cell", start, severity)
@@ -223,7 +231,7 @@ object LocationResolver {
         }
 
         // Soft last-known before GPS
-        val lastKnown = getLastKnownAny(context)
+        val lastKnown = getLastKnownAny(context)?.let { withNetworkAccuracyFloor(it, "last_known") }
         consider(lastKnown, "last_known")
         if (lastKnown != null && isGoodEnough(lastKnown, severity)) {
             val age = System.currentTimeMillis() - lastKnown.time
@@ -270,6 +278,28 @@ object LocationResolver {
             Severity.INFORMATIONAL ->
                 loc.accuracy <= SOFT_ACCURACY_M
         }
+    }
+
+    /**
+     * Prevent optimistic Wi‑Fi/cell (±2 m) from short-circuiting SECURITY and
+     * producing false Outside Home (1 km+ from configured center).
+     */
+    private fun withNetworkAccuracyFloor(loc: Location, tier: String): Location {
+        val provider = (loc.provider ?: cachedTier).lowercase()
+        val networkLike = when (tier) {
+            "wifi", "cell" -> true
+            "cache", "last_known" ->
+                cachedTier == "wifi" ||
+                    cachedTier == "cell" ||
+                    provider.contains("network") ||
+                    provider.contains("wifi") ||
+                    // Fused without a prior GPS tier — treat as network-quality
+                    (provider.contains("fused") && cachedTier != "gps")
+            else -> false
+        }
+        if (!networkLike || !loc.hasAccuracy()) return loc
+        if (loc.accuracy >= NETWORK_ACCURACY_FLOOR_M) return loc
+        return Location(loc).apply { accuracy = NETWORK_ACCURACY_FLOOR_M }
     }
 
     /** Prefer significantly better accuracy; otherwise fresher fix. */

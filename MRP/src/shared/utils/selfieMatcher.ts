@@ -32,12 +32,12 @@ export interface SelfieEvent {
 const NO_SELFIE_EVENTS = new Set<string>([
   'SCREEN_LOCK',
   'SCREEN_UNLOCK',
+  'APP_MISUSE',
   'DEVICE_SHUTDOWN',
   'DEVICE_REBOOT',
   'SIM_LOCKED',
   'UNLOCK_FAILED',
   'SIM_CHANGE',
-  'APP_MISUSE',
   'POSTURE_ALERT',
 ]);
 
