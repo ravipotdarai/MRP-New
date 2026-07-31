@@ -1,7 +1,9 @@
 "use client";
 
+import { InteractiveMap } from "@/components/InteractiveMap";
+
 /**
- * Map for Drive vault liveLocation (Drive-only locate — no MRP server GPS).
+ * Single-point map for live location — MapLibre under the hood.
  */
 export function VaultMap({
   lat,
@@ -12,36 +14,11 @@ export function VaultMap({
   lng: number;
   height?: number;
 }) {
-  const pad = 0.06;
-  const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - pad}%2C${lat - pad}%2C${lng + pad}%2C${lat + pad}&layer=mapnik&marker=${lat}%2C${lng}`;
-
   return (
-    <div className="vault-map map-soft">
-      <div className="map-pulse" aria-hidden />
-      <iframe
-        title="Device location map"
-        src={osmUrl}
-        style={{
-          width: "100%",
-          height,
-          border: 0,
-          borderRadius: "var(--radius)",
-        }}
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
-      />
-      <p className="muted mono" style={{ marginTop: "0.5rem" }}>
-        {lat.toFixed(5)}, {lng.toFixed(5)} · from encrypted Drive vault · pathsync.in
-      </p>
-      <a
-        className="btn"
-        style={{ marginTop: "0.5rem", display: "inline-flex" }}
-        href={`https://www.google.com/maps?q=${lat},${lng}`}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Open in Google Maps
-      </a>
-    </div>
+    <InteractiveMap
+      center={{ lat, lng }}
+      height={height}
+      markers={[{ lat, lng, id: "live", color: "#d4a017" }]}
+    />
   );
 }

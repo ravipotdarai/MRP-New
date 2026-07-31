@@ -1,16 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  decryptVaultUtf8,
-  parseVaultJson,
-  type VaultPayload,
-} from "@/lib/vault-crypto";
-import {
-  fetchLatestVaultBlob,
-  requestDriveAppDataToken,
-} from "@/lib/drive-appdata";
-import { useAuth } from "@/lib/auth-context";
+import { VaultUnlockGate } from "@/components/VaultUnlockGate";
+import { useVaultSession } from "@/lib/vault-session";
 
 function formatDur(sec: number) {
   if (!Number.isFinite(sec) || sec <= 0) return "0s";
@@ -23,145 +15,113 @@ function formatDur(sec: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export default function AppUsagePage() {
-  const { user } = useAuth();
-  const [pin, setPin] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [vault, setVault] = useState<VaultPayload | null>(null);
+function AppUsageBody() {
+  const { vault } = useVaultSession();
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"time" | "name">("time");
 
-  const load = async () => {
-    if (!user) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const token = await requestDriveAppDataToken();
-      const { blob } = await fetchLatestVaultBlob(token);
-      const plain = await decryptVaultUtf8(blob, pin);
-      setVault(parseVaultJson(plain));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to open vault");
-      setVault(null);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const sessions = useMemo(
-    () => vault?.appUsage?.sessions ?? [],
-    [vault?.appUsage?.sessions],
-  );
+  const sessions = useMemo(() => vault?.appUsage?.sessions ?? [], [vault?.appUsage?.sessions]);
   const byApp = useMemo(() => {
-    const map = new Map<string, { name: string; sec: number }>();
+    const map = new Map<string, { name: string; sec: number; count: number }>();
     for (const s of sessions) {
       const pkg = s.packageName || "unknown";
-      const prev = map.get(pkg) || { name: s.appName || pkg, sec: 0 };
+      const prev = map.get(pkg) || { name: s.appName || pkg, sec: 0, count: 0 };
       prev.sec += Number(s.durationSeconds) || 0;
+      prev.count += 1;
       map.set(pkg, prev);
     }
-    return [...map.entries()]
-      .map(([pkg, v]) => ({ pkg, ...v }))
-      .sort((a, b) => b.sec - a.sec);
-  }, [sessions]);
+    let list = [...map.entries()].map(([pkg, v]) => ({ pkg, ...v }));
+    if (q.trim()) {
+      const qq = q.toLowerCase();
+      list = list.filter((a) => a.name.toLowerCase().includes(qq) || a.pkg.toLowerCase().includes(qq));
+    }
+    list.sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name) : b.sec - a.sec));
+    return list;
+  }, [sessions, q, sort]);
 
+  const totalSec = byApp.reduce((n, a) => n + a.sec, 0);
   const safety = vault?.appUsage?.safety;
+  const maxSec = byApp[0]?.sec || 1;
 
   return (
-    <div className="page fade-in">
-      <h1>App Usage</h1>
+    <div>
+      <h1 className="page-title">App Usage</h1>
       <p className="page-lead">
-        Daily usage from your encrypted Drive vault (phone exports today only). System apps are
-        excluded. Requires MRP app with vault v3 sync.
+        Daily usage from your encrypted Drive vault (phone exports today). System apps excluded.
       </p>
-
-      <div className="panel rise row-gap">
-        <label className="field">
-          <span>Vault PIN</span>
+      <div className="panel" style={{ marginBottom: "1rem" }}>
+        <p className="muted">
+          Sessions: {sessions.length} · Unique apps: {byApp.length} · Foreground total: {formatDur(totalSec)}
+          {vault?.appUsage?.dayStartMs
+            ? ` · Day ${new Date(vault.appUsage.dayStartMs).toLocaleDateString()}`
+            : ""}
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
           <input
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="Same as phone PIN"
-            autoComplete="current-password"
+            className="input"
+            placeholder="Search apps…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            style={{ maxWidth: 240 }}
           />
-        </label>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={busy || pin.length < 4 || !user}
-          onClick={() => void load()}
-        >
-          {busy ? "Decrypting…" : "Load App Usage from Drive"}
-        </button>
-        {error ? (
-          <p className="muted" style={{ color: "var(--alert)" }}>
-            {error}
-          </p>
-        ) : null}
-        {vault && !vault.appUsage ? (
-          <p className="muted">
-            This vault has no <code>appUsage</code> (update the phone app and Back up now).
-          </p>
-        ) : null}
+          <select className="input" value={sort} onChange={(e) => setSort(e.target.value as "time" | "name")}>
+            <option value="time">Sort by time</option>
+            <option value="name">Sort by name</option>
+          </select>
+        </div>
       </div>
 
-      {vault?.appUsage ? (
-        <div className="panel rise fade-in">
-          <h2>Today · {sessions.length} sessions</h2>
-          <p className="muted mono">
-            Day start{" "}
-            {vault.appUsage.dayStartMs
-              ? new Date(vault.appUsage.dayStartMs).toLocaleString()
-              : "—"}
-          </p>
-          {byApp.length === 0 ? (
-            <p className="muted">No sessions for today in this vault.</p>
-          ) : (
-            <ul className="usage-list">
-              {byApp.slice(0, 40).map((a) => (
-                <li key={a.pkg} className="usage-row">
-                  <div>
-                    <strong>{a.name}</strong>
-                    <div className="muted mono small">{a.pkg}</div>
-                  </div>
-                  <span className="mono">{formatDur(a.sec)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      ) : null}
+      <div className="panel" style={{ marginBottom: "1rem" }}>
+        <h2>Most used</h2>
+        {byApp.length === 0 ? (
+          <p className="muted">No sessions — unlock after phone vault v3 backup.</p>
+        ) : (
+          <ul className="usage-bars">
+            {byApp.slice(0, 15).map((a) => (
+              <li key={a.pkg}>
+                <div className="usage-bar-label">
+                  <strong>{a.name}</strong>
+                  <span className="muted mono">{formatDur(a.sec)} · {a.count}x</span>
+                </div>
+                <div className="usage-bar-track">
+                  <div className="usage-bar-fill" style={{ width: `${Math.round((a.sec / maxSec) * 100)}%` }} />
+                </div>
+                <p className="muted mono" style={{ fontSize: "0.75rem" }}>
+                  {a.pkg}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
-      {safety ? (
-        <div className="panel rise fade-in">
-          <h2>Safety · permission sections</h2>
-          {(
-            [
-              ["SMS", safety.sms],
-              ["Camera", safety.camera],
-              ["Microphone", safety.microphone],
-            ] as const
-          ).map(([title, list]) => (
-            <div key={title} className="safety-block">
-              <h3>{title}</h3>
-              {!list?.length ? (
-                <p className="muted">None listed</p>
-              ) : (
-                <ul className="usage-list">
-                  {list.slice(0, 30).map((a) => (
-                    <li key={`${title}-${a.packageName}`} className="usage-row">
-                      <div>
-                        <strong>{a.appName || a.packageName}</strong>
-                        <div className="muted mono small">{a.packageName}</div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <div className="grid-2">
+        {(["sms", "camera", "microphone"] as const).map((key) => (
+          <div className="panel" key={key}>
+            <h2>Safety · {key}</h2>
+            {(safety?.[key] || []).length === 0 ? (
+              <p className="muted">None listed</p>
+            ) : (
+              <ul className="muted" style={{ listStyle: "none", lineHeight: 1.6 }}>
+                {(safety?.[key] || []).map((a, i) => (
+                  <li key={i}>
+                    <strong>{a.appName || a.packageName}</strong>
+                    <span className="mono"> · {(a.permissions || []).join(", ")}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
+  );
+}
+
+export default function AppUsagePage() {
+  return (
+    <VaultUnlockGate title="Unlock vault for App Usage">
+      <AppUsageBody />
+    </VaultUnlockGate>
   );
 }

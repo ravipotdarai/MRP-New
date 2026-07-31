@@ -2,30 +2,40 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 const NAV = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/monitoring", label: "Locate & Timeline" },
-  { href: "/app-usage", label: "App Usage" },
-  { href: "/devices", label: "Devices" },
-  { href: "/reports", label: "Reports" },
-  { href: "/settings", label: "Sync policy" },
-  { href: "/admin", label: "Admin", adminOnly: true },
+  { href: "/dashboard", label: "Overview", group: "Overview" },
+  { href: "/monitoring", label: "Locate & Timeline", group: "Locate" },
+  { href: "/travel", label: "Travel", group: "Locate" },
+  { href: "/media", label: "Media", group: "Evidence" },
+  { href: "/geofences", label: "Geofences", group: "Places" },
+  { href: "/app-usage", label: "App Usage", group: "Insights" },
+  { href: "/reports", label: "Reports", group: "Insights" },
+  { href: "/devices", label: "Devices", group: "Account" },
+  { href: "/profile", label: "Profile", group: "Account" },
+  { href: "/settings", label: "Sync policy", group: "Account" },
+  { href: "/admin", label: "Admin", group: "Admin", adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, configured, signOut, isAdmin } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && configured && !user) {
       router.replace("/login");
     }
   }, [loading, configured, user, router]);
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
 
   if (loading) {
     return (
@@ -48,34 +58,58 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   if (!user) return null;
 
+  const links = NAV.filter((n) => !n.adminOnly || isAdmin);
+
   return (
-    <div className="shell">
+    <div className={`shell ${navOpen ? "shell-nav-open" : ""}`}>
+      <header className="shell-top">
+        <button
+          type="button"
+          className="btn shell-menu-btn"
+          aria-label="Toggle navigation"
+          onClick={() => setNavOpen((v) => !v)}
+        >
+          Menu
+        </button>
+        <div className="shell-top-brand">
+          <span className="shell-mark">PathSync</span>
+          <span className="shell-sub">Mobile Resilience Platform</span>
+        </div>
+        <div className="shell-top-actions">
+          <ThemeSwitcher />
+          <button type="button" className="btn" onClick={() => void signOut()}>
+            Sign out
+          </button>
+        </div>
+      </header>
       <aside className="shell-nav">
         <div className="shell-brand">
           <span className="shell-mark">PathSync</span>
           <span className="shell-sub">MRP · pathsync.in</span>
         </div>
         <nav>
-          {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (
+          {links.map((n) => (
             <Link
               key={n.href}
               href={n.href}
-              className={pathname === n.href ? "nav-link active" : "nav-link"}
+              className={pathname === n.href || pathname.startsWith(n.href + "/") ? "nav-link active" : "nav-link"}
             >
               {n.label}
             </Link>
           ))}
         </nav>
         <div className="shell-user">
-          <ThemeSwitcher />
           <p className="mono">{user.email}</p>
           {isAdmin ? <span className="badge badge-alert">Admin</span> : null}
-          <button type="button" className="btn" onClick={() => void signOut()}>
-            Sign out
-          </button>
         </div>
       </aside>
-      <main className="shell-main">{children}</main>
+      <main className="shell-main">
+        <GlobalSearch />
+        {children}
+      </main>
+      {navOpen ? (
+        <button type="button" className="shell-backdrop" aria-label="Close menu" onClick={() => setNavOpen(false)} />
+      ) : null}
     </div>
   );
 }

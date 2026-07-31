@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-31 (Anti-clone plan refined — see [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md))  
+**Last updated:** 2026-07-31 (Web portal parity plan — see [`WEB_PORTAL_PARITY.md`](WEB_PORTAL_PARITY.md); anti-clone deferred after web)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -35,6 +35,15 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | ID | Item | Notes |
 |---|---|---|
 | SEC-AC | Anti-clone / client hardening | Full plan: [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md). Start **after** MRP Web pending work; align with Play-signed AAB. Data-first → APK harden → detect/Integrity → evidence hash-chain → SQLCipher when schema stable. |
+
+---
+
+## Web — Portal parity
+
+### Untested
+| ID | Item | Notes |
+|---|---|---|
+| WEB-PARITY | MRP Web desktop companion | Plan: [`WEB_PORTAL_PARITY.md`](WEB_PORTAL_PARITY.md). Code shipped; Hosting deployed 2026-07-31 → https://mobileresilienceplatform.web.app. Route smoke **200** all console paths. Interactive vault E2E (Google + PIN `1111`) still **manual** (OAuth). pathsync.in still GoDaddy until DNS cutover. |
 
 ---
 

@@ -1,86 +1,156 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { fetchLatestVaultBlob, requestDriveAppDataToken } from "@/lib/drive-appdata";
-import { decryptVaultUtf8, parseVaultJson } from "@/lib/vault-crypto";
+import { VaultUnlockGate } from "@/components/VaultUnlockGate";
+import { useVaultSession } from "@/lib/vault-session";
+import {
+  asRows,
+  eventType,
+  eventTimeMs,
+  pathDistanceKm,
+  rowAddress,
+  rowLatLng,
+  travelPoints,
+} from "@/lib/vault-selectors";
 
-export default function ReportsPage() {
-  const [pin, setPin] = useState("");
-  const [csv, setCsv] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+function downloadText(filename: string, text: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-  const blobUrl = useMemo(() => {
-    if (!csv) return null;
-    return URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  }, [csv]);
+function ReportsBody() {
+  const { vault } = useVaultSession();
+  const [kind, setKind] = useState<"timeline" | "travel" | "usage" | "geofence">("timeline");
 
-  const generate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const token = await requestDriveAppDataToken();
-      const { blob } = await fetchLatestVaultBlob(token);
-      const plain = await decryptVaultUtf8(blob, pin);
-      const vault = parseVaultJson(plain);
-      const rows = Array.isArray(vault.timeline) ? vault.timeline : [];
-      const header = "eventType,status,address,lat,lng";
-      const lines = rows.map((row) => {
-        const e = row as Record<string, unknown>;
-        const loc = (e.location || {}) as Record<string, unknown>;
+  const summary = useMemo(() => {
+    const rows = asRows(vault);
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    const pts = travelPoints(vault, day.getTime(), Date.now());
+    return {
+      events: rows.length,
+      todayKm: pathDistanceKm(pts),
+      apps: vault?.appUsage?.sessions?.length || 0,
+      fences: vault?.geofences?.length || 0,
+    };
+  }, [vault]);
+
+  const exportCsv = () => {
+    if (kind === "timeline") {
+      const header = "eventType,status,time,address,lat,lng";
+      const lines = asRows(vault).map((e) => {
+        const loc = rowLatLng(e);
         const cells = [
-          e.eventType || e.event_type || "",
+          eventType(e),
           e.status || "",
-          loc.detailedAddress || loc.detailed_address || "",
-          loc.latitude ?? "",
-          loc.longitude ?? "",
+          eventTimeMs(e) ? new Date(eventTimeMs(e)).toISOString() : "",
+          rowAddress(e),
+          loc?.lat ?? "",
+          loc?.lng ?? "",
         ].map((c) => `"${String(c).replace(/"/g, '""')}"`);
         return cells.join(",");
       });
-      setCsv([header, ...lines].join("\n"));
-    } catch (e) {
-      setCsv(null);
-      setError(e instanceof Error ? e.message : "Report failed");
-    } finally {
-      setBusy(false);
+      downloadText("mrp-timeline.csv", [header, ...lines].join("\n"), "text/csv;charset=utf-8");
+      return;
+    }
+    if (kind === "usage") {
+      const header = "appName,packageName,durationSeconds,startTime,endTime";
+      const lines = (vault?.appUsage?.sessions || []).map((s) =>
+        [s.appName || "", s.packageName || "", s.durationSeconds ?? "", s.startTime ?? "", s.endTime ?? ""]
+          .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+          .join(","),
+      );
+      downloadText("mrp-app-usage.csv", [header, ...lines].join("\n"), "text/csv;charset=utf-8");
+      return;
+    }
+    if (kind === "geofence") {
+      const header = "name,id,lat,lng,radiusMeters";
+      const lines = (vault?.geofences || []).map((g) =>
+        [g.name || "", g.id || "", g.latitude ?? "", g.longitude ?? "", g.radiusMeters ?? ""]
+          .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+          .join(","),
+      );
+      downloadText("mrp-geofences.csv", [header, ...lines].join("\n"), "text/csv;charset=utf-8");
+      return;
+    }
+    const day = new Date();
+    day.setHours(0, 0, 0, 0);
+    const pts = travelPoints(vault, day.getTime(), Date.now());
+    const header = "time,lat,lng";
+    const lines = pts.map((p) =>
+      [new Date(p.t).toISOString(), p.lat, p.lng].map((c) => `"${String(c)}"`).join(","),
+    );
+    downloadText("mrp-travel-today.csv", [header, ...lines].join("\n"), "text/csv;charset=utf-8");
+  };
+
+  const exportExcelish = () => {
+    // Spreadsheet-friendly TSV that Excel opens
+    if (kind === "timeline") {
+      const header = ["eventType", "status", "time", "address", "lat", "lng"].join("\t");
+      const lines = asRows(vault).map((e) => {
+        const loc = rowLatLng(e);
+        return [
+          eventType(e),
+          e.status || "",
+          eventTimeMs(e) ? new Date(eventTimeMs(e)).toISOString() : "",
+          rowAddress(e),
+          loc?.lat ?? "",
+          loc?.lng ?? "",
+        ].join("\t");
+      });
+      downloadText("mrp-timeline.xls", [header, ...lines].join("\n"), "application/vnd.ms-excel");
+    } else {
+      exportCsv();
     }
   };
 
   return (
     <div>
       <h1 className="page-title">Reports</h1>
-      <p className="page-lead">CSV export from your decrypted Drive vault (P6-4).</p>
+      <p className="page-lead">Export from the unlocked vault session (no re-PIN).</p>
       <div className="panel">
-        <div className="field">
-          <label htmlFor="rpin">MRP PIN</label>
-          <input
-            id="rpin"
-            type="password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-          />
-        </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={busy || pin.length < 4}
-          onClick={() => void generate()}
+        <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "1rem" }}>
+          <li>Timeline events: {summary.events}</li>
+          <li>Travel today: {summary.todayKm.toFixed(2)} km</li>
+          <li>App sessions: {summary.apps}</li>
+          <li>Geofences: {summary.fences}</li>
+        </ul>
+        <label className="muted" htmlFor="rep-kind">
+          Report type
+        </label>
+        <select
+          id="rep-kind"
+          className="input"
+          value={kind}
+          onChange={(e) => setKind(e.target.value as typeof kind)}
+          style={{ display: "block", marginTop: "0.35rem", maxWidth: 280 }}
         >
-          {busy ? "Building…" : "Generate CSV"}
-        </button>
-        {error ? (
-          <p className="muted" style={{ color: "var(--alert)", marginTop: "0.75rem" }}>
-            {error}
-          </p>
-        ) : null}
-        {blobUrl ? (
-          <p style={{ marginTop: "1rem" }}>
-            <a className="btn" href={blobUrl} download="mrp-timeline.csv">
-              Download mrp-timeline.csv
-            </a>
-          </p>
-        ) : null}
+          <option value="timeline">Security timeline</option>
+          <option value="travel">Travel (today)</option>
+          <option value="usage">App usage</option>
+          <option value="geofence">Geofences</option>
+        </select>
+        <div style={{ display: "flex", gap: "0.5rem", marginTop: "1rem", flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-primary" onClick={exportCsv}>
+            Download CSV
+          </button>
+          <button type="button" className="btn" onClick={exportExcelish}>
+            Download Excel-friendly
+          </button>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function ReportsPage() {
+  return (
+    <VaultUnlockGate title="Unlock vault for reports">
+      <ReportsBody />
+    </VaultUnlockGate>
   );
 }

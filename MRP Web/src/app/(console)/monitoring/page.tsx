@@ -1,72 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  fetchLatestVaultBlob,
-  DRIVE_APPDATA_SCOPE,
-  requestDriveAppDataToken,
-} from "@/lib/drive-appdata";
-import {
-  decryptVaultUtf8,
-  parseVaultJson,
-  type VaultPayload,
-} from "@/lib/vault-crypto";
-import { VaultMap } from "@/components/VaultMap";
-import { EventTypeChart } from "@/components/EventTypeChart";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { VaultUnlockGate } from "@/components/VaultUnlockGate";
+import { useVaultSession } from "@/lib/vault-session";
 import { useAuth } from "@/lib/auth-context";
 import { readDeviceConfig, writeDeviceConfig } from "@/lib/device-config";
+import { allowAction, remainingCooldownMs } from "@/lib/rate-limit";
+import { InteractiveMap } from "@/components/InteractiveMap";
+import { EventDetailDrawer, TimelineList } from "@/components/TimelineUi";
+import { EventTypeChart } from "@/components/EventTypeChart";
+import {
+  asRows,
+  liveLatLng,
+  num,
+  type TimelineRow,
+} from "@/lib/vault-selectors";
 
-function num(v: unknown): number | null {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) return Number(v);
-  return null;
-}
-
-function isGeofenceRow(row: unknown): boolean {
-  const e = row as Record<string, unknown>;
-  const t = String(e.eventType || e.event_type || "").toLowerCase();
-  return t.includes("geofence") || t.includes("fence") || t.includes("zone");
-}
-
-export default function MonitoringPage() {
+function MonitoringBody() {
   const { user } = useAuth();
-  const [pin, setPin] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { vault, refresh, setInfo, busy } = useVaultSession();
   const [findBusy, setFindBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-  const [vault, setVault] = useState<VaultPayload | null>(null);
-  const [meta, setMeta] = useState<{ name: string; modifiedTime?: string } | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [policyEmergency, setPolicyEmergency] = useState(false);
-  const pinRef = useRef(pin);
-  pinRef.current = pin;
-
-  const openVault = useCallback(async (quiet = false) => {
-    if (pinRef.current.length < 4) return;
-    if (!quiet) {
-      setBusy(true);
-      setError(null);
-      setInfo(null);
-    }
-    try {
-      const token = await requestDriveAppDataToken();
-      const { file, blob } = await fetchLatestVaultBlob(token);
-      const plain = await decryptVaultUtf8(blob, pinRef.current);
-      setVault(parseVaultJson(plain));
-      setMeta({ name: file.name, modifiedTime: file.modifiedTime });
-      if (quiet) {
-        setInfo(`Vault refreshed · ${new Date().toLocaleTimeString()}`);
-      }
-    } catch (e) {
-      if (!quiet) {
-        setVault(null);
-        setError(e instanceof Error ? e.message : "Failed to open vault");
-      }
-    } finally {
-      if (!quiet) setBusy(false);
-    }
-  }, []);
+  const [filter, setFilter] = useState("");
+  const [selected, setSelected] = useState<TimelineRow | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   const refreshPolicy = useCallback(async () => {
     if (!user?.uid) return;
@@ -83,22 +42,25 @@ export default function MonitoringPage() {
   }, [refreshPolicy]);
 
   useEffect(() => {
-    if (!autoRefresh || pin.length < 4) return;
+    if (!autoRefresh) return;
     const id = window.setInterval(() => {
-      void openVault(true);
+      void refresh(true);
       void refreshPolicy();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [autoRefresh, pin, openVault, refreshPolicy]);
+  }, [autoRefresh, refresh, refreshPolicy]);
 
   const findMyDevice = async () => {
     if (!user?.uid) {
       setError("Sign in required");
       return;
     }
+    if (!allowAction("find-my-device", 15_000)) {
+      setError(`Wait ${Math.ceil(remainingCooldownMs("find-my-device", 15_000) / 1000)}s before retrying`);
+      return;
+    }
     setFindBusy(true);
     setError(null);
-    setInfo(null);
     try {
       const existing = (await readDeviceConfig(user.uid)) || {};
       await writeDeviceConfig(
@@ -120,11 +82,9 @@ export default function MonitoringPage() {
       setPolicyEmergency(true);
       setAutoRefresh(true);
       setInfo(
-        "Find-my-device ON: phone will GPS + sync to your Drive about every 1 minute while emergency is on (high battery use). Auto-refreshing vault every 60s — use Stop emergency when done. Panic SMS and SIM recovery are unchanged.",
+        "Find-my-device ON (~1 min GPS sync). Auto-refresh vault every 60s. Stop when done.",
       );
-      if (pin.length >= 4) {
-        window.setTimeout(() => void openVault(true), 2_000);
-      }
+      window.setTimeout(() => void refresh(true), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not set find policy");
     } finally {
@@ -134,6 +94,7 @@ export default function MonitoringPage() {
 
   const cancelFind = async () => {
     if (!user?.uid) return;
+    if (!allowAction("cancel-find", 5000)) return;
     setFindBusy(true);
     try {
       const existing = (await readDeviceConfig(user.uid)) || {};
@@ -148,385 +109,140 @@ export default function MonitoringPage() {
       );
       setPolicyEmergency(false);
       setAutoRefresh(false);
-      setInfo("Emergency tracking turned off. Panic, SIM recovery, geofence, and monitoring stay available on the phone.");
+      setInfo("Emergency tracking off.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Cancel failed");
+      setError(e instanceof Error ? e.message : "Could not clear emergency");
     } finally {
       setFindBusy(false);
     }
   };
 
-  const timeline = useMemo(
-    () => (Array.isArray(vault?.timeline) ? vault!.timeline! : []),
-    [vault],
-  );
-  const live = vault?.liveLocation || null;
-  const selfies = Array.isArray(vault?.selfies) ? vault!.selfies! : [];
-  const simHistory = Array.isArray(vault?.simHistory) ? vault!.simHistory! : [];
-  const geofenceRows = useMemo(() => timeline.filter(isGeofenceRow), [timeline]);
-  const snap = vault?.trackingConfigSnapshot || null;
-  const health = vault?.deviceHealth || null;
-  const healthAt = health ? num(health.atMs) : null;
-  const healthAgeMin =
-    healthAt != null ? Math.max(0, Math.round((Date.now() - healthAt) / 60000)) : null;
+  const live = liveLatLng(vault);
+  const rows = useMemo(() => {
+    const all = asRows(vault);
+    const q = filter.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((r) => JSON.stringify(r).toLowerCase().includes(q));
+  }, [vault, filter]);
 
-  const liveLat = live ? num(live.lat) ?? num(live.latitude) : null;
-  const liveLng = live ? num(live.lng) ?? num(live.longitude) : null;
-
-  const pathPoints = useMemo(() => {
-    const pts: { lat: number; lng: number; label: string }[] = [];
-    for (const row of timeline) {
-      const e = row as Record<string, unknown>;
-      const loc = (e.location || {}) as Record<string, unknown>;
-      const la = num(loc.latitude) ?? num(loc.lat);
-      const ln = num(loc.longitude) ?? num(loc.lng);
-      if (la != null && ln != null) {
-        pts.push({
-          lat: la,
-          lng: ln,
-          label: String(e.eventType || e.event_type || "event"),
-        });
-      }
-    }
-    return pts.slice(-40);
-  }, [timeline]);
+  const simRows = vault?.simHistory || [];
+  const dh = vault?.deviceHealth || {};
 
   return (
-    <div className="fade-in">
-      <h1 className="page-title">Locate &amp; Timeline</h1>
+    <div>
+      <h1 className="page-title">Locate & Timeline</h1>
       <p className="page-lead">
-        Drive-only locate on <strong>pathsync.in</strong>: decrypt your vault in this browser (
-        <code className="mono">{DRIVE_APPDATA_SCOPE}</code>). MRP servers never see plaintext
-        location or selfies. Find-my-device uses a <strong>1 min</strong> emergency interval while
-        active (higher battery use).
+        Drive-only locate on pathsync.in — decrypt in this browser. Panic SMS / SIM recovery stay on the phone.
       </p>
 
-      {vault && health ? (
-        <div className={`panel rise health-banner ${healthAgeMin != null && healthAgeMin > 30 ? "stale" : "ok"}`}>
-          <strong>Device health</strong>
-          <span className="muted">
-            {" "}
-            · monitoring {String(health.monitoringOn)} · battery{" "}
-            {health.batteryPct != null ? `${health.batteryPct}%` : "—"} · last tick{" "}
-            {healthAgeMin != null ? `${healthAgeMin}m ago` : "—"} · emergency{" "}
-            {String(health.emergencyTracking)} @{" "}
-            {String(health.emergencyIntervalMinutes ?? 1)} min
-          </span>
-        </div>
-      ) : null}
-
-      <div className="panel rise" style={{ marginBottom: "1rem" }}>
-        <div className="field">
-          <label htmlFor="pin">MRP PIN</label>
-          <input
-            id="pin"
-            type="password"
-            autoComplete="current-password"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            placeholder="PIN used for Drive backup"
-          />
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.65rem", alignItems: "center" }}>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={busy || pin.length < 4}
-            onClick={() => void openVault(false)}
-          >
-            {busy ? "Decrypting…" : "Load latest Drive vault"}
+      <div className="panel" style={{ marginBottom: "1rem" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <button type="button" className="btn btn-primary" disabled={findBusy || busy} onClick={() => void findMyDevice()}>
+            Find my device
           </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={findBusy || !user}
-            onClick={() => void findMyDevice()}
-          >
-            {findBusy ? "Updating…" : "Find my device"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={findBusy || !user}
-            onClick={() => void cancelFind()}
-          >
+          <button type="button" className="btn" disabled={findBusy} onClick={() => void cancelFind()}>
             Stop emergency
           </button>
-          <label className="muted" style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              disabled={pin.length < 4}
-            />
+          <label className="muted" style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
             Auto-refresh vault (60s)
           </label>
+          {policyEmergency ? <span className="badge badge-alert">Emergency ON</span> : null}
         </div>
-        {policyEmergency ? (
-          <p
-            className="muted"
-            style={{
-              marginTop: "0.75rem",
-              color: "var(--alert)",
-              fontWeight: 600,
-            }}
-          >
-            Emergency / Find-my-device policy is ON for this account. Leave it on only while you are
-            actively locating the phone.
-          </p>
-        ) : null}
-        {error ? (
-          <p className="muted" style={{ color: "var(--alert)", marginTop: "0.75rem" }}>
-            {error}
-          </p>
-        ) : null}
-        {info ? (
-          <p className="muted" style={{ color: "var(--safe)", marginTop: "0.75rem" }}>
-            {info}
-          </p>
-        ) : null}
-        {meta ? (
-          <p className="muted mono" style={{ marginTop: "0.75rem" }}>
-            {meta.name} · {meta.modifiedTime || "unknown time"}
-          </p>
-        ) : null}
+        {error ? <p className="badge badge-alert" style={{ marginTop: "0.75rem" }}>{error}</p> : null}
       </div>
 
-      {vault ? (
-        <div className="panel rise" style={{ marginBottom: "1rem" }}>
-          <h2>App Usage (today)</h2>
-          {vault.appUsage ? (
-            <p className="muted">
-              {vault.appUsage.sessionCount ?? vault.appUsage.sessions?.length ?? 0} sessions in
-              vault · open <a href="/app-usage">App Usage</a> for charts &amp; Safety sections.
-            </p>
-          ) : (
-            <p className="muted">
-              Update the phone app and sync Drive to include daily App Usage (vault v3).
-            </p>
-          )}
-        </div>
-      ) : null}
-
-      {liveLat != null && liveLng != null ? (
-        <div className="panel rise rise-delay-1" style={{ marginBottom: "1rem" }}>
-          <h2>Live location (from vault)</h2>
-          <VaultMap lat={liveLat} lng={liveLng} />
-          <p className="muted" style={{ marginTop: "0.75rem" }}>
-            {(live?.address as string) || `${liveLat}, ${liveLng}`}
-          </p>
-          <p className="mono muted">
-            {String(live?.city || "")} {String(live?.state || "")}{" "}
-            {String(live?.country || "")}
-          </p>
-          <p className="muted" style={{ marginTop: "0.5rem" }}>
-            Source: {String(live?.source || "—")} · Battery: {String(live?.batteryPct ?? "—")}% ·
-            Network: {String(live?.network || "—")}
-          </p>
-        </div>
-      ) : live ? (
-        <div className="panel" style={{ marginBottom: "1rem" }}>
-          <h2>Live location</h2>
-          <p className="muted">Vault has liveLocation but no parseable coordinates.</p>
-        </div>
-      ) : null}
-
-      {pathPoints.length > 0 ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>Recent path ({pathPoints.length} points)</h2>
-          <p className="muted" style={{ marginBottom: "0.75rem" }}>
-            From timeline geo in the vault (not a live stream).
-          </p>
-          <VaultMap
-            lat={pathPoints[pathPoints.length - 1].lat}
-            lng={pathPoints[pathPoints.length - 1].lng}
-          />
-          <ul className="path-list">
-            {pathPoints
-              .slice()
-              .reverse()
-              .slice(0, 12)
-              .map((p, i) => (
-                <li key={`${p.lat}-${p.lng}-${i}`} className="mono muted">
-                  {p.label}: {p.lat.toFixed(4)}, {p.lng.toFixed(4)}
-                </li>
-              ))}
+      <div className="grid-2">
+        <div className="panel">
+          <h2>Live</h2>
+          <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "0.75rem" }}>
+            <li>
+              Battery:{" "}
+              {String(
+                dh.batteryPct ??
+                  (live
+                    ? (vault?.liveLocation as Record<string, unknown> | undefined)?.battery
+                    : undefined) ??
+                  "—",
+              )}
+            </li>
+            <li>Network: {String((vault?.liveLocation as Record<string, unknown> | undefined)?.network ?? "—")}</li>
+            <li>Accuracy: {String(num((vault?.liveLocation as Record<string, unknown> | undefined)?.accuracy) ?? "—")}</li>
           </ul>
-        </div>
-      ) : null}
-
-      {vault ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>Event graph</h2>
-          <EventTypeChart timeline={timeline} />
-        </div>
-      ) : null}
-
-      {vault ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>Geofence events ({geofenceRows.length})</h2>
-          <p className="muted" style={{ marginBottom: "0.75rem" }}>
-            Manage geofences on the phone (Hub → Geofence). This list shows vault timeline rows that
-            look like fence enter/exit.
-          </p>
-          {geofenceRows.length === 0 ? (
-            <p className="muted">No geofence-tagged events in this backup.</p>
+          {live ? (
+            <InteractiveMap center={live} markers={[{ ...live, id: "live" }]} height={280} />
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Address</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {geofenceRows.slice(0, 40).map((row, i) => {
-                    const e = row as Record<string, unknown>;
-                    const loc = (e.location || {}) as Record<string, unknown>;
-                    return (
-                      <tr key={String(e.id || `gf-${i}`)}>
-                        <td>{String(e.eventType || e.event_type || "—")}</td>
-                        <td>{String(e.status || "—")}</td>
-                        <td className="muted">
-                          {String(loc.detailedAddress || loc.detailed_address || "—")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <p className="muted">No liveLocation — enable Find my device and wait for phone sync.</p>
           )}
         </div>
-      ) : null}
-
-      {vault ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>SIM history ({simHistory.length})</h2>
-          <p className="muted" style={{ marginBottom: "0.75rem" }}>
-            SIM change recovery still runs on-device (Hub → SIM). Vault may include recent history when
-            synced.
-          </p>
-          {simHistory.length === 0 ? (
-            <p className="muted">No SIM history in this vault.</p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>When</th>
-                    <th>Detail</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {simHistory.slice(0, 40).map((row, i) => {
-                    const s = row as Record<string, unknown>;
-                    const when =
-                      s.atMs != null
-                        ? new Date(Number(s.atMs)).toLocaleString()
-                        : String(s.time || s.timestamp || "—");
-                    const detail =
-                      String(
-                        s.summary ||
-                          s.carrier ||
-                          s.note ||
-                          s.iccidMasked ||
-                          JSON.stringify(s).slice(0, 120),
-                      );
-                    return (
-                      <tr key={i}>
-                        <td className="mono muted">{when}</td>
-                        <td>{detail}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div className="panel">
+          <h2>Event mix</h2>
+          <EventTypeChart timeline={vault?.timeline || []} />
         </div>
-      ) : null}
+      </div>
 
-      {snap ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>Tracking snapshot (from vault)</h2>
-          <pre className="mono muted" style={{ whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-            {JSON.stringify(snap, null, 2)}
-          </pre>
+      <div className="panel" style={{ marginTop: "1.25rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <h2>Security timeline</h2>
+          <input
+            className="input"
+            placeholder="Filter events…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={{ maxWidth: 280 }}
+          />
         </div>
-      ) : null}
+        <TimelineList
+          rows={rows}
+          onSelect={(row, index) => {
+            setSelected(row);
+            setSelectedIdx(index);
+          }}
+        />
+      </div>
 
-      {vault ? (
-        <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
-          <h2>Timeline ({timeline.length})</h2>
-          {timeline.length === 0 ? (
-            <p className="muted">No events in this backup.</p>
-          ) : (
-            <div style={{ overflowX: "auto", marginTop: "0.75rem" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Address</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {timeline.slice(0, 100).map((row, i) => {
-                    const e = row as Record<string, unknown>;
-                    const loc = (e.location || {}) as Record<string, unknown>;
-                    return (
-                      <tr key={String(e.id || i)}>
-                        <td>{String(e.eventType || e.event_type || "—")}</td>
-                        <td>{String(e.status || "—")}</td>
-                        <td className="muted">
-                          {String(loc.detailedAddress || loc.detailed_address || "—")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      ) : null}
+      <div className="panel" style={{ marginTop: "1.25rem" }}>
+        <h2>SIM history (read-only)</h2>
+        {simRows.length === 0 ? (
+          <p className="muted">No SIM history in vault.</p>
+        ) : (
+          <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7 }}>
+            {simRows.slice(0, 20).map((s, i) => {
+              const o = s as Record<string, unknown>;
+              return (
+                <li key={i}>
+                  {String(o.summary || o.carrier || o.note || "SIM event")} ·{" "}
+                  {String(o.iccidMasked || "")} ·{" "}
+                  {new Date(Number(o.atMs || o.time || o.timestamp) || Date.now()).toLocaleString()}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
-      {vault ? (
-        <div className="panel rise rise-delay-3">
-          <h2>Selfies</h2>
-          {vault.selfiesOmitted ? (
-            <p className="muted">
-              Selfies were omitted from this backup (policy / size). Enable Premium+ selfie sync on
-              the phone.
-            </p>
-          ) : selfies.length === 0 ? (
-            <p className="muted">No selfies in this vault.</p>
-          ) : (
-            <div className="selfie-grid">
-              {selfies.slice(0, 24).map((s, i) => {
-                const item = s as Record<string, unknown>;
-                const b64 = String(item.base64 || item.data || "");
-                const mime = String(item.mime || item.contentType || "image/jpeg");
-                if (!b64 || b64.length < 32) {
-                  return (
-                    <div key={i} className="selfie-tile muted">
-                      #{i + 1} (no image bytes)
-                    </div>
-                  );
-                }
-                const src = b64.startsWith("data:") ? b64 : `data:${mime};base64,${b64}`;
-                return (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} className="selfie-tile" src={src} alt={`Selfie ${i + 1}`} />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : null}
+      <EventDetailDrawer
+        row={selected}
+        onClose={() => setSelected(null)}
+        onPrev={() => {
+          const next = Math.min(rows.length - 1, selectedIdx + 1);
+          setSelectedIdx(next);
+          setSelected(rows[next] || null);
+        }}
+        onNext={() => {
+          const next = Math.max(0, selectedIdx - 1);
+          setSelectedIdx(next);
+          setSelected(rows[next] || null);
+        }}
+      />
     </div>
+  );
+}
+
+export default function MonitoringPage() {
+  return (
+    <VaultUnlockGate>
+      <MonitoringBody />
+    </VaultUnlockGate>
   );
 }

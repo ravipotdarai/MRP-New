@@ -363,7 +363,290 @@ textarea {
 .shell {
   display: grid;
   grid-template-columns: 240px 1fr;
-  min-height: 100vh;
+  grid-template-rows: auto 1fr;
+  min-height: 100dvh;
+}
+
+.shell-top {
+  display: none;
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.shell-top-brand {
+  flex: 1;
+  min-width: 0;
+}
+
+.shell-top-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.shell-menu-btn {
+  display: none;
+}
+
+.shell-backdrop {
+  display: none;
+}
+
+.vault-session-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.global-search {
+  margin-bottom: 1.25rem;
+}
+
+.global-search .input {
+  width: 100%;
+  max-width: 420px;
+}
+
+.search-hits {
+  list-style: none;
+  margin-top: 0.5rem;
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-panel);
+  line-height: 1.55;
+}
+
+.inspect-banner {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 0.65rem 1rem;
+  background: color-mix(in srgb, var(--alert) 25%, var(--bg));
+  border-bottom: 1px solid var(--alert);
+  font-size: 0.9rem;
+}
+
+.dash-score {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+}
+
+.score-num {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 600;
+  color: var(--signal);
+  line-height: 1.1;
+}
+
+.timeline-list {
+  list-style: none;
+  margin-top: 0.75rem;
+  max-height: min(60vh, 520px);
+  overflow: auto;
+}
+
+.timeline-row {
+  width: 100%;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  text-align: left;
+  padding: 0.65rem 0.35rem;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.timeline-row:hover {
+  background: var(--bg-elevated);
+}
+
+.timeline-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sev-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 0.4rem;
+  flex-shrink: 0;
+  background: var(--text-dim);
+}
+
+.sev-alert {
+  background: var(--alert);
+}
+
+.sev-safe {
+  background: var(--safe);
+}
+
+.sev-neutral {
+  background: var(--signal-dim);
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.event-drawer {
+  width: min(440px, 100%);
+  height: 100%;
+  overflow: auto;
+  padding: 1.25rem;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--line);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 1rem 0;
+  font-size: 0.9rem;
+}
+
+.detail-grid dt {
+  color: var(--text-dim);
+}
+
+.selfie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.5rem;
+}
+
+.selfie-thumb,
+.selfie-thumb-btn img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.selfie-thumb-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.lightbox img {
+  max-width: min(96vw, 720px);
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.map-marker-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  cursor: pointer;
+}
+
+.interactive-map {
+  width: 100%;
+  min-width: 0;
+}
+
+.usage-bars {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+
+.usage-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.usage-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  background: var(--signal);
+  border-radius: 999px;
+}
+
+.input {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.5rem 0.65rem;
+}
+
+.sensitive-surface {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.sensitive-surface input,
+.sensitive-surface textarea,
+.allow-context {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .shell-nav {
@@ -526,21 +809,59 @@ textarea {
   flex-shrink: 0;
 }
 
-@media (max-width: 800px) {
+@media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
   }
-  .shell-nav {
-    border-right: none;
-    border-bottom: 1px solid var(--line);
+  .shell-top {
+    display: flex;
   }
-  .shell-nav nav {
-    flex-direction: row;
-    flex-wrap: wrap;
+  .shell-menu-btn {
+    display: inline-flex;
+  }
+  .shell-nav {
+    position: fixed;
+    z-index: 45;
+    inset: 0 auto 0 0;
+    width: min(280px, 88vw);
+    transform: translateX(-105%);
+    transition: transform 0.2s ease;
+    border-right: 1px solid var(--line);
+    overflow: auto;
+  }
+  .shell-nav-open .shell-nav {
+    transform: translateX(0);
+  }
+  .shell-nav-open .shell-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 44;
+    border: none;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .shell-main {
+    padding: 1.25rem 1rem 2.5rem;
+    max-width: none;
+  }
+  .shell-brand {
+    display: none;
   }
   .hero-landing {
     grid-template-columns: 1fr;
     padding-top: 2rem;
+  }
+  .event-drawer {
+    width: 100%;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .shell-main {
+    padding-top: 0.75rem;
+  }
+  .interactive-map > div:first-child {
+    max-height: 50vh;
   }
 }
 
