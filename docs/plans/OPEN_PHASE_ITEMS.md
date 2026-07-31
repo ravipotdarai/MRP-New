@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-28 (Store v1 track started — see [`docs/store/STORE_V1_CHECKLIST.md`](../store/STORE_V1_CHECKLIST.md))  
+**Last updated:** 2026-07-31 (Anti-clone plan refined — see [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md))  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -26,6 +26,15 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | P0-5 | Peer review / stakeholder sign-off on data-class rules (A/B/C) | Docs exist; formal sign-off not recorded |
 
 *(P0-1…P0-4 treated as Done.)*
+
+---
+
+## Security — Anti-clone & hardening (deferred)
+
+### Not started
+| ID | Item | Notes |
+|---|---|---|
+| SEC-AC | Anti-clone / client hardening | Full plan: [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md). Start **after** MRP Web pending work; align with Play-signed AAB. Data-first → APK harden → detect/Integrity → evidence hash-chain → SQLCipher when schema stable. |
 
 ---
 
