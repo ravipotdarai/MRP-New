@@ -4,13 +4,13 @@ export default function HomePage() {
   return (
     <div className="hero-landing">
       <div className="rise">
-        <p className="hero-kicker">Mobile Resilience Platform</p>
+        <p className="hero-kicker">PathSync · Mobile Resilience Platform</p>
         <h1>Your vault stays yours.</h1>
         <p className="page-lead" style={{ marginBottom: 0 }}>
           MRP keeps security data on <strong>your device</strong>. With backup on, an encrypted copy
           lives only in <strong>your private Google Drive app folder</strong>, unlocked with your
-          PIN. MRP does not sell your data and does not keep a readable vault on MRP servers.
-          MRP holds sync policy only — never location or selfies.
+          PIN. Open this console at <strong>pathsync.in</strong>. MRP does not sell your data and
+          does not keep a readable vault on MRP servers.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">

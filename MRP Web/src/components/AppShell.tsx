@@ -8,7 +8,8 @@ import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 const NAV = [
   { href: "/dashboard", label: "Overview" },
-  { href: "/monitoring", label: "Monitoring" },
+  { href: "/monitoring", label: "Locate & Timeline" },
+  { href: "/app-usage", label: "App Usage" },
   { href: "/devices", label: "Devices" },
   { href: "/reports", label: "Reports" },
   { href: "/settings", label: "Sync policy" },
@@ -51,8 +52,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="shell">
       <aside className="shell-nav">
         <div className="shell-brand">
-          <span className="shell-mark">MRP</span>
-          <span className="shell-sub">Web console</span>
+          <span className="shell-mark">PathSync</span>
+          <span className="shell-sub">MRP · pathsync.in</span>
         </div>
         <nav>
           {NAV.filter((n) => !n.adminOnly || isAdmin).map((n) => (

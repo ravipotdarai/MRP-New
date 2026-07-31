@@ -110,7 +110,7 @@ const HOW_TO_USE = [
   {
     step: '8',
     title: 'Web console',
-    where: 'https://mobileresilienceplatform.web.app',
+    where: 'https://pathsync.in',
     body: 'Sign in with Google, decrypt your Drive vault with PIN, and edit sync policy remotely.',
   },
 ];

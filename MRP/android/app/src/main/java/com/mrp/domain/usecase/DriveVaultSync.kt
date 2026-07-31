@@ -113,7 +113,7 @@ object DriveVaultSync {
         val timeline = TimelineStorage(context)
         val sim = SimRecoveryStorage(context)
         val payload = JSONObject()
-            .put("version", 2)
+            .put("version", 3)
             .put("createdAtMs", System.currentTimeMillis())
             .put("syncReason", reason)
             .put("email", email)
@@ -138,6 +138,17 @@ object DriveVaultSync {
                 DeviceTrackingPrefs.snapshot(context).forEach { (k, v) -> o.put(k, v) }
             }
         )
+
+        // v3 extras — built only at sync time (no background polling)
+        try {
+            payload.put("appUsage", VaultExtrasBuilder.buildAppUsageDaily(context))
+            payload.put("deviceHealth", VaultExtrasBuilder.buildDeviceHealth(context))
+            payload.put("geofences", VaultExtrasBuilder.buildGeofences(context))
+            // Light data-risk evaluate (debounced internally 6h) — no selfie
+            DataRiskRuleEngine(context).evaluateInstalled()
+        } catch (e: Exception) {
+            Log.w(TAG, "vault v3 extras failed", e)
+        }
         return payload
     }
 

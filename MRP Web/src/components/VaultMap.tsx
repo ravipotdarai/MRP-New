@@ -16,7 +16,8 @@ export function VaultMap({
   const osmUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${lng - pad}%2C${lat - pad}%2C${lng + pad}%2C${lat + pad}&layer=mapnik&marker=${lat}%2C${lng}`;
 
   return (
-    <div className="vault-map">
+    <div className="vault-map map-soft">
+      <div className="map-pulse" aria-hidden />
       <iframe
         title="Device location map"
         src={osmUrl}
@@ -30,7 +31,7 @@ export function VaultMap({
         referrerPolicy="no-referrer-when-downgrade"
       />
       <p className="muted mono" style={{ marginTop: "0.5rem" }}>
-        {lat.toFixed(5)}, {lng.toFixed(5)} · from encrypted Drive vault
+        {lat.toFixed(5)}, {lng.toFixed(5)} · from encrypted Drive vault · pathsync.in
       </p>
       <a
         className="btn"

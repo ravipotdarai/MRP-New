@@ -70,6 +70,33 @@ export type VaultPayload = {
   pendingSync?: unknown[];
   simHistory?: unknown[];
   trackingConfigSnapshot?: Record<string, unknown>;
+  /** v3 — today's usage sessions + safety permission sections */
+  appUsage?: {
+    dayStartMs?: number;
+    exportedAtMs?: number;
+    sessionCount?: number;
+    sessions?: Array<{
+      packageName?: string;
+      appName?: string;
+      startTime?: number;
+      endTime?: number;
+      durationSeconds?: number;
+    }>;
+    safety?: {
+      sms?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
+      camera?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
+      microphone?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
+      scannedAtMs?: number;
+    };
+  };
+  deviceHealth?: Record<string, unknown>;
+  geofences?: Array<{
+    id?: string;
+    name?: string;
+    latitude?: number;
+    longitude?: number;
+    radiusMeters?: number;
+  }>;
 };
 
 export function parseVaultJson(plain: string): VaultPayload {

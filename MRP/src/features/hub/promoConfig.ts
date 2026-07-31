@@ -14,7 +14,7 @@ export const PROMOTIONS: PromoLink[] = [
     id: 'launch',
     title: 'Launch offer',
     subtitle: 'Premium trial messaging — configure before store release',
-    url: 'https://mobileresilienceplatform.web.app',
+    url: 'https://pathsync.in',
   },
 ];
 
@@ -23,6 +23,6 @@ export const AFFILIATES: PromoLink[] = [
     id: 'share',
     title: 'Share MRP',
     subtitle: 'Invite friends — affiliate tracking arrives with Nest billing',
-    url: 'https://mobileresilienceplatform.web.app',
+    url: 'https://pathsync.in',
   },
 ];

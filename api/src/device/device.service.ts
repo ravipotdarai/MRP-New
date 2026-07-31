@@ -38,7 +38,7 @@ export class DeviceService {
       syncSelfiesPremium: true,
       syncFrequencyMinutes: 15,
       emergencyTracking: false,
-      emergencyIntervalMinutes: 5,
+      emergencyIntervalMinutes: 1,
     };
   }
 
@@ -51,7 +51,7 @@ export class DeviceService {
     patch: Partial<DeviceTrackingConfig>,
     source: 'web' | 'admin' = 'web',
   ) {
-    const emerg = Math.max(1, patch.emergencyIntervalMinutes ?? 5);
+    const emerg = Math.max(1, patch.emergencyIntervalMinutes ?? 1);
     const freq = Math.max(10, patch.syncFrequencyMinutes ?? 15);
     const applied: DeviceTrackingConfig & { updatedAtMs: number; source: string } = {
       ...this.defaults(),

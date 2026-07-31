@@ -16,6 +16,8 @@ async function bootstrap() {
       'http://127.0.0.1:3001',
       'https://mobileresilienceplatform.web.app',
       'https://mobileresilienceplatform.firebaseapp.com',
+      'https://pathsync.in',
+      'https://www.pathsync.in',
     ].join(',')
   )
     .split(',')

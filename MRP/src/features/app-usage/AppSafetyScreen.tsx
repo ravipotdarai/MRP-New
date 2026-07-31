@@ -26,6 +26,18 @@ type RiskApp = {
   hasAccessibility: boolean;
 };
 
+type PermApp = {
+  packageName: string;
+  appName: string;
+  permissions: string[];
+};
+
+type PermSections = {
+  sms: PermApp[];
+  camera: PermApp[];
+  microphone: PermApp[];
+};
+
 type PostureCheck = {
   id: string;
   title: string;
@@ -40,6 +52,11 @@ export function AppSafetyScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [riskApps, setRiskApps] = useState<RiskApp[]>([]);
+  const [permSections, setPermSections] = useState<PermSections>({
+    sms: [],
+    camera: [],
+    microphone: [],
+  });
   const [grade, setGrade] = useState('Unknown');
   const [checks, setChecks] = useState<PostureCheck[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -71,12 +88,21 @@ export function AppSafetyScreen() {
   const load = useCallback(async () => {
     try {
       const bridge = mrpmModule as any;
-      const [risk, summary] = await Promise.all([
+      const [risk, summary, perms] = await Promise.all([
         bridge.getAppRiskReport?.() ?? Promise.resolve([]),
         bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
+        bridge.getSensitivePermissionSections?.() ??
+          Promise.resolve({sms: [], camera: [], microphone: []}),
       ]);
       applyRiskAndRules(risk);
       applyPostureSummary(summary);
+      if (perms && typeof perms === 'object') {
+        setPermSections({
+          sms: Array.isArray(perms.sms) ? perms.sms : [],
+          camera: Array.isArray(perms.camera) ? perms.camera : [],
+          microphone: Array.isArray(perms.microphone) ? perms.microphone : [],
+        });
+      }
     } catch (e) {
       console.warn('[AppSafety] load failed', e);
     } finally {
@@ -225,6 +251,39 @@ export function AppSafetyScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Permission sections — non-system apps only */}
+      {(
+        [
+          {key: 'sms' as const, title: 'SMS ACCESS', icon: '💬'},
+          {key: 'camera' as const, title: 'CAMERA ACCESS', icon: '📷'},
+          {key: 'microphone' as const, title: 'MICROPHONE ACCESS', icon: '🎙️'},
+        ] as const
+      ).map(sec => (
+        <View key={sec.key} style={styles.card}>
+          <Text style={styles.sectionTitle}>
+            {sec.icon} {sec.title}
+          </Text>
+          <Text style={styles.muted}>
+            Non-system apps that request this permission (requested, not live
+            misuse proof).
+          </Text>
+          {permSections[sec.key].length === 0 ? (
+            <Text style={styles.muted}>None found (or limited package visibility).</Text>
+          ) : (
+            permSections[sec.key].slice(0, 40).map(app => (
+              <View key={app.packageName} style={styles.appRow}>
+                <View style={{flex: 1}}>
+                  <Text style={styles.appName}>{app.appName}</Text>
+                  <Text style={styles.appPkg} numberOfLines={1}>
+                    {app.packageName}
+                  </Text>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      ))}
 
       {/* Risky apps */}
       <View style={styles.card}>

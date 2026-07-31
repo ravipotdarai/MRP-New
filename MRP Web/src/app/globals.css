@@ -543,3 +543,87 @@ textarea {
     padding-top: 2rem;
   }
 }
+
+/* Parity UI — soft motion (GPU-friendly, no continuous timers) */
+.fade-in {
+  animation: mrp-fade-in 0.35s ease-out both;
+}
+@keyframes mrp-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.health-banner {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+.health-banner.ok {
+  border-color: color-mix(in srgb, var(--safe) 50%, var(--line));
+}
+.health-banner.stale {
+  border-color: color-mix(in srgb, var(--alert) 55%, var(--line));
+}
+.usage-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+.usage-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.usage-row:last-child {
+  border-bottom: none;
+}
+.small {
+  font-size: 0.8rem;
+}
+.safety-block {
+  margin-top: 1rem;
+}
+.row-gap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.map-soft {
+  position: relative;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+.map-soft:hover {
+  transform: translateY(-1px);
+}
+.map-pulse {
+  pointer-events: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--signal);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent);
+  animation: mrp-pulse 2.2s ease-out infinite;
+  z-index: 2;
+}
+@keyframes mrp-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}

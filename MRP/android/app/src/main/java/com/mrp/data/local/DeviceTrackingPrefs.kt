@@ -76,7 +76,7 @@ object DeviceTrackingPrefs {
 
     /** Emergency sync interval — default 1, never less than 1. */
     fun emergencyIntervalMinutes(context: Context): Int =
-        p(context).getInt(KEY_EMERGENCY_MIN, 5).coerceAtLeast(1)
+        p(context).getInt(KEY_EMERGENCY_MIN, 1).coerceAtLeast(1)
 
     fun lastDriveSyncMs(context: Context): Long =
         p(context).getLong(KEY_LAST_SYNC_MS, 0L)

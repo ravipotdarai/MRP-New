@@ -64,6 +64,7 @@ const EVENT_ICONS: Record<string, string> = {
   APP_INSTALLED: '📦',
   APP_UPDATED: '📦',
   APP_MISUSE: '📵',
+  DATA_RISK_APP: '⚠️',
   POSTURE_ALERT: '🛡️',
 };
 
@@ -233,7 +234,7 @@ export function TimelineScreen() {
 
         <View style={styles.entryContent}>
           <Text style={styles.eventType}>{formatEventType(item.event_type)}</Text>
-          {item.event_type === 'APP_MISUSE' && (
+          {item.event_type === 'APP_MISUSE' || item.event_type === 'DATA_RISK_APP' ? (
             <Text style={styles.description} numberOfLines={1}>
               {item.metadata?.app_name ||
                 item.metadata?.application_name ||
@@ -241,7 +242,7 @@ export function TimelineScreen() {
                 item.metadata?.package ||
                 'Unknown app'}
             </Text>
-          )}
+          ) : null}
           <Text style={styles.timestamp}>{formatTimestamp(item.timestamp)}</Text>
           {item.location?.detailed_address && item.location.detailed_address !== 'Address Unavailable (Offline)' && (
             <Text style={styles.location} numberOfLines={2}>
@@ -393,7 +394,8 @@ export function TimelineScreen() {
                     </Text>
                   </View>
 
-                  {selectedEntry.event_type === 'APP_MISUSE' ? (
+                  {(selectedEntry.event_type === 'APP_MISUSE' ||
+                    selectedEntry.event_type === 'DATA_RISK_APP') && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailLabel}>Application</Text>
                       <Text style={styles.detailValue}>
@@ -407,21 +409,28 @@ export function TimelineScreen() {
                           selectedEntry.metadata?.package ||
                           '—'}
                       </Text>
-                      <Text style={styles.detailSubvalue}>
-                        Foreground:{' '}
-                        {String(
-                          selectedEntry.metadata?.foreground_status ||
-                            selectedEntry.metadata?.foreground ||
-                            '—',
-                        )}
-                      </Text>
+                      {selectedEntry.metadata?.permissions ? (
+                        <Text style={styles.detailSubvalue}>
+                          Permissions: {String(selectedEntry.metadata.permissions)}
+                        </Text>
+                      ) : null}
+                      {selectedEntry.metadata?.foreground_status ? (
+                        <Text style={styles.detailSubvalue}>
+                          Foreground:{' '}
+                          {String(
+                            selectedEntry.metadata?.foreground_status ||
+                              selectedEntry.metadata?.foreground ||
+                              '—',
+                          )}
+                        </Text>
+                      ) : null}
                       {selectedEntry.metadata?.rule_title ? (
                         <Text style={styles.detailSubvalue}>
                           Rule: {String(selectedEntry.metadata.rule_title)}
                         </Text>
                       ) : null}
                     </View>
-                  ) : null}
+                  )}
 
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Status</Text>

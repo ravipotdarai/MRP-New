@@ -43,7 +43,11 @@ npm run build
 npx firebase-tools deploy --only hosting --project mobileresilienceplatform
 ```
 
-Live: https://mobileresilienceplatform.web.app  
+Live: https://pathsync.in (also https://mobileresilienceplatform.web.app)
+
+Custom domain: `pathsync.in` / `www.pathsync.in` (Firebase Hosting + OAuth clients).
+
+CORS (Nest) includes pathsync.in origins by default.
 
 RTDB rules (`device_config` + `admin_audit` for `ravipotdarai@gmail.com`):
 

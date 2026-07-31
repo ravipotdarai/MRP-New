@@ -165,6 +165,10 @@ export default function MonitoringPage() {
   const simHistory = Array.isArray(vault?.simHistory) ? vault!.simHistory! : [];
   const geofenceRows = useMemo(() => timeline.filter(isGeofenceRow), [timeline]);
   const snap = vault?.trackingConfigSnapshot || null;
+  const health = vault?.deviceHealth || null;
+  const healthAt = health ? num(health.atMs) : null;
+  const healthAgeMin =
+    healthAt != null ? Math.max(0, Math.round((Date.now() - healthAt) / 60000)) : null;
 
   const liveLat = live ? num(live.lat) ?? num(live.latitude) : null;
   const liveLng = live ? num(live.lng) ?? num(live.longitude) : null;
@@ -188,14 +192,28 @@ export default function MonitoringPage() {
   }, [timeline]);
 
   return (
-    <div>
-      <h1 className="page-title">Monitoring</h1>
+    <div className="fade-in">
+      <h1 className="page-title">Locate &amp; Timeline</h1>
       <p className="page-lead">
-        Drive-only locate: decrypt your vault in this browser (
+        Drive-only locate on <strong>pathsync.in</strong>: decrypt your vault in this browser (
         <code className="mono">{DRIVE_APPDATA_SCOPE}</code>). MRP servers never see plaintext
-        location or selfies. Phone features — Panic, SIM recovery, geofence, emergency — stay fully
-        available; only Circle live share is off for v1.
+        location or selfies. Find-my-device uses a <strong>1 min</strong> emergency interval while
+        active (higher battery use).
       </p>
+
+      {vault && health ? (
+        <div className={`panel rise health-banner ${healthAgeMin != null && healthAgeMin > 30 ? "stale" : "ok"}`}>
+          <strong>Device health</strong>
+          <span className="muted">
+            {" "}
+            · monitoring {String(health.monitoringOn)} · battery{" "}
+            {health.batteryPct != null ? `${health.batteryPct}%` : "—"} · last tick{" "}
+            {healthAgeMin != null ? `${healthAgeMin}m ago` : "—"} · emergency{" "}
+            {String(health.emergencyTracking)} @{" "}
+            {String(health.emergencyIntervalMinutes ?? 1)} min
+          </span>
+        </div>
+      ) : null}
 
       <div className="panel rise" style={{ marginBottom: "1rem" }}>
         <div className="field">
@@ -273,6 +291,22 @@ export default function MonitoringPage() {
           </p>
         ) : null}
       </div>
+
+      {vault ? (
+        <div className="panel rise" style={{ marginBottom: "1rem" }}>
+          <h2>App Usage (today)</h2>
+          {vault.appUsage ? (
+            <p className="muted">
+              {vault.appUsage.sessionCount ?? vault.appUsage.sessions?.length ?? 0} sessions in
+              vault · open <a href="/app-usage">App Usage</a> for charts &amp; Safety sections.
+            </p>
+          ) : (
+            <p className="muted">
+              Update the phone app and sync Drive to include daily App Usage (vault v3).
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {liveLat != null && liveLng != null ? (
         <div className="panel rise rise-delay-1" style={{ marginBottom: "1rem" }}>

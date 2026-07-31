@@ -67,6 +67,12 @@ class PackageChangeHandler(private val context: Context) {
             if (highRisk && settings.captureOnRiskyAppInstall) {
                 MrpMonitorService.requestPhoto(context, eventType)
             }
+            // Debounced permission-risk timeline (no selfie)
+            try {
+                DataRiskRuleEngine(context).evaluateInstalled()
+            } catch (e: Exception) {
+                Log.w(TAG, "DataRiskRuleEngine skipped", e)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "handlePackageChange failed", e)
         }

@@ -32,12 +32,14 @@ export default function DashboardPage() {
       <div className="grid-2 rise rise-delay-2">
         <div className="panel">
           <h2>API</h2>
-          <p className="muted">Nest control plane at NEXT_PUBLIC_MRP_API_BASE_URL</p>
+          <p className="muted">
+            Nest control plane is optional. Vault decrypt / Drive / Find-my-device work without it.
+          </p>
           <p style={{ marginTop: "0.75rem" }}>
             {health === "up" ? (
               <span className="badge badge-safe">Health OK</span>
             ) : health === "down" ? (
-              <span className="badge badge-alert">Unreachable</span>
+              <span className="badge">Nest offline / not configured</span>
             ) : (
               <span className="badge">Checking…</span>
             )}

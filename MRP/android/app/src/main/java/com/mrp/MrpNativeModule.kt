@@ -1597,6 +1597,73 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun getSensitivePermissionSections(promise: Promise) {
+        try {
+            val scanner = com.mrp.domain.usecase.SensitivePermissionScanner(reactContext)
+            fun pack(list: List<com.mrp.domain.usecase.SensitivePermissionScanner.AppPerm>): WritableArray {
+                val arr = Arguments.createArray()
+                list.forEach { a ->
+                    arr.pushMap(Arguments.createMap().apply {
+                        putString("packageName", a.packageName)
+                        putString("appName", a.appName)
+                        val perms = Arguments.createArray()
+                        a.permissions.forEach { perms.pushString(it) }
+                        putArray("permissions", perms)
+                    })
+                }
+                return arr
+            }
+            val map = Arguments.createMap().apply {
+                putArray("sms", pack(scanner.appsWithSms()))
+                putArray("camera", pack(scanner.appsWithCamera()))
+                putArray("microphone", pack(scanner.appsWithMicrophone()))
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("SENSITIVE_PERMS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getDataRiskRules(promise: Promise) {
+        try {
+            val rules = com.mrp.domain.usecase.DataRiskRuleEngine(reactContext).listPresets()
+            val arr = Arguments.createArray()
+            rules.forEach { r ->
+                arr.pushMap(Arguments.createMap().apply {
+                    putString("id", r.id)
+                    putString("title", r.title)
+                    putString("description", r.description)
+                    putBoolean("enabled", r.enabled)
+                })
+            }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("DATA_RISK_RULES", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun setDataRiskRuleEnabled(ruleId: String, enabled: Boolean, promise: Promise) {
+        try {
+            com.mrp.domain.usecase.DataRiskRuleEngine(reactContext).setEnabled(ruleId, enabled)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DATA_RISK_SET", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun evaluateDataRiskRules(promise: Promise) {
+        try {
+            com.mrp.domain.usecase.DataRiskRuleEngine(reactContext).evaluateInstalled()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DATA_RISK_EVAL", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun getUiThemeId(promise: Promise) {
         try {
             val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)

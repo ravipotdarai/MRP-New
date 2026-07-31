@@ -61,6 +61,7 @@ const EVENT_ICONS: Record<string, string> = {
   APP_INSTALLED: '📦',
   APP_UPDATED: '📦',
   APP_MISUSE: '📵',
+  DATA_RISK_APP: '⚠️',
   POSTURE_ALERT: '🛡️',
   PANIC_ALERT: '🆘',
 };
