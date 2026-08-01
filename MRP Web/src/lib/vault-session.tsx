@@ -66,7 +66,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     if (!pinRef.current) return;
     idleTimer.current = setTimeout(() => {
       lock();
-      setInfo("Vault locked after idle.");
+      setInfo("Session locked after idle.");
     }, IDLE_MS);
   }, [lock]);
 
@@ -85,14 +85,18 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       const parsed = parseVaultJson(plain);
       pinRef.current = pin;
       setVault(parsed);
-      setMeta({ name: file.name, modifiedTime: file.modifiedTime });
-      setInfo(`Vault unlocked · ${file.name}`);
+      // Never surface Drive backup filenames to the UI
+      setMeta({ name: "Encrypted backup", modifiedTime: file.modifiedTime });
+      setInfo(
+        `Device data unlocked${file.modifiedTime ? ` · synced ${new Date(file.modifiedTime).toLocaleString()}` : ""}`,
+      );
       return true;
     } catch (e) {
       pinRef.current = null;
       setVault(null);
       setMeta(null);
-      setError(e instanceof Error ? e.message : "Failed to open vault");
+      const raw = e instanceof Error ? e.message : "Failed to open device data";
+      setError(raw.replace(/mrp_vault_backup\.v1\.enc/gi, "backup").replace(/\bvault\b/gi, "backup"));
       return false;
     } finally {
       setBusy(false);
@@ -111,8 +115,8 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       const { file, blob } = await fetchLatestVaultBlob(token);
       const plain = await decryptVaultUtf8(blob, pin);
       setVault(parseVaultJson(plain));
-      setMeta({ name: file.name, modifiedTime: file.modifiedTime });
-      if (quiet) setInfo(`Vault refreshed · ${new Date().toLocaleTimeString()}`);
+      setMeta({ name: "Encrypted backup", modifiedTime: file.modifiedTime });
+      if (quiet) setInfo(`Data refreshed · ${new Date().toLocaleTimeString()}`);
     } catch (e) {
       if (!quiet) {
         setError(e instanceof Error ? e.message : "Refresh failed");

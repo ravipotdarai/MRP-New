@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-07-31 (Web portal parity plan — see [`WEB_PORTAL_PARITY.md`](WEB_PORTAL_PARITY.md); anti-clone deferred after web)  
+**Last updated:** 2026-08-01 (Web portal PathSync IA refresh — nav groups Home/Security/Hub/App Usage; Locate timeline icon+geo+fence+status+selfie; Find-my-device movement trail; Travel date path; Devices+Sync Policy under Hub)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -29,6 +29,15 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ---
 
+## Security Center (mobile) — deferred after web
+
+### Untested / not started
+| ID | Item | Notes |
+|---|---|---|
+| SEC-CENTER | Security Advisor + Threat Analyzer + Report Fraud hub + Quick Tiles | Plan: [`SECURITY_CENTER_BACKLOG.md`](SECURITY_CENTER_BACKLOG.md). **Start only after web portal track.** No competitor branding in docs. |
+
+---
+
 ## Security — Anti-clone & hardening (deferred)
 
 ### Not started
@@ -43,7 +52,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 ### Untested
 | ID | Item | Notes |
 |---|---|---|
-| WEB-PARITY | MRP Web desktop companion | Plan: [`WEB_PORTAL_PARITY.md`](WEB_PORTAL_PARITY.md). Code shipped; Hosting deployed 2026-07-31 → https://mobileresilienceplatform.web.app. Route smoke **200** all console paths. Interactive vault E2E (Google + PIN `1111`) still **manual** (OAuth). pathsync.in still GoDaddy until DNS cutover. |
+| WEB-PARITY | MRP Web desktop companion | Plan: [`WEB_PORTAL_PARITY.md`](WEB_PORTAL_PARITY.md). Code shipped; Hosting deployed 2026-07-31 → https://mobileresilienceplatform.web.app. **2026-08-01 UI IA:** PathSync nav groups (Home / Security / Hub / App Usage); Locate & Timeline enriched (icon, geo, geofence, status, selfie); Find-my-device live trail; Travel date+path polish; Hub Devices + Sync Policy + Drive Sync + SIM Recovery stub; user-facing “vault” copy softened. Route smoke + interactive Google+PIN E2E still **manual**. pathsync.in still GoDaddy until DNS cutover. |
 
 ---
 

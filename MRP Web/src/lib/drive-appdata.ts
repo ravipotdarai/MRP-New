@@ -106,7 +106,7 @@ export async function fetchLatestVaultBlob(accessToken: string): Promise<{
   const latest = [...files].sort((a, b) =>
     (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
   )[0];
-  if (!latest) throw new Error("No MRP vault backup in Drive app data");
+  if (!latest) throw new Error("No encrypted device backup found in Drive app data");
   const blob = await downloadDriveFile(accessToken, latest.id);
   return { file: latest, blob };
 }

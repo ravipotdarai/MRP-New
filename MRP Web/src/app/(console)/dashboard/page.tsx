@@ -12,7 +12,9 @@ import {
   computeSecurityScore,
   eventTimeMs,
   eventType,
+  formatEventType,
   liveLatLng,
+  movementTrail,
   selfieSrc,
   severityOf,
 } from "@/lib/vault-selectors";
@@ -37,6 +39,7 @@ function DashboardBody() {
 
   const score = useMemo(() => computeSecurityScore(vault), [vault]);
   const live = liveLatLng(vault);
+  const trail = useMemo(() => movementTrail(vault, 3), [vault]);
   const todayStart = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -57,7 +60,7 @@ function DashboardBody() {
         {meta?.modifiedTime ? (
           <>
             {" "}
-            · vault{" "}
+            · data synced{" "}
             <span className="mono">{new Date(meta.modifiedTime).toLocaleString()}</span>
           </>
         ) : null}
@@ -93,58 +96,77 @@ function DashboardBody() {
         </div>
       </div>
 
-      <div className="grid-2 rise rise-delay-2" style={{ marginTop: "1.25rem" }}>
+      <div className="dash-grid rise rise-delay-2">
         <div className="panel">
           <h2>Live location</h2>
-          {live ? (
-            <InteractiveMap center={live} markers={[{ ...live, id: "live" }]} height={220} />
+          {live || trail.length ? (
+            <InteractiveMap
+              center={live || { lat: trail[trail.length - 1].lat, lng: trail[trail.length - 1].lng }}
+              polyline={trail.length >= 2 ? trail : []}
+              markers={
+                live
+                  ? [{ ...live, id: "live", color: "var(--alert)" }]
+                  : [{ lat: trail[trail.length - 1].lat, lng: trail[trail.length - 1].lng, id: "last" }]
+              }
+              height={240}
+            />
           ) : (
-            <p className="muted">No liveLocation in vault yet.</p>
+            <p className="muted">No live location yet — open Locate & Timeline and use Find my device.</p>
           )}
-          <Link href="/monitoring" className="btn" style={{ marginTop: "0.75rem" }}>
+          <Link href="/monitoring" className="btn mt-md">
             Locate & Timeline
           </Link>
         </div>
         <div className="panel">
           <h2>Device health</h2>
-          <ul className="muted" style={{ listStyle: "none", lineHeight: 1.8 }}>
+          <ul className="muted list-plain">
             <li>Monitoring: {dh.monitoringOn === false ? "off" : "on"}</li>
             <li>Battery: {String(dh.batteryPct ?? dh.battery ?? "—")}</li>
             <li>Emergency: {cfg?.emergencyTracking ? "on" : "off"}</li>
-            <li>Vault v{vault?.version ?? "—"} · {vault?.syncReason || "—"}</li>
-            <li>Pending sync: {Array.isArray(vault?.pendingSync) ? vault!.pendingSync!.length : 0}</li>
+            <li>
+              Sync: v{vault?.version ?? "—"} · {vault?.syncReason || "—"}
+            </li>
+            <li>Pending: {Array.isArray(vault?.pendingSync) ? vault!.pendingSync!.length : 0}</li>
           </ul>
-          <Link href="/monitoring" className="btn btn-primary" style={{ marginTop: "0.75rem" }}>
+          <Link href="/monitoring" className="btn btn-primary mt-md">
             Find my device
           </Link>
         </div>
         <div className="panel">
           <h2>Today&apos;s activity</h2>
           <p className="muted">{todayRows.length} events</p>
-          <ul className="timeline-list" style={{ marginTop: "0.75rem", maxHeight: 220, overflow: "auto" }}>
+          <ul className="timeline-list timeline-compact">
             {todayRows.slice(0, 8).map((r, i) => (
               <li key={i}>
                 <span className={`sev-dot sev-${severityOf(eventType(r))}`} />{" "}
-                <strong>{eventType(r)}</strong>{" "}
+                <strong>{formatEventType(eventType(r))}</strong>{" "}
                 <span className="muted">{new Date(eventTimeMs(r)).toLocaleTimeString()}</span>
               </li>
             ))}
           </ul>
         </div>
         <div className="panel">
-          <h2>Quick links</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <Link className="btn" href="/travel">Travel</Link>
-            <Link className="btn" href="/media">Media</Link>
-            <Link className="btn" href="/geofences">Geofences</Link>
-            <Link className="btn" href="/app-usage">App Usage</Link>
-            <Link className="btn" href="/reports">Reports</Link>
-            <Link className="btn" href="/settings">Sync policy</Link>
+          <h2>Recent evidence</h2>
+          <div className="row-wrap mb-md">
+            <Link className="btn btn-sm" href="/travel">
+              Travel
+            </Link>
+            <Link className="btn btn-sm" href="/media">
+              Media
+            </Link>
+            <Link className="btn btn-sm" href="/geofences">
+              Geofence
+            </Link>
+            <Link className="btn btn-sm" href="/app-usage">
+              App Usage
+            </Link>
+            <Link className="btn btn-sm" href="/settings">
+              Sync Policy
+            </Link>
           </div>
-          <h3 style={{ marginTop: "1rem", fontSize: "1rem" }}>Recent selfies</h3>
-          <div className="selfie-grid" style={{ marginTop: "0.5rem" }}>
+          <div className="selfie-grid">
             {recentSelfies.length === 0 ? (
-              <p className="muted">{vault?.selfiesOmitted ? "Selfies omitted from vault" : "None"}</p>
+              <p className="muted">{vault?.selfiesOmitted ? "Selfies omitted by sync policy" : "No selfies yet"}</p>
             ) : (
               recentSelfies.map((s, i) => {
                 const src = selfieSrc(s);
@@ -163,7 +185,7 @@ function DashboardBody() {
 
 export default function DashboardPage() {
   return (
-    <VaultUnlockGate title="Unlock vault for overview">
+    <VaultUnlockGate title="Unlock device data for overview">
       <DashboardBody />
     </VaultUnlockGate>
   );

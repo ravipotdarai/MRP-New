@@ -187,10 +187,10 @@ export default function AdminPage() {
         </div>
 
         <div className="panel">
-          <h2>Vault access (P6-10)</h2>
+          <h2>Backup access (P6-10)</h2>
           <p className="muted">
             There is <strong style={{ color: "var(--text)" }}>no</strong> admin API that returns
-            selfie or vault binaries. Admins cannot open user Drive appData.
+            selfie or backup binaries. Admins cannot open user Drive appData.
           </p>
           <span className="badge badge-safe">Enforced by design</span>
         </div>

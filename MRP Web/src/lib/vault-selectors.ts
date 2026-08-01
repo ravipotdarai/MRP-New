@@ -49,6 +49,72 @@ export function rowAddress(row: TimelineRow): string {
   );
 }
 
+export function rowStatus(row: TimelineRow): string {
+  return String(row.status || row.eventStatus || "").trim() || "—";
+}
+
+export type GeofenceBadge = {
+  inside: boolean | null;
+  fenceId: string | null;
+  fenceName: string | null;
+  label: string;
+};
+
+export function rowGeofence(row: TimelineRow): GeofenceBadge {
+  const gs = (row.geofence_status || row.geofenceStatus || {}) as Record<string, unknown>;
+  const meta = (row.metadata || {}) as Record<string, unknown>;
+  const insideRaw = gs.inside_fence ?? gs.insideFence ?? row.inside_fence;
+  const inside =
+    typeof insideRaw === "boolean"
+      ? insideRaw
+      : typeof insideRaw === "string"
+        ? insideRaw.toLowerCase() === "true"
+        : null;
+  const fenceId = String(
+    gs.fence_id ?? gs.fenceId ?? meta.geofence_id ?? meta.geofenceId ?? row.geofence_id ?? "",
+  ).trim() || null;
+  const fenceName = String(
+    meta.geofence_name ?? meta.geofenceName ?? row.geofence_name ?? "",
+  ).trim() || null;
+
+  let label = "No zone";
+  if (inside === true) label = fenceName ? `Inside · ${fenceName}` : "Inside fence";
+  else if (inside === false) label = fenceName ? `Outside · ${fenceName}` : "Outside fence";
+  else if (fenceName) label = fenceName;
+
+  return { inside, fenceId, fenceName, label };
+}
+
+/** Short display label for event types (parity with mobile wording). */
+export function formatEventType(type: string): string {
+  if (!type || type === "EVENT") return "Event";
+  return type
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Compact glyph for timeline rows (CSS-friendly, no emoji dependency required). */
+export function eventIcon(type: string): string {
+  const t = type.toUpperCase();
+  if (t.includes("SIM")) return "▣";
+  if (t.includes("GEOFENCE") || t.includes("FENCE") || t.includes("ZONE")) return "◎";
+  if (t.includes("WRONG") || t.includes("INTRUDER") || t.includes("UNLOCK_FAILED")) return "⚠";
+  if (t.includes("PANIC") || t.includes("EMERGENCY")) return "◉";
+  if (t.includes("USB")) return "▭";
+  if (t.includes("WIFI") || t.includes("HOTSPOT") || t.includes("NETWORK") || t.includes("MOBILE_DATA"))
+    return "≋";
+  if (t.includes("AIRPLANE")) return "✈";
+  if (t.includes("BOOT") || t.includes("FACTORY")) return "⏻";
+  if (t.includes("APP_") || t.includes("MISUSE") || t.includes("POSTURE") || t.includes("RISK"))
+    return "▦";
+  if (t.includes("SCREEN") || t.includes("LOCK") || t.includes("BIOMETRIC") || t.includes("PASSWORD"))
+    return "◫";
+  if (t.includes("LOCATION") || t.includes("GPS") || t.includes("TRACK")) return "⌖";
+  if (t.includes("CAMERA") || t.includes("SELFIE") || t.includes("PHOTO")) return "◌";
+  return "●";
+}
+
 export function num(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string" && v.trim() && !Number.isNaN(Number(v))) return Number(v);
@@ -89,6 +155,25 @@ export function travelPoints(
   }
   out.sort((a, b) => a.t - b.t);
   return out;
+}
+
+/** Recent GPS trail for Find-my-device / live movement (hours back). */
+export function movementTrail(
+  vault: VaultPayload | null,
+  hoursBack = 6,
+  nowMs = Date.now(),
+): LatLng[] {
+  const from = nowMs - hoursBack * 60 * 60 * 1000;
+  const pts = travelPoints(vault, from, nowMs);
+  const live = liveLatLng(vault);
+  if (live) {
+    const liveT = num(vault?.liveLocation?.atMs ?? vault?.liveLocation?.timestamp) ?? nowMs;
+    const last = pts[pts.length - 1];
+    if (!last || Math.abs(last.lat - live.lat) > 1e-5 || Math.abs(last.lng - live.lng) > 1e-5) {
+      pts.push({ ...live, t: liveT });
+    }
+  }
+  return pts;
 }
 
 /** Haversine km */
@@ -148,11 +233,41 @@ export function computeSecurityScore(vault: VaultPayload | null): {
 
 export function selfieSrc(s: unknown): string | null {
   const o = s as Record<string, unknown>;
-  const b64 = o.base64 || o.data;
+  const b64 = o.base64 || o.data || o.dataBase64;
   if (typeof b64 !== "string" || !b64) return null;
   const mime = String(o.mime || o.contentType || "image/jpeg");
   if (b64.startsWith("data:")) return b64;
   return `data:${mime};base64,${b64}`;
+}
+
+/** Link selfie blob to timeline row via eventId, else time+type proximity. */
+export function findSelfieForRow(
+  vault: VaultPayload | null,
+  row: TimelineRow,
+): unknown | null {
+  const selfies = vault?.selfies || [];
+  if (!selfies.length) return null;
+  const id = String(row.id || row.eventId || "").trim();
+  if (id) {
+    for (const s of selfies) {
+      const o = s as Record<string, unknown>;
+      if (String(o.eventId || o.event_id || "") === id) return s;
+    }
+  }
+  const type = eventType(row).toUpperCase();
+  const t = eventTimeMs(row);
+  let best: { s: unknown; dist: number } | null = null;
+  for (const s of selfies) {
+    const o = s as Record<string, unknown>;
+    const st = eventType({ eventType: o.eventType, event_type: o.event_type }).toUpperCase();
+    if (type && st && type !== st && !type.includes(st) && !st.includes(type)) continue;
+    const at = num(o.atMs ?? o.timestamp ?? o.time) ?? 0;
+    if (!at || !t) continue;
+    const dist = Math.abs(at - t);
+    if (dist > 5 * 60_000) continue;
+    if (!best || dist < best.dist) best = { s, dist };
+  }
+  return best?.s ?? null;
 }
 
 export function searchVault(vault: VaultPayload | null, q: string): Array<{ kind: string; label: string; detail: string }> {
@@ -166,7 +281,7 @@ export function searchVault(vault: VaultPayload | null, q: string): Array<{ kind
     if (blob.includes(query)) {
       hits.push({
         kind: "event",
-        label: t,
+        label: formatEventType(t),
         detail: addr || new Date(eventTimeMs(row) || Date.now()).toLocaleString(),
       });
     }

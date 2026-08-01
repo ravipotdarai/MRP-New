@@ -32,13 +32,13 @@ function GeofencesBody() {
     <div>
       <h1 className="page-title">Geofences</h1>
       <p className="page-lead">
-        Read-only from vault. Create/edit zones on the phone (Hub → Geofence).
+        Read-only from device backup. Create/edit zones on the phone (Hub → Geofence).
       </p>
       <div className="grid-2">
         <div className="panel">
           <h2>Zones ({fences.length})</h2>
           {fences.length === 0 ? (
-            <p className="muted">No geofences in vault snapshot.</p>
+            <p className="muted">No geofences in this backup.</p>
           ) : (
             <ul style={{ listStyle: "none", lineHeight: 1.8 }}>
               {fences.map((g, i) => (
@@ -87,7 +87,7 @@ function GeofencesBody() {
 
 export default function GeofencesPage() {
   return (
-    <VaultUnlockGate title="Unlock vault for geofences">
+    <VaultUnlockGate title="Unlock device data for geofences">
       <GeofencesBody />
     </VaultUnlockGate>
   );

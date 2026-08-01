@@ -18,7 +18,7 @@ function ProfileBody() {
 
   return (
     <div>
-      <h1 className="page-title">Profile & vault status</h1>
+      <h1 className="page-title">Profile & session</h1>
       <div className="grid-2">
         <div className="panel">
           <h2>Account</h2>
@@ -27,20 +27,25 @@ function ProfileBody() {
             UID: <span className="mono">{user?.uid}</span>
           </p>
           <button type="button" className="btn" style={{ marginTop: "1rem" }} onClick={() => lock()}>
-            Lock vault session
+            Lock session
           </button>
         </div>
         <div className="panel">
-          <h2>Vault</h2>
+          <h2>Device data</h2>
           <ul className="muted" style={{ listStyle: "none", lineHeight: 1.8 }}>
-            <li>File: {meta?.name || "—"}</li>
-            <li>Modified: {meta?.modifiedTime ? new Date(meta.modifiedTime).toLocaleString() : "—"}</li>
+            <li>
+              Last sync:{" "}
+              {meta?.modifiedTime ? new Date(meta.modifiedTime).toLocaleString() : "—"}
+            </li>
             <li>Payload version: {vault?.version ?? "—"}</li>
             <li>Created: {vault?.createdAtMs ? new Date(vault.createdAtMs).toLocaleString() : "—"}</li>
             <li>Sync reason: {vault?.syncReason || "—"}</li>
-            <li>Email in vault: {vault?.email || "—"}</li>
+            <li>Email in backup: {vault?.email || "—"}</li>
             <li>Timeline events: {vault?.timeline?.length ?? 0}</li>
-            <li>Selfies: {vault?.selfies?.length ?? 0}{vault?.selfiesOmitted ? " (omitted flag)" : ""}</li>
+            <li>
+              Selfies: {vault?.selfies?.length ?? 0}
+              {vault?.selfiesOmitted ? " (omitted flag)" : ""}
+            </li>
             <li>Geofences: {vault?.geofences?.length ?? 0}</li>
             <li>Pending sync: {Array.isArray(vault?.pendingSync) ? vault.pendingSync.length : 0}</li>
           </ul>
@@ -64,7 +69,7 @@ function ProfileBody() {
 
 export default function ProfilePage() {
   return (
-    <VaultUnlockGate title="Unlock vault for profile">
+    <VaultUnlockGate title="Unlock device data for profile">
       <ProfileBody />
     </VaultUnlockGate>
   );

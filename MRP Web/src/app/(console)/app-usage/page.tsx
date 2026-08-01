@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
 
@@ -15,8 +16,23 @@ function formatDur(sec: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
+type Tab = "dashboard" | "timeline" | "safety";
+
 function AppUsageBody() {
   const { vault } = useVaultSession();
+  const search = useSearchParams();
+  const router = useRouter();
+  const tabParam = search.get("tab");
+  const tab: Tab =
+    tabParam === "timeline" || tabParam === "safety" || tabParam === "dashboard"
+      ? tabParam
+      : "dashboard";
+
+  const setTab = (t: Tab) => {
+    const q = t === "dashboard" ? "/app-usage" : `/app-usage?tab=${t}`;
+    router.replace(q);
+  };
+
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<"time" | "name">("time");
 
@@ -43,85 +59,158 @@ function AppUsageBody() {
   const safety = vault?.appUsage?.safety;
   const maxSec = byApp[0]?.sec || 1;
 
+  const timelineSessions = useMemo(() => {
+    return [...sessions].sort((a, b) => (Number(b.startTime) || 0) - (Number(a.startTime) || 0));
+  }, [sessions]);
+
   return (
     <div>
-      <h1 className="page-title">App Usage</h1>
-      <p className="page-lead">
-        Daily usage from your encrypted Drive vault (phone exports today). System apps excluded.
+      <h1 className="page-title rise">App Usage</h1>
+      <p className="page-lead rise rise-delay-1">
+        Daily usage from your encrypted Drive backup (phone exports today). System apps excluded.
       </p>
-      <div className="panel" style={{ marginBottom: "1rem" }}>
-        <p className="muted">
-          Sessions: {sessions.length} · Unique apps: {byApp.length} · Foreground total: {formatDur(totalSec)}
-          {vault?.appUsage?.dayStartMs
-            ? ` · Day ${new Date(vault.appUsage.dayStartMs).toLocaleDateString()}`
-            : ""}
-        </p>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
-          <input
-            className="input"
-            placeholder="Search apps…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ maxWidth: 240 }}
-          />
-          <select className="input" value={sort} onChange={(e) => setSort(e.target.value as "time" | "name")}>
-            <option value="time">Sort by time</option>
-            <option value="name">Sort by name</option>
-          </select>
-        </div>
+
+      <div className="tab-row rise rise-delay-1" role="tablist">
+        {(
+          [
+            ["dashboard", "Dashboard"],
+            ["timeline", "Timeline"],
+            ["safety", "Safety"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={`btn ${tab === id ? "btn-primary" : ""}`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+        <a className="btn" href="/reports">
+          Report
+        </a>
       </div>
 
-      <div className="panel" style={{ marginBottom: "1rem" }}>
-        <h2>Most used</h2>
-        {byApp.length === 0 ? (
-          <p className="muted">No sessions — unlock after phone vault v3 backup.</p>
-        ) : (
-          <ul className="usage-bars">
-            {byApp.slice(0, 15).map((a) => (
-              <li key={a.pkg}>
-                <div className="usage-bar-label">
-                  <strong>{a.name}</strong>
-                  <span className="muted mono">{formatDur(a.sec)} · {a.count}x</span>
-                </div>
-                <div className="usage-bar-track">
-                  <div className="usage-bar-fill" style={{ width: `${Math.round((a.sec / maxSec) * 100)}%` }} />
-                </div>
-                <p className="muted mono" style={{ fontSize: "0.75rem" }}>
-                  {a.pkg}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {tab === "dashboard" ? (
+        <>
+          <div className="panel rise rise-delay-2" style={{ marginBottom: "1rem" }}>
+            <p className="muted">
+              Sessions: {sessions.length} · Unique apps: {byApp.length} · Foreground total:{" "}
+              {formatDur(totalSec)}
+              {vault?.appUsage?.dayStartMs
+                ? ` · Day ${new Date(vault.appUsage.dayStartMs).toLocaleDateString()}`
+                : ""}
+            </p>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+              <input
+                className="input"
+                placeholder="Search apps…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                style={{ maxWidth: 240 }}
+              />
+              <select className="input" value={sort} onChange={(e) => setSort(e.target.value as "time" | "name")}>
+                <option value="time">Sort by time</option>
+                <option value="name">Sort by name</option>
+              </select>
+            </div>
+          </div>
 
-      <div className="grid-2">
-        {(["sms", "camera", "microphone"] as const).map((key) => (
-          <div className="panel" key={key}>
-            <h2>Safety · {key}</h2>
-            {(safety?.[key] || []).length === 0 ? (
-              <p className="muted">None listed</p>
+          <div className="panel rise rise-delay-3">
+            <h2>Most used</h2>
+            {byApp.length === 0 ? (
+              <p className="muted">No sessions — unlock after the phone syncs today&apos;s usage.</p>
             ) : (
-              <ul className="muted" style={{ listStyle: "none", lineHeight: 1.6 }}>
-                {(safety?.[key] || []).map((a, i) => (
-                  <li key={i}>
-                    <strong>{a.appName || a.packageName}</strong>
-                    <span className="mono"> · {(a.permissions || []).join(", ")}</span>
+              <ul className="usage-bars">
+                {byApp.slice(0, 15).map((a) => (
+                  <li key={a.pkg}>
+                    <div className="usage-bar-label">
+                      <strong>{a.name}</strong>
+                      <span className="muted mono">
+                        {formatDur(a.sec)} · {a.count}x
+                      </span>
+                    </div>
+                    <div className="usage-bar-track">
+                      <div className="usage-bar-fill" style={{ width: `${Math.round((a.sec / maxSec) * 100)}%` }} />
+                    </div>
+                    <p className="muted mono" style={{ fontSize: "0.75rem" }}>
+                      {a.pkg}
+                    </p>
                   </li>
                 ))}
               </ul>
             )}
           </div>
-        ))}
-      </div>
+        </>
+      ) : null}
+
+      {tab === "timeline" ? (
+        <div className="panel rise rise-delay-2">
+          <h2>Usage timeline</h2>
+          {timelineSessions.length === 0 ? (
+            <p className="muted">No session timeline in this backup yet.</p>
+          ) : (
+            <ul className="timeline-list timeline-spine">
+              {timelineSessions.slice(0, 80).map((s, i) => (
+                <li key={`${s.packageName}-${s.startTime}-${i}`} className="timeline-item">
+                  <div className="timeline-row" style={{ cursor: "default" }}>
+                    <span className="tl-icon tl-icon-neutral" aria-hidden>
+                      ▦
+                    </span>
+                    <span className="timeline-row-body">
+                      <strong>{s.appName || s.packageName || "App"}</strong>
+                      <span className="muted timeline-meta">
+                        {s.startTime ? new Date(s.startTime).toLocaleString() : "—"}
+                        {s.endTime ? ` → ${new Date(s.endTime).toLocaleTimeString()}` : ""}
+                        {" · "}
+                        {formatDur(Number(s.durationSeconds) || 0)}
+                      </span>
+                      <span className="muted mono" style={{ fontSize: "0.75rem" }}>
+                        {s.packageName}
+                      </span>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+
+      {tab === "safety" ? (
+        <div className="grid-2 rise rise-delay-2">
+          {(["sms", "camera", "microphone"] as const).map((key) => (
+            <div className="panel" key={key}>
+              <h2>Safety · {key}</h2>
+              {(safety?.[key] || []).length === 0 ? (
+                <p className="muted">None listed</p>
+              ) : (
+                <ul className="muted" style={{ listStyle: "none", lineHeight: 1.6 }}>
+                  {(safety?.[key] || []).map((a, i) => (
+                    <li key={i}>
+                      <strong>{a.appName || a.packageName}</strong>
+                      <span className="mono"> · {(a.permissions || []).join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 export default function AppUsagePage() {
   return (
-    <VaultUnlockGate title="Unlock vault for App Usage">
-      <AppUsageBody />
+    <VaultUnlockGate title="Unlock device data for App Usage">
+      <Suspense fallback={<p className="muted">Loading…</p>}>
+        <AppUsageBody />
+      </Suspense>
     </VaultUnlockGate>
   );
 }

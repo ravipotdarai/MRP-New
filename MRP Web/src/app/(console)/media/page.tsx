@@ -23,7 +23,7 @@ function MediaBody() {
     <div>
       <h1 className="page-title">Selfie evidence</h1>
       <p className="page-lead">
-        From encrypted Drive vault
+        From encrypted Drive backup
         {vault?.selfiesOmitted ? " · some selfies omitted on phone sync policy" : ""}.
       </p>
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -35,7 +35,7 @@ function MediaBody() {
         </button>
       </div>
       {items.length === 0 ? (
-        <p className="muted">No selfies in vault.</p>
+        <p className="muted">No selfies in this backup.</p>
       ) : view === "grid" ? (
         <div className="selfie-grid sensitive-surface">
           {items.map((it, idx) => (
@@ -111,7 +111,7 @@ function MediaBody() {
 
 export default function MediaPage() {
   return (
-    <VaultUnlockGate title="Unlock vault for media">
+    <VaultUnlockGate title="Unlock device data for media">
       <MediaBody />
     </VaultUnlockGate>
   );

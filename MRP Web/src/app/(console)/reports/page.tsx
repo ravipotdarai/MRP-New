@@ -111,7 +111,7 @@ function ReportsBody() {
   return (
     <div>
       <h1 className="page-title">Reports</h1>
-      <p className="page-lead">Export from the unlocked vault session (no re-PIN).</p>
+      <p className="page-lead">Export from the unlocked session (no re-PIN).</p>
       <div className="panel">
         <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "1rem" }}>
           <li>Timeline events: {summary.events}</li>
@@ -149,7 +149,7 @@ function ReportsBody() {
 
 export default function ReportsPage() {
   return (
-    <VaultUnlockGate title="Unlock vault for reports">
+    <VaultUnlockGate title="Unlock device data for reports">
       <ReportsBody />
     </VaultUnlockGate>
   );

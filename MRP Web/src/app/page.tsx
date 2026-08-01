@@ -5,12 +5,12 @@ export default function HomePage() {
     <div className="hero-landing">
       <div className="rise">
         <p className="hero-kicker">PathSync · Mobile Resilience Platform</p>
-        <h1>Your vault stays yours.</h1>
+        <h1>Your device data stays yours.</h1>
         <p className="page-lead" style={{ marginBottom: 0 }}>
-          MRP keeps security data on <strong>your device</strong>. With backup on, an encrypted copy
-          lives only in <strong>your private Google Drive app folder</strong>, unlocked with your
-          PIN. Open this console at <strong>pathsync.in</strong>. MRP does not sell your data and
-          does not keep a readable vault on MRP servers.
+          PathSync keeps security data on <strong>your device</strong>. With backup on, an encrypted
+          copy lives only in <strong>your private Google Drive app folder</strong>, unlocked with
+          your PIN. Open this console at <strong>pathsync.in</strong>. We do not sell your data and
+          do not keep a readable copy on MRP servers.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">
@@ -28,17 +28,17 @@ export default function HomePage() {
         </h2>
         <ul>
           <li>
-            <strong style={{ color: "var(--text)" }}>MRP</strong> — Android monitoring &amp; Drive
-            backup
+            <strong style={{ color: "var(--text)" }}>PathSync</strong> — Android monitoring &amp;
+            Drive backup
           </li>
           <li>
-            <strong style={{ color: "var(--text)" }}>MRP Web</strong> — decrypt vault, map, find
-            device, sync policy
+            <strong style={{ color: "var(--text)" }}>PathSync Web</strong> — decrypt session, map,
+            find device, sync policy
           </li>
           <li>
             Drive scope: <code className="mono">drive.appdata</code> only
           </li>
-          <li>Admin tools never return vault binaries</li>
+          <li>Admin tools never return backup binaries</li>
         </ul>
       </div>
     </div>

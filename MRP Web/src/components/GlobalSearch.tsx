@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useVaultSession } from "@/lib/vault-session";
 import { searchVault } from "@/lib/vault-selectors";
 
-export function GlobalSearch() {
+export function GlobalSearch({ compact = false }: { compact?: boolean }) {
   const { vault, unlocked } = useVaultSession();
   const [q, setQ] = useState("");
   const hits = useMemo(() => (unlocked ? searchVault(vault, q) : []), [vault, unlocked, q]);
@@ -12,19 +12,15 @@ export function GlobalSearch() {
   if (!unlocked) return null;
 
   return (
-    <div className="global-search">
+    <div className={compact ? "global-search global-search-compact" : "global-search"}>
       <input
-        className="input"
+        className="input search-input"
         placeholder="Search events, apps, geofences…"
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        aria-label="Global vault search"
+        aria-label="Search"
       />
-      {q.trim() && hits.length === 0 ? (
-        <p className="muted" style={{ marginTop: "0.5rem" }}>
-          No matches
-        </p>
-      ) : null}
+      {q.trim() && hits.length === 0 ? <p className="muted search-empty">No matches</p> : null}
       {hits.length > 0 ? (
         <ul className="search-hits">
           {hits.map((h, i) => (

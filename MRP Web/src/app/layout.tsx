@@ -23,9 +23,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MRP Web",
+  title: "PathSync Web",
   description:
-    "Mobile Resilience Platform — your vault stays on your device and private Drive. Decrypt in your browser.",
+    "Mobile Resilience Platform — your device data stays on your device and private Drive. Decrypt in your browser.",
 };
 
 export default function RootLayout({

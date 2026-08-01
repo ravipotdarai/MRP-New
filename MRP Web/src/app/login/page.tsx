@@ -36,9 +36,9 @@ export default function LoginPage() {
         </Link>
         <h1 style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}>Sign in</h1>
         <p className="page-lead">
-          Use the same Google account linked on your phone. Your vault stays on your device and
-          private Drive — decryption happens only in this browser with your MRP PIN. MRP does not
-          keep a readable copy on MRP servers.
+          Use the same Google account linked on your phone. Your encrypted backup stays on your device
+          and private Drive — decryption happens only in this browser with your PathSync PIN. MRP does
+          not keep a readable copy on MRP servers.
         </p>
         {!configured ? (
           <p className="badge badge-alert">Configure Firebase in .env.local first</p>

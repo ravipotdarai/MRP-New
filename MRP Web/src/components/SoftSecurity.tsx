@@ -59,7 +59,7 @@ export function SoftSecurity({ children }: { children: ReactNode }) {
     <>
       {inspectWarn ? (
         <div className="inspect-banner" role="status">
-          Secure session — inspection suspected. Vault was locked. Unlock again to continue.
+          Secure session — inspection suspected. Session was locked. Unlock again to continue.
           <button type="button" className="btn" style={{ marginLeft: "0.75rem" }} onClick={() => setInspectWarn(false)}>
             Dismiss
           </button>

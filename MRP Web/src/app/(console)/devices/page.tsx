@@ -44,7 +44,7 @@ export default function DevicesPage() {
     <div>
       <h1 className="page-title">Devices</h1>
       <p className="page-lead">
-        Sync policy from Firebase <code className="mono">device_config</code>. Vault binaries stay
+        Sync policy from Firebase <code className="mono">device_config</code>. Encrypted backups stay
         on Drive — never listed here (P6-6 / P6-10).
       </p>
 
