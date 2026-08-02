@@ -5,8 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
-import { GlobalSearch } from "@/components/GlobalSearch";
-import { useVaultSession } from "@/lib/vault-session";
 
 type NavItem = {
   href: string;
@@ -123,7 +121,7 @@ const NAV: NavItem[] = [
 
   { href: "/app-usage", label: "Dashboard", group: "App Usage", icon: "apps" },
   { href: "/app-usage?tab=timeline", label: "Timeline", group: "App Usage", icon: "locate" },
-  { href: "/reports", label: "Report", group: "App Usage", icon: "report" },
+  { href: "/app-usage?tab=reports", label: "Reports", group: "App Usage", icon: "report" },
   { href: "/app-usage?tab=safety", label: "Safety", group: "App Usage", icon: "safety" },
 
   { href: "/admin", label: "Admin", group: "Admin", icon: "admin", adminOnly: true },
@@ -188,27 +186,6 @@ function ShellNav({ links }: { links: NavItem[] }) {
   );
 }
 
-function SessionToolbar() {
-  const { unlocked, busy, refresh, lock, meta } = useVaultSession();
-  if (!unlocked) return null;
-  return (
-    <div className="console-toolbar">
-      <GlobalSearch compact />
-      <div className="console-toolbar-actions">
-        <span className="toolbar-meta mono muted">
-          {meta?.modifiedTime ? `Synced ${new Date(meta.modifiedTime).toLocaleString()}` : "Session open"}
-        </span>
-        <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void refresh(false)}>
-          Refresh
-        </button>
-        <button type="button" className="btn btn-sm" onClick={() => lock()}>
-          Lock session
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading, configured, signOut, isAdmin } = useAuth();
   const pathname = usePathname();
@@ -261,6 +238,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </button>
         <div className="shell-top-brand">
           <span className="shell-mark">PathSync</span>
+          <span className="shell-sub shell-sub-by">by Ravi Potdar</span>
         </div>
         <div className="shell-top-actions">
           <ThemeSwitcher />
@@ -272,7 +250,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="shell-nav">
         <div className="shell-brand">
           <span className="shell-mark">PathSync</span>
-          <span className="shell-sub">Console</span>
+          <span className="shell-sub shell-sub-by">by Ravi Potdar</span>
         </div>
         <Suspense fallback={<nav className="muted">…</nav>}>
           <ShellNav links={links} />
@@ -289,7 +267,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <main className="shell-main">
-        <SessionToolbar />
         {children}
       </main>
       {navOpen ? (

@@ -35,7 +35,22 @@ async function deriveKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
   );
 }
 
-export async function decryptVaultUtf8(blob: ArrayBuffer, pin: string): Promise<string> {
+export type DecryptProgress = "derive" | "decrypt" | "decode";
+
+/** In-tab PBKDF2 cache — same PIN+salt skips 120k iterations on refresh. */
+const keyCache = new Map<string, CryptoKey>();
+
+function saltKey(pin: string, salt: Uint8Array): string {
+  let h = pin.length * 31;
+  for (let i = 0; i < salt.length; i++) h = (h * 33 + salt[i]) | 0;
+  return `${pin}\0${h}\0${salt.length}`;
+}
+
+export async function decryptVaultUtf8(
+  blob: ArrayBuffer,
+  pin: string,
+  onStage?: (stage: DecryptProgress) => void,
+): Promise<string> {
   const bytes = new Uint8Array(blob);
   assert(bytes.byteLength > MAGIC.length + 1 + SALT_LEN + IV_LEN, "Backup file too small");
 
@@ -49,13 +64,44 @@ export async function decryptVaultUtf8(blob: ArrayBuffer, pin: string): Promise<
   const iv = bytes.slice(saltStart + SALT_LEN, saltStart + SALT_LEN + IV_LEN);
   const ct = bytes.slice(saltStart + SALT_LEN + IV_LEN);
 
-  const key = await deriveKey(pin, salt);
+  const cacheId = saltKey(pin, salt);
+  let key = keyCache.get(cacheId);
+  if (!key) {
+    onStage?.("derive");
+    key = await deriveKey(pin, salt);
+    keyCache.set(cacheId, key);
+  }
+
+  onStage?.("decrypt");
   const plain = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: iv as BufferSource, tagLength: 128 },
     key,
     ct as BufferSource,
   );
+  onStage?.("decode");
   return new TextDecoder().decode(plain);
+}
+
+/** Drop heavy selfie blobs so React can paint ops UI first; hydrate after unlock. */
+export function vaultWithoutSelfieBlobs(vault: VaultPayload): VaultPayload {
+  if (!vault.selfies?.length) return vault;
+  return {
+    ...vault,
+    selfies: vault.selfies.map((s) => {
+      const o = { ...(s as Record<string, unknown>) };
+      const had =
+        Boolean(o.dataBase64 || o.base64 || o.data) || o.blobDeferred === true;
+      delete o.dataBase64;
+      delete o.base64;
+      delete o.data;
+      if (had) o.blobDeferred = true;
+      return o;
+    }),
+  };
+}
+
+export function clearVaultKeyCache(): void {
+  keyCache.clear();
 }
 
 export type VaultPayload = {

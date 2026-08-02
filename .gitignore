@@ -15,5 +15,9 @@ emergency15_batterystats.txt
 **/.tmp-*
 .tmp-*
 
+# PathSync web E2E — local only (screenshots + Playwright smoke scripts)
+MRP Web/e2e-artifacts/
+MRP Web/scripts/
+
 # TypeScript incremental build info
 *.tsbuildinfo

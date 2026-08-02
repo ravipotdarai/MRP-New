@@ -4,7 +4,25 @@ import { useMemo, useState } from "react";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
 import { InteractiveMap } from "@/components/InteractiveMap";
-import { selfieSrc } from "@/lib/vault-selectors";
+import { SessionInlineControls } from "@/components/SessionInlineControls";
+import {
+  eventIcon,
+  formatEventType,
+  num,
+  selfieSrc,
+  severityOf,
+} from "@/lib/vault-selectors";
+
+function eventLabel(o: Record<string, unknown>): string {
+  const raw = String(o.eventType || o.event_type || o.event || o.name || "Selfie");
+  if (raw.includes(".") || raw.includes("/") || raw.toLowerCase().endsWith(".jpg")) {
+    // Filename-ish — derive from tokens
+    const base = raw.split(/[/\\]/).pop() || raw;
+    const cleaned = base.replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ");
+    return formatEventType(cleaned.toUpperCase().replace(/\s+/g, "_"));
+  }
+  return formatEventType(raw);
+}
 
 function MediaBody() {
   const { vault } = useVaultSession();
@@ -13,7 +31,25 @@ function MediaBody() {
 
   const items = useMemo(() => {
     return (vault?.selfies || [])
-      .map((s, i) => ({ s, i, src: selfieSrc(s) }))
+      .map((s, i) => {
+        const o = s as Record<string, unknown>;
+        const src = selfieSrc(s);
+        const type = String(o.eventType || o.event_type || o.event || "SELFIE");
+        const at = num(o.atMs ?? o.timestamp ?? o.time) ?? 0;
+        const lat = num(o.latitude ?? o.lat);
+        const lng = num(o.longitude ?? o.lng);
+        return {
+          s,
+          i,
+          src,
+          label: eventLabel(o),
+          type,
+          at,
+          lat,
+          lng,
+          sev: severityOf(type),
+        };
+      })
       .filter((x) => x.src);
   }, [vault]);
 
@@ -21,91 +57,165 @@ function MediaBody() {
 
   return (
     <div>
-      <h1 className="page-title">Selfie evidence</h1>
-      <p className="page-lead">
-        From encrypted Drive backup
-        {vault?.selfiesOmitted
-          ? " · selfies omitted — Premium+ plan and Premium+ selfies in Drive must be on, then sync from the phone"
-          : ""}
-        . Unlock and Refresh after the phone finishes Drive sync to load new captures.
-      </p>
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+      <div className="media-page-head">
+        <div>
+          <h1 className="page-title">Selfie evidence</h1>
+          <p className="page-lead">
+            From encrypted Drive backup
+            {vault?.selfiesOmitted
+              ? " · selfies omitted — Premium+ plan and Premium+ selfies in Drive must be on, then sync from the phone"
+              : ""}
+            . Unlock and Refresh after the phone finishes Drive sync to load new captures.
+          </p>
+        </div>
+        <SessionInlineControls />
+      </div>
+
+      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
         <button type="button" className={`btn ${view === "grid" ? "btn-primary" : ""}`} onClick={() => setView("grid")}>
           Grid
         </button>
         <button type="button" className={`btn ${view === "list" ? "btn-primary" : ""}`} onClick={() => setView("list")}>
           List
         </button>
+        <span className="muted mono" style={{ alignSelf: "center", fontSize: "0.85rem" }}>
+          {items.length} capture{items.length === 1 ? "" : "s"}
+        </span>
       </div>
+
       {items.length === 0 ? (
         <p className="muted">No selfies in this backup.</p>
       ) : view === "grid" ? (
         <div className="selfie-grid sensitive-surface">
           {items.map((it, idx) => (
-            <button key={it.i} type="button" className="selfie-thumb-btn" onClick={() => setFullIdx(idx)}>
+            <button
+              key={it.i}
+              type="button"
+              className="selfie-tile"
+              onClick={() => setFullIdx(idx)}
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={it.src!} alt="" className="selfie-thumb" loading="lazy" />
+              <img src={it.src!} alt="" className="selfie-tile-img" loading="lazy" />
+              <span className="selfie-tile-overlay">
+                <span className={`tl-icon tl-icon-${it.sev} selfie-tile-ico`} aria-hidden>
+                  {eventIcon(it.type)}
+                </span>
+                <span className="selfie-tile-title">{it.label}</span>
+                <span className="selfie-tile-time mono">
+                  {it.at
+                    ? new Date(it.at).toLocaleString([], {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "—"}
+                </span>
+              </span>
             </button>
           ))}
         </div>
       ) : (
-        <ul className="timeline-list sensitive-surface">
-          {items.map((it, idx) => {
-            const o = it.s as Record<string, unknown>;
-            return (
-              <li key={it.i}>
-                <button type="button" className="timeline-row" onClick={() => setFullIdx(idx)}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={it.src!} alt="" className="selfie-thumb" style={{ width: 56, height: 56 }} />
-                  <span className="timeline-row-body">
-                    <strong>{String(o.eventType || o.event || "Selfie")}</strong>
-                    <span className="muted">
-                      {o.atMs || o.timestamp
-                        ? new Date(Number(o.atMs || o.timestamp)).toLocaleString()
-                        : "—"}
-                    </span>
+        <ul className="timeline-list timeline-spine sensitive-surface">
+          {items.map((it, idx) => (
+            <li key={it.i} className="timeline-item">
+              <button type="button" className="timeline-row" onClick={() => setFullIdx(idx)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={it.src!} alt="" className="selfie-thumb" style={{ width: 56, height: 56 }} />
+                <span className={`tl-icon tl-icon-${it.sev}`} aria-hidden>
+                  {eventIcon(it.type)}
+                </span>
+                <span className="timeline-row-body">
+                  <strong>{it.label}</strong>
+                  <span className="muted mono">
+                    {it.at ? new Date(it.at).toLocaleString() : "—"}
                   </span>
-                </button>
-              </li>
-            );
-          })}
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
 
       {full ? (
-        <div className="lightbox" role="dialog" onClick={() => setFullIdx(null)}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={full.src!} alt="Selfie" onClick={(e) => e.stopPropagation()} />
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
-            <button type="button" className="btn" disabled={fullIdx === 0} onClick={() => setFullIdx((i) => (i == null ? 0 : Math.max(0, i - 1)))}>
-              Prev
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={fullIdx === items.length - 1}
-              onClick={() => setFullIdx((i) => (i == null ? 0 : Math.min(items.length - 1, i + 1)))}
-            >
-              Next
-            </button>
-            <a className="btn btn-primary" href={full.src!} download={`mrp-selfie-${Date.now()}.jpg`}>
-              Download
-            </a>
-            <button type="button" className="btn" onClick={() => setFullIdx(null)}>
-              Close
-            </button>
-          </div>
-          {(() => {
-            const o = full.s as Record<string, unknown>;
-            const lat = Number(o.latitude ?? o.lat);
-            const lng = Number(o.longitude ?? o.lng);
-            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-            return (
-              <div style={{ marginTop: "1rem", maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
-                <InteractiveMap center={{ lat, lng }} markers={[{ lat, lng }]} height={200} />
+        <div
+          className="selfie-detail-backdrop"
+          role="presentation"
+          onClick={() => setFullIdx(null)}
+        >
+          <aside
+            className="selfie-detail-sheet sensitive-surface rise"
+            role="dialog"
+            aria-label="Security event evidence"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="selfie-detail-head">
+              <div>
+                <p className="muted selfie-detail-kicker">Security event evidence</p>
+                <h2>{full.label}</h2>
               </div>
-            );
-          })()}
+              <button type="button" className="btn btn-sm" onClick={() => setFullIdx(null)}>
+                Close
+              </button>
+            </div>
+
+            <div className="selfie-detail-image-wrap">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={full.src!} alt={full.label} className="selfie-detail-image" />
+            </div>
+
+            <div className="drawer-badges">
+              <span className="badge badge-safe">Verified</span>
+              <span className={`badge ${full.sev === "alert" ? "badge-alert" : ""}`}>
+                {formatEventType(full.type)}
+              </span>
+            </div>
+
+            <dl className="detail-grid">
+              <dt>Event</dt>
+              <dd>{full.label}</dd>
+              <dt>Captured</dt>
+              <dd>{full.at ? new Date(full.at).toLocaleString() : "—"}</dd>
+              <dt>Coordinates</dt>
+              <dd className="mono">
+                {full.lat != null && full.lng != null
+                  ? `${full.lat.toFixed(5)}, ${full.lng.toFixed(5)}`
+                  : "—"}
+              </dd>
+            </dl>
+
+            {full.lat != null && full.lng != null ? (
+              <InteractiveMap
+                center={{ lat: full.lat, lng: full.lng }}
+                markers={[{ lat: full.lat, lng: full.lng, id: "selfie" }]}
+                height={200}
+              />
+            ) : null}
+
+            <div className="drawer-nav">
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={fullIdx === 0}
+                onClick={() => setFullIdx((i) => (i == null ? 0 : Math.max(0, i - 1)))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                disabled={fullIdx === items.length - 1}
+                onClick={() =>
+                  setFullIdx((i) => (i == null ? 0 : Math.min(items.length - 1, i + 1)))
+                }
+              >
+                Next
+              </button>
+              <a className="btn btn-primary btn-sm" href={full.src!} download={`mrp-selfie-${Date.now()}.jpg`}>
+                Download
+              </a>
+            </div>
+          </aside>
         </div>
       ) : null}
     </div>

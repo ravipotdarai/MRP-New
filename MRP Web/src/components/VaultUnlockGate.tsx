@@ -2,21 +2,27 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useVaultSession } from "@/lib/vault-session";
+import { SessionInlineControls } from "@/components/SessionInlineControls";
 
 export function VaultUnlockGate({
   children,
   title = "Unlock device data",
+  showSessionControls = true,
 }: {
   children: ReactNode;
   title?: string;
+  showSessionControls?: boolean;
 }) {
-  const { unlocked, busy, error, info, unlock, clearError } = useVaultSession();
+  const { unlocked, busy, unlockStage, error, info, unlock, clearError } = useVaultSession();
   const [pin, setPin] = useState("");
 
   if (unlocked) {
     return (
       <div>
-        {info ? <p className="badge badge-safe mb-md">{info}</p> : null}
+        <div className="unlock-status-row">
+          {info ? <p className="badge badge-safe mb-md">{info}</p> : null}
+          {showSessionControls ? <SessionInlineControls className="unlock-status-controls" /> : null}
+        </div>
         {children}
       </div>
     );
@@ -30,29 +36,41 @@ export function VaultUnlockGate({
 
   return (
     <div className="panel unlock-panel rise">
-      <h2 className="panel-title">{title}</h2>
-      <p className="muted mt-sm">
+      <h2 className="panel-title unlock-title">{title}</h2>
+      <p className="muted unlock-lead">
         Enter your PathSync PIN. Decryption stays in this browser; plaintext is never sent to Nest.
       </p>
-      <form onSubmit={(e) => void onSubmit(e)} className="mt-lg">
-        <label className="muted" htmlFor="session-pin">
-          PIN
-        </label>
-        <input
-          id="session-pin"
-          className="input input-block"
-          type="password"
-          autoComplete="current-password"
-          value={pin}
-          onChange={(e) => setPin(e.target.value)}
-          minLength={4}
-          required
-        />
-        {error ? <p className="badge badge-alert mt-md">{error}</p> : null}
-        <button type="submit" className="btn btn-primary mt-lg" disabled={busy}>
+      <form onSubmit={(e) => void onSubmit(e)} className="unlock-form">
+        <div className="field">
+          <label htmlFor="session-pin">PIN</label>
+          <input
+            id="session-pin"
+            className="input"
+            type="password"
+            inputMode="numeric"
+            autoComplete="current-password"
+            value={pin}
+            onChange={(e) => setPin(e.target.value)}
+            minLength={4}
+            required
+            disabled={busy}
+            placeholder="••••"
+          />
+        </div>
+        {error ? <p className="badge badge-alert">{error}</p> : null}
+        {busy && unlockStage ? (
+          <p className="muted unlock-stage" aria-live="polite">
+            {unlockStage}
+          </p>
+        ) : null}
+        <button type="submit" className="btn btn-primary unlock-submit" disabled={busy}>
           {busy ? "Opening…" : "Unlock"}
         </button>
       </form>
+      <p className="muted unlock-hint">
+        Large backups (many Premium+ selfies) take longer: Drive download → PBKDF2 → AES → JSON. Ops
+        pages open first; selfie images finish a moment later.
+      </p>
     </div>
   );
 }

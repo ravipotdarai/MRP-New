@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { eventIcon, formatEventType, severityOf } from "@/lib/vault-selectors";
 
 const PIE_COLORS = [
   "#5b8def",
@@ -13,10 +14,18 @@ const PIE_COLORS = [
   "#6b8cae",
   "#b85c8a",
   "#7a8a6a",
+  "#5b9bd5",
+  "#c9a227",
 ];
 
-/** Pie + legend for vault timeline event mix (no chart library). */
-export function EventTypeChart({ timeline }: { timeline: unknown[] }) {
+/** Large donut + 4-column legend underneath with event icons. */
+export function EventTypeChart({
+  timeline,
+  layout = "side",
+}: {
+  timeline: unknown[];
+  layout?: "side" | "stack";
+}) {
   const entries = useMemo(() => {
     const counts = new Map<string, number>();
     for (const row of timeline) {
@@ -24,7 +33,7 @@ export function EventTypeChart({ timeline }: { timeline: unknown[] }) {
       const t = String(e.eventType || e.event_type || "other");
       counts.set(t, (counts.get(t) || 0) + 1);
     }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
   }, [timeline]);
 
   const total = entries.reduce((s, [, n]) => s + n, 0);
@@ -47,8 +56,10 @@ export function EventTypeChart({ timeline }: { timeline: unknown[] }) {
     return <p className="muted">No events to graph.</p>;
   }
 
+  const stack = layout === "stack";
+
   return (
-    <div className="event-pie">
+    <div className={`event-pie ${stack ? "event-pie-stack event-pie-cols" : ""}`}>
       <div
         className="event-pie-disk"
         style={{ background: gradient }}
@@ -60,20 +71,26 @@ export function EventTypeChart({ timeline }: { timeline: unknown[] }) {
           <span className="muted event-pie-caption">events</span>
         </div>
       </div>
-      <ul className="event-pie-legend">
-        {entries.map(([type, n], i) => (
-          <li key={type}>
-            <span
-              className="event-pie-swatch"
-              style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
-              aria-hidden
-            />
-            <span className="event-pie-label mono" title={type}>
-              {type}
-            </span>
-            <span className="event-pie-count mono">{n}</span>
-          </li>
-        ))}
+      <ul className={`event-pie-legend ${stack ? "event-pie-legend-4col" : ""}`}>
+        {entries.map(([type, n], i) => {
+          const sev = severityOf(type);
+          return (
+            <li key={type}>
+              <span
+                className="event-pie-swatch"
+                style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
+                aria-hidden
+              />
+              <span className={`tl-icon tl-icon-${sev} event-pie-ico`} aria-hidden>
+                {eventIcon(type)}
+              </span>
+              <span className="event-pie-label" title={type}>
+                {formatEventType(type)}
+              </span>
+              <span className="event-pie-count mono">{n}</span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

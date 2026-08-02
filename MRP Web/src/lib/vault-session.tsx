@@ -2,10 +2,12 @@
 
 /**
  * Shared vault session — unlock once per tab; plaintext stays in memory only.
+ * Large backups: staged progress + slim first paint (selfie blobs deferred one tick).
  */
 
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -19,17 +21,21 @@ import {
   requestDriveAppDataToken,
 } from "@/lib/drive-appdata";
 import {
+  clearVaultKeyCache,
   decryptVaultUtf8,
   parseVaultJson,
+  vaultWithoutSelfieBlobs,
   type VaultPayload,
 } from "@/lib/vault-crypto";
 
-type VaultMeta = { name: string; modifiedTime?: string };
+type VaultMeta = { name: string; modifiedTime?: string; sizeBytes?: number };
 
 type VaultSessionValue = {
   vault: VaultPayload | null;
   meta: VaultMeta | null;
   busy: boolean;
+  /** Human stage while busy (download / decrypt / parse). */
+  unlockStage: string | null;
   error: string | null;
   info: string | null;
   unlocked: boolean;
@@ -44,21 +50,41 @@ const VaultSessionContext = createContext<VaultSessionValue | null>(null);
 
 const IDLE_MS = 30 * 60 * 1000;
 
+function formatMb(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+}
+
 export function VaultSessionProvider({ children }: { children: ReactNode }) {
   const [vault, setVault] = useState<VaultPayload | null>(null);
   const [meta, setMeta] = useState<VaultMeta | null>(null);
   const [busy, setBusy] = useState(false);
+  const [unlockStage, setUnlockStage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const pinRef = useRef<string | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lock = useCallback(() => {
     pinRef.current = null;
+    if (hydrateTimer.current) {
+      clearTimeout(hydrateTimer.current);
+      hydrateTimer.current = null;
+    }
+    clearVaultKeyCache();
     setVault(null);
     setMeta(null);
     setInfo(null);
     setError(null);
+    setUnlockStage(null);
   }, []);
 
   const bumpIdle = useCallback(() => {
@@ -70,61 +96,125 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     }, IDLE_MS);
   }, [lock]);
 
-  const unlock = useCallback(async (pin: string) => {
-    if (pin.length < 4) {
-      setError("PIN must be at least 4 characters");
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      const token = await requestDriveAppDataToken();
-      const { file, blob } = await fetchLatestVaultBlob(token);
-      const plain = await decryptVaultUtf8(blob, pin);
-      const parsed = parseVaultJson(plain);
-      pinRef.current = pin;
+  const applyParsed = useCallback((parsed: VaultPayload, file: { modifiedTime?: string; size?: string }) => {
+    const sizeBytes = file.size ? Number(file.size) : undefined;
+    setMeta({
+      name: "Encrypted backup",
+      modifiedTime: file.modifiedTime,
+      sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : undefined,
+    });
+
+    const selfieCount = parsed.selfies?.length ?? 0;
+    const hasHeavySelfies = (parsed.selfies || []).some((s) => {
+      const o = s as Record<string, unknown>;
+      const b = o.dataBase64 || o.base64 || o.data;
+      return typeof b === "string" && b.length > 8_000;
+    });
+
+    if (hasHeavySelfies) {
+      // First paint without multi-MB base64 — timeline/maps unlock immediately.
+      setVault(vaultWithoutSelfieBlobs(parsed));
+      if (hydrateTimer.current) clearTimeout(hydrateTimer.current);
+      hydrateTimer.current = setTimeout(() => {
+        startTransition(() => {
+          setVault(parsed);
+        });
+        hydrateTimer.current = null;
+      }, 50);
+    } else {
       setVault(parsed);
-      // Never surface Drive backup filenames to the UI
-      setMeta({ name: "Encrypted backup", modifiedTime: file.modifiedTime });
-      setInfo(
-        `Device data unlocked${file.modifiedTime ? ` · synced ${new Date(file.modifiedTime).toLocaleString()}` : ""}`,
-      );
-      return true;
-    } catch (e) {
-      pinRef.current = null;
-      setVault(null);
-      setMeta(null);
-      const raw = e instanceof Error ? e.message : "Failed to open device data";
-      setError(raw.replace(/mrp_vault_backup\.v1\.enc/gi, "backup").replace(/\bvault\b/gi, "backup"));
-      return false;
-    } finally {
-      setBusy(false);
     }
+
+    const sizeLabel = sizeBytes && sizeBytes > 0 ? ` · ${formatMb(sizeBytes)}` : "";
+    const selfieLabel = selfieCount ? ` · ${selfieCount} selfie(s)` : "";
+    setInfo(
+      `Device data unlocked${file.modifiedTime ? ` · synced ${new Date(file.modifiedTime).toLocaleString()}` : ""}${sizeLabel}${selfieLabel}`,
+    );
   }, []);
 
-  const refresh = useCallback(async (quiet = false) => {
-    const pin = pinRef.current;
-    if (!pin) return;
-    if (!quiet) {
+  const unlock = useCallback(
+    async (pin: string) => {
+      if (pin.length < 4) {
+        setError("PIN must be at least 4 characters");
+        return false;
+      }
       setBusy(true);
       setError(null);
-    }
-    try {
-      const token = await requestDriveAppDataToken();
-      const { file, blob } = await fetchLatestVaultBlob(token);
-      const plain = await decryptVaultUtf8(blob, pin);
-      setVault(parseVaultJson(plain));
-      setMeta({ name: "Encrypted backup", modifiedTime: file.modifiedTime });
-      if (quiet) setInfo(`Data refreshed · ${new Date().toLocaleTimeString()}`);
-    } catch (e) {
-      if (!quiet) {
-        setError(e instanceof Error ? e.message : "Refresh failed");
+      setInfo(null);
+      try {
+        setUnlockStage("Connecting to Drive…");
+        await yieldToUi();
+        const token = await requestDriveAppDataToken();
+
+        setUnlockStage("Downloading encrypted backup…");
+        await yieldToUi();
+        const { file, blob } = await fetchLatestVaultBlob(token);
+        const sizeLabel = file.size ? formatMb(Number(file.size) || blob.byteLength) : formatMb(blob.byteLength);
+
+        setUnlockStage(`Decrypting ${sizeLabel}…`);
+        await yieldToUi();
+        const plain = await decryptVaultUtf8(blob, pin, (stage) => {
+          if (stage === "derive") setUnlockStage(`Deriving key (PBKDF2) · ${sizeLabel}…`);
+          else if (stage === "decrypt") setUnlockStage(`AES decrypt · ${sizeLabel}…`);
+          else setUnlockStage("Decoding plaintext…");
+        });
+
+        setUnlockStage("Parsing backup…");
+        await yieldToUi();
+        const parsed = parseVaultJson(plain);
+        pinRef.current = pin;
+        applyParsed(parsed, file);
+        return true;
+      } catch (e) {
+        pinRef.current = null;
+        setVault(null);
+        setMeta(null);
+        const raw = e instanceof Error ? e.message : "Failed to open device data";
+        setError(raw.replace(/mrp_vault_backup\.v1\.enc/gi, "backup").replace(/\bvault\b/gi, "backup"));
+        return false;
+      } finally {
+        setBusy(false);
+        setUnlockStage(null);
       }
-    } finally {
-      if (!quiet) setBusy(false);
-    }
-  }, []);
+    },
+    [applyParsed],
+  );
+
+  const refresh = useCallback(
+    async (quiet = false) => {
+      const pin = pinRef.current;
+      if (!pin) return;
+      if (!quiet) {
+        setBusy(true);
+        setError(null);
+        setUnlockStage("Refreshing backup…");
+      }
+      try {
+        const token = await requestDriveAppDataToken();
+        const { file, blob } = await fetchLatestVaultBlob(token);
+        if (!quiet) setUnlockStage(`Decrypting ${formatMb(blob.byteLength)}…`);
+        const plain = await decryptVaultUtf8(blob, pin, (stage) => {
+          if (quiet) return;
+          if (stage === "derive") setUnlockStage("Deriving key…");
+          else if (stage === "decrypt") setUnlockStage("Decrypting…");
+        });
+        if (!quiet) setUnlockStage("Parsing…");
+        const parsed = parseVaultJson(plain);
+        applyParsed(parsed, file);
+        if (quiet) setInfo(`Data refreshed · ${new Date().toLocaleTimeString()}`);
+      } catch (e) {
+        if (!quiet) {
+          setError(e instanceof Error ? e.message : "Refresh failed");
+        }
+      } finally {
+        if (!quiet) {
+          setBusy(false);
+          setUnlockStage(null);
+        }
+      }
+    },
+    [applyParsed],
+  );
 
   useEffect(() => {
     const onVis = () => {
@@ -146,6 +236,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onUnload = () => {
       pinRef.current = null;
+      clearVaultKeyCache();
     };
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
@@ -156,6 +247,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       vault,
       meta,
       busy,
+      unlockStage,
       error,
       info,
       unlocked: Boolean(vault),
@@ -165,7 +257,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       clearError: () => setError(null),
       setInfo,
     }),
-    [vault, meta, busy, error, info, unlock, refresh, lock],
+    [vault, meta, busy, unlockStage, error, info, unlock, refresh, lock],
   );
 
   return (

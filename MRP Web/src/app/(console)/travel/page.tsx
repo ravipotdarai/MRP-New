@@ -47,7 +47,7 @@ function TravelBody() {
     <div>
       <h1 className="page-title rise">Travel</h1>
       <p className="page-lead rise rise-delay-1">
-        GPS points for the selected day. Step or play back the position — the route line is hidden on the map.
+        Path from GPS-tagged security events for the selected day. Filter by date, then step or play the trail.
       </p>
       <div className="panel rise rise-delay-1" style={{ marginBottom: "1rem" }}>
         <label className="muted" htmlFor="travel-day">
@@ -129,7 +129,9 @@ function TravelBody() {
       <div className="panel rise rise-delay-2">
         {points.length ? (
           <InteractiveMap
+            key={date}
             center={playPoint ? { lat: playPoint.lat, lng: playPoint.lng } : undefined}
+            polyline={points}
             markers={
               playPoint
                 ? [{ lat: playPoint.lat, lng: playPoint.lng, id: "play", color: "#c45c3e" }]
@@ -137,6 +139,7 @@ function TravelBody() {
             }
             geofences={mapFences}
             height={400}
+            pathColor="#e85d04"
           />
         ) : (
           <p className="muted">No GPS-tagged events this day. Ensure the phone backs up timeline with location.</p>

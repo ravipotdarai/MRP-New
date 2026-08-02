@@ -9,8 +9,10 @@ import { allowAction, remainingCooldownMs } from "@/lib/rate-limit";
 import { InteractiveMap } from "@/components/InteractiveMap";
 import { EventDetailDrawer, TimelineList } from "@/components/TimelineUi";
 import { EventTypeChart } from "@/components/EventTypeChart";
+import { SessionInlineControls } from "@/components/SessionInlineControls";
 import {
   asRows,
+  eventTimeMs,
   liveLatLng,
   movementTrail,
   num,
@@ -146,8 +148,8 @@ function MonitoringBody() {
   const rows = useMemo(() => {
     const all = asRows(vault);
     const q = filter.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter((r) => JSON.stringify(r).toLowerCase().includes(q));
+    const filtered = !q ? all : all.filter((r) => JSON.stringify(r).toLowerCase().includes(q));
+    return [...filtered].sort((a, b) => eventTimeMs(b) - eventTimeMs(a));
   }, [vault, filter]);
 
   const simRows = vault?.simHistory || [];
@@ -179,11 +181,12 @@ function MonitoringBody() {
           {trackingSnap.movementTracking || trackingSnap.highAccuracy ? (
             <span className="badge">High-accuracy path</span>
           ) : null}
+          <SessionInlineControls />
         </div>
         {error ? <p className="badge badge-alert" style={{ marginTop: "0.75rem" }}>{error}</p> : null}
       </div>
 
-      <div className="grid-2 rise rise-delay-2">
+      <div className="locate-split rise rise-delay-2">
         <div className="panel locate-live-panel">
           <h2>Live location & movement</h2>
           <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "0.75rem" }}>
@@ -216,39 +219,42 @@ function MonitoringBody() {
                     : []
               }
               geofences={mapFences}
-              height={320}
+              height={360}
             />
           ) : (
             <p className="muted">No live location yet — enable Find my device and wait for the phone to sync.</p>
           )}
         </div>
-        <div className="panel">
-          <h2>Event mix</h2>
-          <EventTypeChart timeline={vault?.timeline || []} />
+        <div className="panel locate-timeline-panel">
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+            <h2>Security timeline</h2>
+            <input
+              className="input"
+              placeholder="Filter events…"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+          </div>
+          <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+            Type, status, and time. Open a row for full details, map, and selfie when available.
+          </p>
+          <TimelineList
+            rows={rows}
+            onSelect={(row, index) => {
+              setSelected(row);
+              setSelectedIdx(index);
+            }}
+          />
         </div>
       </div>
 
       <div className="panel rise rise-delay-3" style={{ marginTop: "1.25rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-          <h2>Security timeline</h2>
-          <input
-            className="input"
-            placeholder="Filter events…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            style={{ maxWidth: 280 }}
-          />
-        </div>
-        <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-          Type, status, and time. Open a row for coordinates and map — photos stay in Media.
+        <h2>Event mix</h2>
+        <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+          Share of security event types in this backup.
         </p>
-        <TimelineList
-          rows={rows}
-          onSelect={(row, index) => {
-            setSelected(row);
-            setSelectedIdx(index);
-          }}
-        />
+        <EventTypeChart timeline={vault?.timeline || []} layout="stack" />
       </div>
 
       <div className="panel" style={{ marginTop: "1.25rem" }}>
@@ -273,6 +279,7 @@ function MonitoringBody() {
 
       <EventDetailDrawer
         row={selected}
+        vault={vault}
         onClose={() => setSelected(null)}
         onPrev={() => {
           const next = Math.min(rows.length - 1, selectedIdx + 1);
@@ -291,7 +298,7 @@ function MonitoringBody() {
 
 export default function MonitoringPage() {
   return (
-    <VaultUnlockGate title="Unlock device data for Locate">
+    <VaultUnlockGate title="Unlock device data for Locate" showSessionControls={false}>
       <MonitoringBody />
     </VaultUnlockGate>
   );
