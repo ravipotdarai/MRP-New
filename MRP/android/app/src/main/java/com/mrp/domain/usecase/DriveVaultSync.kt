@@ -13,10 +13,8 @@ import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.data.local.LiveLocationStore
 import com.mrp.data.local.SimRecoveryStorage
 import com.mrp.data.local.TimelineStorage
-import com.mrp.domain.model.TimelineEntry
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -126,7 +124,8 @@ object DriveVaultSync {
         }
 
         if (DeviceTrackingPrefs.shouldIncludeSelfies(context)) {
-            payload.put("selfies", collectSelfieBlobs(timeline.getTimeline()))
+            payload.put("selfies", SelfieVaultPackager.collectSelfieBlobs(context, timeline.getTimeline()))
+            payload.put("selfiesOmitted", false)
         } else {
             payload.put("selfies", JSONArray())
             payload.put("selfiesOmitted", true)
@@ -194,35 +193,6 @@ object DriveVaultSync {
             }
             throw e
         }
-    }
-
-    private fun collectSelfieBlobs(entries: List<TimelineEntry>): JSONArray {
-        val arr = JSONArray()
-        var count = 0
-        for (e in entries) {
-            if (count >= 20) break
-            val path = (e.metadata["selfie_path"] ?: e.metadata["photo_path"] ?: e.metadata["photoPath"])
-                ?.toString()
-            if (path.isNullOrBlank()) continue
-            val file = File(path)
-            if (!file.exists() || file.length() > 2_000_000) continue
-            try {
-                val b64 = Base64.encodeToString(file.readBytes(), Base64.NO_WRAP)
-                arr.put(
-                    JSONObject()
-                        .put("eventId", e.id)
-                        .put("eventType", e.eventType)
-                        .put("atMs", System.currentTimeMillis())
-                        .put("fileName", file.name)
-                        .put("mime", "image/jpeg")
-                        .put("dataBase64", b64)
-                )
-                count++
-            } catch (ex: Exception) {
-                Log.w(TAG, "selfie skip $path", ex)
-            }
-        }
-        return arr
     }
 
     private fun networkAllowed(context: Context): Boolean {

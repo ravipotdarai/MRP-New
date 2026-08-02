@@ -16,7 +16,7 @@ const SECTIONS: {title: string; body: string[]}[] = [
     title: 'Google Play Data Safety alignment',
     body: [
       'Location (precise / approximate): collected when you grant location and enable monitoring, geofence, panic, SIM recovery SMS, or emergency / find-my-device. Used for app functionality and security. Not shared with MRP as raw GPS streams; optional encrypted Drive backup only.',
-      'Photos: front-camera selfies on security events you configure. Stored on device; Premium+ may sync encrypted copies to your Drive vault.',
+      'Photos: front-camera selfies on security events you configure (Premium+). Not taken for screen lock/unlock or geofence enter/exit. Encrypted copies sync to your Drive when Premium+ selfie sync is on.',
       'App activity: optional usage / risk signals for App Usage and Home security posture. On-device unless included in an encrypted vault you enable.',
       'Device or other IDs: Auth UID when signed in, for account management and sync policy. Crash / diagnostics may use Google services if enabled in a future build.',
       'Not collected by MRP cloud: multi-user Circle live share (disabled in v1), admin download of vault bytes, or broad Drive file listing.',

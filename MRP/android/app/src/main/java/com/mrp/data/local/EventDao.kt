@@ -95,6 +95,53 @@ class EventDao(private val context: Context) {
         db.close()
     }
 
+    /** Merge keys into json_data for a row identified by reference_id (timeline entry id). */
+    fun mergeJsonDataByReferenceId(referenceId: String, patch: Map<String, Any?>): Boolean {
+        if (referenceId.isBlank()) return false
+        val db = dbHelper.writableDatabase
+        return try {
+            val cursor = db.query(
+                DatabaseHelper.TABLE_EVENTS,
+                arrayOf(DatabaseHelper.COL_EVENT_ID, DatabaseHelper.COL_JSON_DATA),
+                "${DatabaseHelper.COL_REFERENCE_ID} = ?",
+                arrayOf(referenceId),
+                null, null, null, "1",
+            )
+            cursor.use {
+                if (!it.moveToFirst()) return false
+                val id = it.getLong(0)
+                val existing = it.getString(1)
+                val obj = try {
+                    if (existing.isNullOrBlank()) JSONObject() else JSONObject(existing)
+                } catch (_: Exception) {
+                    JSONObject()
+                }
+                for ((k, v) in patch) {
+                    when (v) {
+                        null -> obj.put(k, JSONObject.NULL)
+                        is Boolean -> obj.put(k, v)
+                        is Number -> obj.put(k, v)
+                        else -> obj.put(k, v.toString())
+                    }
+                }
+                val values = ContentValues().apply {
+                    put(DatabaseHelper.COL_JSON_DATA, obj.toString())
+                }
+                db.update(
+                    DatabaseHelper.TABLE_EVENTS,
+                    values,
+                    "${DatabaseHelper.COL_EVENT_ID} = ?",
+                    arrayOf(id.toString()),
+                ) > 0
+            }
+        } catch (e: Exception) {
+            Log.e("EventDao", "mergeJsonDataByReferenceId", e)
+            false
+        } finally {
+            db.close()
+        }
+    }
+
     private fun cursorToUnifiedEvent(cursor: Cursor): UnifiedEvent {
         val idIdx = cursor.getColumnIndex(DatabaseHelper.COL_EVENT_ID)
         val userIdIdx = cursor.getColumnIndex(DatabaseHelper.COL_USER_ID)

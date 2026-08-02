@@ -3,6 +3,7 @@ package com.mrp.data.local
 import android.content.Context
 import android.util.Log
 import com.mrp.domain.model.*
+import com.mrp.domain.usecase.SelfieVaultPackager
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
 class TimelineStorage(private val context: Context) {
 
@@ -192,6 +194,57 @@ class TimelineStorage(private val context: Context) {
             map[key] = json.opt(key)
         }
         return map
+    }
+
+    /**
+     * Persist selfie file path onto the best matching timeline row so Drive vault
+     * export can include the blob with the event.
+     */
+    fun attachSelfiePath(
+        photoEventName: String,
+        photoPath: String,
+        photoModifiedMs: Long = System.currentTimeMillis(),
+        preferredEventId: String? = null,
+    ): String? {
+        val patch = mapOf(
+            "selfie_path" to photoPath,
+            "photo_path" to photoPath,
+        )
+        if (!preferredEventId.isNullOrBlank()) {
+            if (eventDao.mergeJsonDataByReferenceId(preferredEventId, patch)) {
+                return preferredEventId
+            }
+        }
+        val photoPrefixes = SelfieVaultPackager.expectedPhotoPrefixes(photoEventName)
+        if (photoPrefixes.isEmpty()) return null
+        val entries = getTimeline()
+
+        fun typeMatches(eventType: String): Boolean {
+            val expected = SelfieVaultPackager.expectedPhotoPrefixes(eventType)
+            if (expected.isEmpty()) return false
+            return expected.any { exp ->
+                photoPrefixes.any { pref ->
+                    pref == exp || pref.replace("_", "") == exp.replace("_", "")
+                }
+            }
+        }
+
+        fun findBest(windowMs: Long): String? {
+            var bestId: String? = null
+            var bestDiff = windowMs
+            for (e in entries) {
+                if (!typeMatches(e.eventType)) continue
+                val diff = abs(SelfieVaultPackager.parseEventMs(e.timestamp) - photoModifiedMs)
+                if (diff < bestDiff) {
+                    bestDiff = diff
+                    bestId = e.id
+                }
+            }
+            return bestId
+        }
+
+        val id = findBest(45_000L) ?: findBest(120_000L) ?: return null
+        return if (eventDao.mergeJsonDataByReferenceId(id, patch)) id else null
     }
 
     companion object {

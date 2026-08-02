@@ -32,6 +32,8 @@ export interface SelfieEvent {
 const NO_SELFIE_EVENTS = new Set<string>([
   'SCREEN_LOCK',
   'SCREEN_UNLOCK',
+  'GEOFENCE_ENTER',
+  'GEOFENCE_EXIT',
   'APP_MISUSE',
   'DATA_RISK_APP',
   'DEVICE_SHUTDOWN',
@@ -59,7 +61,10 @@ const MATCH_WINDOW_MS = 45000;
 
 export function getExpectedPhotoPrefix(eventType: string | undefined): string | null {
   if (!eventType) return null;
-  if (NO_SELFIE_EVENTS.has(eventType)) return null;
+  const key = eventType.toUpperCase();
+  if (NO_SELFIE_EVENTS.has(key) || key.startsWith('GEOFENCE_') || key.startsWith('SCREEN_')) {
+    return null;
+  }
   return EVENT_TO_PHOTO_PREFIX[eventType] ?? eventType;
 }
 

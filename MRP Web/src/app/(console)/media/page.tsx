@@ -24,7 +24,10 @@ function MediaBody() {
       <h1 className="page-title">Selfie evidence</h1>
       <p className="page-lead">
         From encrypted Drive backup
-        {vault?.selfiesOmitted ? " · some selfies omitted on phone sync policy" : ""}.
+        {vault?.selfiesOmitted
+          ? " · selfies omitted — Premium+ plan and Premium+ selfies in Drive must be on, then sync from the phone"
+          : ""}
+        . Unlock and Refresh after the phone finishes Drive sync to load new captures.
       </p>
       <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
         <button type="button" className={`btn ${view === "grid" ? "btn-primary" : ""}`} onClick={() => setView("grid")}>

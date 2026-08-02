@@ -17,6 +17,8 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import com.mrp.data.local.TimelineStorage
+import com.mrp.domain.usecase.DriveVaultSync
+import com.mrp.domain.usecase.SelfieVaultPackager
 import com.mrp.util.SelfieCaptureUtil
 import java.io.File
 import java.io.FileInputStream
@@ -276,6 +278,9 @@ class CameraCaptureActivity : Activity() {
                 mirrorFront = false,
             )
             Log.d(TAG, "Photo saved successfully: ${photoFile.path}")
+
+            SelfieVaultPackager.attachSelfieToTimeline(applicationContext, eventName, photoFile)
+            DriveVaultSync.requestSyncAsync(applicationContext, "event_selfie")
 
             registerWithMediaStore(photoFile)
             try {

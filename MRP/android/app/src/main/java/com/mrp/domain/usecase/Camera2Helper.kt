@@ -52,6 +52,9 @@ class Camera2Helper(private val context: Context) {
                     if (image != null) {
                         val path = savePhoto(image, eventName)
                         image.close()
+                        val file = File(path)
+                        SelfieVaultPackager.attachSelfieToTimeline(context, eventName, file)
+                        DriveVaultSync.requestSyncAsync(context, "event_selfie")
                         callback(path)
                     }
                 }, backgroundHandler)

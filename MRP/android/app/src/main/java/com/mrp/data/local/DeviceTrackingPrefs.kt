@@ -60,6 +60,25 @@ object DeviceTrackingPrefs {
     fun syncSelfiesPremium(context: Context): Boolean =
         p(context).getBoolean(KEY_SYNC_SELFIES, true)
 
+    /** Premium / family / enterprise (not free/basic). */
+    fun isPremiumPlus(context: Context): Boolean {
+        val map = EntitlementCache(context).readSnapshot()
+        val tier = map.getString("tier") ?: "free"
+        return tier == "premium" || tier == "family" || tier == "enterprise"
+    }
+
+    /**
+     * Capture + Drive include selfies only for Premium+ when Sync Policy toggle is on.
+     * Free/basic: never capture or pack selfies into the vault.
+     */
+    fun shouldIncludeSelfies(context: Context): Boolean {
+        if (!syncSelfiesPremium(context)) return false
+        return isPremiumPlus(context)
+    }
+
+    /** Alias for camera path — same Premium+ + toggle gate. */
+    fun mayCaptureSelfies(context: Context): Boolean = shouldIncludeSelfies(context)
+
     /** Normal Drive sync cadence (minutes). Emergency uses its own interval. */
     fun syncFrequencyMinutes(context: Context): Int {
         val prefs = p(context)
@@ -99,13 +118,6 @@ object DeviceTrackingPrefs {
             .putBoolean(KEY_LAST_GEOFENCE_INSIDE, inside)
             .putString(KEY_LAST_GEOFENCE_ID, fenceId)
             .apply()
-    }
-
-    fun shouldIncludeSelfies(context: Context): Boolean {
-        if (!syncSelfiesPremium(context)) return false
-        val map = EntitlementCache(context).readSnapshot()
-        val tier = map.getString("tier") ?: "free"
-        return tier == "premium" || tier == "family" || tier == "enterprise"
     }
 
     fun applyRemote(

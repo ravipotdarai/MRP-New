@@ -29,12 +29,15 @@ import com.mrp.MainActivity
 import com.mrp.R
 import com.mrp.data.local.SettingsStorage
 import com.mrp.data.local.TimelineStorage
+import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.domain.model.*
 import com.mrp.domain.usecase.LocationHelper
 import com.mrp.domain.usecase.TimelineEventLogger
 import com.mrp.domain.usecase.AppUsageTracker
 import com.mrp.domain.usecase.PackageChangeHandler
 import com.mrp.domain.usecase.BreachPostureScanner
+import com.mrp.domain.usecase.DriveVaultSync
+import com.mrp.domain.usecase.SelfieVaultPackager
 import java.util.Calendar
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
 import com.mrp.util.OemBatteryMitigation
@@ -1395,6 +1398,12 @@ class MrpMonitorService : Service() {
                 mirrorFront = false,
             )
             Log.d(TAG, "Photo saved: ${photoFile.path}")
+            SelfieVaultPackager.attachSelfieToTimeline(
+                applicationContext,
+                currentPhotoEventName,
+                photoFile,
+            )
+            DriveVaultSync.requestSyncAsync(applicationContext, "event_selfie")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save photo", e)
         } finally {
@@ -1475,8 +1484,12 @@ class MrpMonitorService : Service() {
             try {
                 val now = System.currentTimeMillis()
                 val key = eventName.uppercase(java.util.Locale.US)
-                if (key == "SCREEN_LOCK" || key == "SCREEN_UNLOCK" || key == "APP_MISUSE") {
+                if (SelfieVaultPackager.isNoSelfieEvent(key)) {
                     Log.d(TAG, "requestPhoto skipped for $eventName (no-selfie event)")
+                    return
+                }
+                if (!DeviceTrackingPrefs.mayCaptureSelfies(context)) {
+                    Log.d(TAG, "requestPhoto skipped for $eventName (Premium+ + selfie sync required)")
                     return
                 }
                 val critical = key.contains("SIM") || key.contains("WRONG") || key.contains("USB") ||
