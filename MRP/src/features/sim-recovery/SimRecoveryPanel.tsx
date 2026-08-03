@@ -12,6 +12,7 @@ import {
   Linking,
 } from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {showSmsPermissionHelp} from '../../shared/utils/permissionFixGuides';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
@@ -152,14 +153,7 @@ export function SimRecoveryPanel({
     // SMS required
     const smsOk = await requestPerms([PermissionsAndroid.PERMISSIONS.SEND_SMS]);
     if (!smsOk) {
-      Alert.alert(
-        'SMS permission needed',
-        'Allow SMS in system settings so recovery alerts can be sent.',
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
-        ],
-      );
+      showSmsPermissionHelp(() => bridge.openAppSettings?.());
       return;
     }
 
@@ -173,7 +167,7 @@ export function SimRecoveryPanel({
     if (!phoneOk) {
       // Best-effort short request; timeout avoids hang when USER_FIXED
       phoneOk = await requestPerms(
-        Platform.Version >= 33
+        Number(Platform.Version) >= 33
           ? [
               PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
               'android.permission.READ_PHONE_NUMBERS',
@@ -312,10 +306,7 @@ export function SimRecoveryPanel({
       try {
         const smsOk = await requestPerms([PermissionsAndroid.PERMISSIONS.SEND_SMS]);
         if (!smsOk) {
-          Alert.alert('SMS permission required', 'Allow SMS for MRP, then try again.', [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
-          ]);
+          showSmsPermissionHelp(() => bridge.openAppSettings?.());
           return;
         }
 

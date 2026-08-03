@@ -113,17 +113,23 @@ class BreachPostureScanner(private val context: Context) {
             severity = "info"
         )
 
-        val batteryOk = try {
+        val batteryExempt = try {
             OemBatteryMitigation.isIgnoringBatteryOptimizations(context)
         } catch (_: Exception) {
             false
         }
+        // Optimized is a valid choice. Treating Unrestricted as required causes
+        // REQUEST_IGNORE → Pixel locks App battery usage greyed ON.
         checks += PostureCheck(
             id = "battery_exempt",
-            title = "MRP battery unrestricted",
-            ok = batteryOk,
-            detail = if (batteryOk) "Exempt from battery optimization" else "May be killed by OEM",
-            severity = if (batteryOk) "info" else "attention"
+            title = "MRP App battery usage",
+            ok = true,
+            detail = if (batteryExempt) {
+                "Unrestricted — often locked by Android while Device Admin is ON"
+            } else {
+                "Optimized / editable when Device Admin is off"
+            },
+            severity = "info"
         )
 
         val notifOk = if (Build.VERSION.SDK_INT >= 33) {

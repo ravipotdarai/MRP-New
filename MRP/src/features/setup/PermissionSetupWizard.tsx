@@ -201,12 +201,19 @@ export function PermissionSetupWizard({
           await bridge.requestDeviceAdminEnable?.();
           break;
         case 'battery':
-          // Open Android App battery usage so the user can pick Unrestricted /
-          // Optimized / Restricted — does not change MRP monitoring code paths.
-          if (typeof bridge.openAppBatteryUsageSettings === 'function') {
+          // Open editable App battery usage. Never auto-request Don’t-optimize —
+          // that greys out Apps → MRP → App battery usage on Pixel.
+          if (typeof bridge.openEditableAppBatteryUsage === 'function') {
+            const result = await bridge.openEditableAppBatteryUsage();
+            if (result === 'locked') {
+              setHint(
+                'App battery usage is locked. On the list: find MRP → Optimize. Then reopen App battery usage to edit.',
+              );
+            } else {
+              setHint('App info → App battery usage → choose Optimized or Unrestricted.');
+            }
+          } else if (typeof bridge.openAppBatteryUsageSettings === 'function') {
             await bridge.openAppBatteryUsageSettings();
-          } else if (typeof bridge.requestIgnoreBatteryOptimizations === 'function') {
-            await bridge.requestIgnoreBatteryOptimizations();
           }
           break;
         default:

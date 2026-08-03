@@ -918,11 +918,29 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun openAppBatteryUsageSettings(promise: Promise) {
         try {
-            val ok = com.mrp.util.OemBatteryMitigation.openAppBatteryUsageSettings(reactContext)
+            val ctx = reactContext.currentActivity ?: reactContext
+            val ok = com.mrp.util.OemBatteryMitigation.openAppBatteryUsageSettings(ctx)
             promise.resolve(ok)
         } catch (e: Exception) {
             Log.e(TAG, "openAppBatteryUsageSettings failed", e)
             promise.resolve(false)
+        }
+    }
+
+    /**
+     * Opens the Settings path that lets the user *edit* App battery usage.
+     * Returns "locked" when MRP is on the Don’t-optimize allow-list (switch greyed);
+     * "open" when App Info / battery usage was opened normally.
+     */
+    @ReactMethod
+    fun openEditableAppBatteryUsage(promise: Promise) {
+        try {
+            val ctx = reactContext.currentActivity ?: reactContext
+            val result = com.mrp.util.OemBatteryMitigation.openEditableAppBatteryUsage(ctx)
+            promise.resolve(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "openEditableAppBatteryUsage failed", e)
+            promise.resolve("open")
         }
     }
 

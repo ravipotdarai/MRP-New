@@ -52,6 +52,11 @@ export interface MrpNativeInterface {
   openSystemBatteryUsage(): Promise<boolean>;
   /** Opens Android App battery usage for MRP (Unrestricted / Optimized / Restricted). */
   openAppBatteryUsageSettings(): Promise<boolean>;
+  /**
+   * Opens editable battery path. Resolves "locked" if Don’t-optimize allow-list
+   * greys out App battery usage; otherwise "open".
+   */
+  openEditableAppBatteryUsage(): Promise<string>;
   getNetworkInfo(): Promise<{
     carrierName: string;
     connectionType: string;

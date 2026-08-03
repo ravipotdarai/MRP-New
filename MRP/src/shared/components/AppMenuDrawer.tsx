@@ -111,7 +111,9 @@ const MENU: MenuRow[] = [
       {label: 'Account', target: {screen: 'Hub', section: 'account'}},
       {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
       ...(CIRCLE_ENABLED
-        ? [{label: 'Circle', target: {screen: 'Hub', section: 'circle' as const}}]
+        ? ([
+            {label: 'Circle', target: {screen: 'Hub', section: 'circle'}},
+          ] as {label: string; target: AppMenuTarget}[])
         : []),
       {label: 'Drive Sync', target: {screen: 'Hub', section: 'drive-sync'}},
       {label: 'SIM Recovery', target: {screen: 'Hub', section: 'sim-recovery'}},

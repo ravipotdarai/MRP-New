@@ -13,6 +13,7 @@ import {
 import mrpmModule from '../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
+import {showSmsPermissionHelp} from '../shared/utils/permissionFixGuides';
 
 interface PermissionDetail {
   name: string;
@@ -89,10 +90,10 @@ export function PermissionsScreen() {
       } catch {
         a11y = false;
       }
-
+      const version = Number(Platform.Version);
       let batteryOk = false;
-      let notificationsOk = Platform.Version < 33;
-      let bluetoothOk = Platform.Version < 31;
+      let notificationsOk = version < 33;
+      let bluetoothOk = version < 31;
       try {
         const status = await (mrpmModule as any).getPermissionSetupStatus?.();
         batteryOk = !!status?.batteryExempt;
@@ -214,7 +215,9 @@ export function PermissionsScreen() {
   const SMS_PHONE_MANUAL_PATH =
     'Settings → Apps → MRP → Permissions\n' +
     'If SMS / Phone is missing: tap the ⋮ (three-dot) menu → All permissions or Allow all permissions\n' +
-    'Then enable SMS / Messages and Phone / Phone numbers';
+    'Then enable SMS / Messages and Phone / Phone numbers\n\n' +
+    'If Allow is greyed out (“App was denied access” / restricted permission):\n' +
+    'Apps → MRP → ⋮ → Allow restricted settings → Allow, then enable SMS.';
 
   const requestSmsPermission = async () => {
     if (Platform.OS !== 'android') return;
@@ -239,14 +242,7 @@ export function PermissionsScreen() {
       const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
       setSmsPermission(ok);
       if (!ok) {
-        Alert.alert(
-          'Enable SMS in App Permissions',
-          `Android may hide SMS under the three-dot menu.\n\n${SMS_PHONE_MANUAL_PATH}\n\nGrant Access opens MRP’s app permission page directly.`,
-          [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Grant Access', onPress: openAppDetails},
-          ],
-        );
+        showSmsPermissionHelp(openAppDetails);
       } else {
         await checkPermissions();
       }
@@ -447,19 +443,63 @@ export function PermissionsScreen() {
         Alert.alert('Error', 'Native module not available.');
         return;
       }
-      const ok = await (mrpmModule as any).openAppBatteryUsageSettings?.();
-      if (!ok) {
+      const bridge = mrpmModule as any;
+      let result = 'open';
+      if (typeof bridge.openEditableAppBatteryUsage === 'function') {
+        result = await bridge.openEditableAppBatteryUsage();
+      } else {
+        const ok = await bridge.openAppBatteryUsageSettings?.();
+        if (!ok) {
+          Alert.alert(
+            'Open Battery settings',
+            'Go to Settings → Apps → MRP → App battery usage.',
+            [
+              {text: 'Cancel', style: 'cancel'},
+              {text: 'App settings', onPress: openAppDetails},
+            ],
+          );
+          return;
+        }
+      }
+      if (result === 'locked_admin') {
         Alert.alert(
-          'Open Battery settings',
-          'Go to Settings → Apps → MRP → App battery usage, then choose Unrestricted / Optimized / Restricted.',
+          'Allow background usage is locked',
+          'Android greys out “Allow background usage” while MRP Device Admin is ON (needed for wrong-PIN detection).\n\n' +
+            'To edit it temporarily:\n' +
+            '1. Disable Device Admin\n' +
+            '2. Change App battery usage\n' +
+            '3. Re-enable Device Admin (important)\n\n' +
+            'While Admin is ON, Unrestricted/allow-background is expected and not a bug.',
           [
             {text: 'Cancel', style: 'cancel'},
-            {text: 'App settings', onPress: openAppDetails},
+            {
+              text: 'Disable Device Admin',
+              style: 'destructive',
+              onPress: () => {
+                void (async () => {
+                  try {
+                    await bridge.disableDeviceAdmin?.();
+                    await bridge.openAppBatteryUsageSettings?.();
+                    Alert.alert(
+                      'Edit battery, then re-enable Admin',
+                      'App battery usage should be editable now. After you finish, return to Permissions and tap Enable Device Admin again.',
+                    );
+                    setTimeout(checkPermissions, 800);
+                  } catch (e) {
+                    Alert.alert('Error', String(e));
+                  }
+                })();
+              },
+            },
           ],
         );
-      } else {
-        setTimeout(checkPermissions, 1200);
+      } else if (result === 'locked') {
+        Alert.alert(
+          'Unlock App battery usage',
+          'Find MRP on the list → set Optimize / Optimized. Then reopen App battery usage to edit.',
+        );
       }
+      setTimeout(checkPermissions, 1500);
     } catch (e) {
       console.error('[PermissionsScreen] Error opening app battery usage:', e);
       await openAppDetails();
@@ -595,13 +635,13 @@ export function PermissionsScreen() {
       name: 'SMS / Messages',
       icon: '💬',
       description:
-        'SIM Change Recovery only. MRP sends an outbound SMS to your recovery contacts when the SIM changes — with location. MRP does not read your SMS inbox. SMS is often under Permissions → ⋮ on Samsung, Xiaomi, Oppo, Vivo, and others.',
+        'SIM Change Recovery and Panic only. MRP sends outbound SMS to your recovery contacts — it does not read your inbox. If Allow is greyed out, enable Allow restricted settings first (Apps → MRP → ⋮).',
       granted: smsPermission === true,
       grantSteps: [
         'Tap Allow SMS for the system dialog (not shown again if already granted)',
-        'Settings → Apps → MRP → Permissions',
-        'If SMS is missing: ⋮ (three-dot) → All permissions / Allow all permissions',
-        'Enable SMS / Messages → Allow',
+        'If Allow is greyed out: Apps → MRP → ⋮ → Allow restricted settings → Allow',
+        'Then: Permissions → SMS → Allow',
+        'If SMS is missing: Permissions → ⋮ → All permissions → SMS',
         'Grant Access opens the MRP app permission page directly',
       ],
       onOpen: requestSmsPermission,
@@ -662,15 +702,14 @@ export function PermissionsScreen() {
       name: 'App Battery Usage',
       icon: '🔋',
       description:
-        'Controls how MRP runs in the background: Unrestricted, Optimized, or Restricted. Recommended: Unrestricted so monitoring is not killed.',
+        'Apps → MRP → App battery usage → Allow background usage. While Device Admin is ON, Android locks this greyed (Unrestricted) — that is system policy, not an MRP bug.',
       granted: batteryUnrestricted === true,
       grantSteps: [
-        'Path: Settings → Apps → MRP → App battery usage',
-        'Choose Unrestricted (recommended), Optimized, or Restricted',
-        'Return here and re-open this screen to refresh status',
+        'Configure explains the lock and can temporarily disable Device Admin so you can edit',
+        'After editing, re-enable Device Admin for wrong-PIN monitoring',
       ],
       onOpen: openAppBatteryUsage,
-      buttonLabel: 'Configure App Battery Usage',
+      buttonLabel: 'Configure / Unlock Allow background usage',
       alwaysConfigurable: true,
     },
   ];
@@ -775,10 +814,13 @@ export function PermissionsScreen() {
           <Text style={styles.instructionTitle}>💬 SMS & 📱 Phone (hidden on many OEMs)</Text>
           <Text style={styles.instructionDescription}>
             Android often hides SMS and Phone until you open the three-dot menu on the app
-            Permissions screen. Grant Access jumps to Settings → Apps → MRP (permission page).
+            Permissions screen. If Allow is greyed out (“App was denied access”), enable
+            Allow restricted settings first. Grant Access jumps to Settings → Apps → MRP.
           </Text>
           <Text style={styles.instructionSteps}>
-            Settings → Apps → MRP → Permissions → ⋮ → All permissions / Allow all → SMS + Phone
+            Settings → Apps → MRP → ⋮ → Allow restricted settings → Allow{'\n'}
+            Then: Permissions → SMS + Phone{'\n'}
+            Or: Permissions → ⋮ → All permissions → SMS + Phone
           </Text>
           <TouchableOpacity style={styles.requestButton} onPress={openAppDetails}>
             <Text style={styles.requestButtonText}>Grant Access (App Permissions)</Text>

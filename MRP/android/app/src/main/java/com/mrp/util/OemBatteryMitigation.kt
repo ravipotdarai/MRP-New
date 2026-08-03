@@ -100,34 +100,26 @@ object OemBatteryMitigation {
 
     /**
      * Open this app's Android "App battery usage" screen so the user can choose
-     * Unrestricted / Optimized / Restricted. Does not change MRP monitoring logic.
+     * Unrestricted / Optimized / Restricted.
+     *
+     * Important: if the app is on the PowerManager ignore allow-list
+     * ([isIgnoringBatteryOptimizations]), Pixel greys out that screen with
+     * “This app requires unrestricted battery usage.” Callers that need an
+     * editable control should use [openEditableAppBatteryUsage] instead.
      */
     fun openAppBatteryUsageSettings(context: Context): Boolean {
         val pkg = context.packageName
         val pkgUri = Uri.parse("package:$pkg")
         val candidates = mutableListOf<Intent>()
 
-        // Pixel / AOSP: Settings → Apps → MRP → App battery usage
+        // Prefer App Info (Pixel: Apps → MRP → App battery usage). APP_BATTERY_SETTINGS
+        // often does not resolve on stock Pixel.
+        candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(pkgUri)
         candidates += Intent("android.settings.APP_BATTERY_SETTINGS").setData(pkgUri)
-        // Some OEMs use this action with package extra
         candidates += Intent("android.settings.APP_BATTERY_SETTINGS").apply {
             putExtra("android.intent.extra.PACKAGE_NAME", pkg)
             putExtra("package", pkg)
         }
-        // Samsung / generic power usage detail
-        candidates += Intent().setComponent(
-            ComponentName(
-                "com.android.settings",
-                "com.android.settings.fuelgauge.AdvancedPowerUsageDetail"
-            )
-        ).apply {
-            putExtra("package", pkg)
-            putExtra("extra_package_name", pkg)
-        }
-        // Fallback: app info (user taps Battery)
-        candidates += Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(pkgUri)
-        // Last resort: battery optimization allow-list
-        candidates += Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
 
         for (intent in candidates) {
             try {
@@ -143,6 +135,58 @@ object OemBatteryMitigation {
         }
         Log.e(TAG, "No app battery usage activity found")
         return false
+    }
+
+    /**
+     * Open the system battery-optimization list so the user can move MRP off
+     * “Not optimized” / Unrestricted. That unlocks the App battery usage radios.
+     */
+    fun openBatteryOptimizationList(context: Context): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+                Log.d(TAG, "Opened battery optimization list")
+                true
+            } else {
+                openAppBatteryUsageSettings(context)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to open battery optimization list", e)
+            openAppBatteryUsageSettings(context)
+        }
+    }
+
+    /**
+     * Best path for an *editable* App battery usage control.
+     *
+     * @return
+     * - "locked_admin" — active Device Admin forces Allow background usage ON/greyed
+     *   (“This app requires unrestricted battery usage”). Android will not allow edits
+     *   until Device Admin is temporarily disabled.
+     * - "locked" — PowerManager Don’t-optimize allow-list; open optimization list.
+     * - "open" — App Info / battery usage opened normally (editable).
+     */
+    fun openEditableAppBatteryUsage(context: Context): String {
+        val adminActive = try {
+            com.mrp.presentation.admin.MrpDeviceAdminReceiver.isAdminActive(context)
+        } catch (_: Exception) {
+            false
+        }
+        if (adminActive) {
+            // Still open the screen so the user sees the greyed switch + system message.
+            openAppBatteryUsageSettings(context)
+            return "locked_admin"
+        }
+        return if (isIgnoringBatteryOptimizations(context)) {
+            openBatteryOptimizationList(context)
+            "locked"
+        } else {
+            openAppBatteryUsageSettings(context)
+            "open"
+        }
     }
 
     /**

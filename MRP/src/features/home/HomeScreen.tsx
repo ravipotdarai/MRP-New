@@ -17,6 +17,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {showSmsPermissionHelp} from '../../shared/utils/permissionFixGuides';
 import {useSettings} from '../../shared/hooks/useSettings';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {AppMenuDrawer, AppMenuTarget} from '../../shared/components/AppMenuDrawer';
@@ -550,10 +551,7 @@ export function HomeScreen({
         PermissionsAndroid.PERMISSIONS.SEND_SMS,
       );
       if (smsOk !== PermissionsAndroid.RESULTS.GRANTED) {
-        Alert.alert('SMS permission required', 'Allow SMS for MRP to alert recovery contacts.', [
-          {text: 'Cancel', style: 'cancel'},
-          {text: 'Open Settings', onPress: () => bridge.openAppSettings?.()},
-        ]);
+        showSmsPermissionHelp(() => bridge.openAppSettings?.());
         return;
       }
       const result = await bridge.sendPanicAlert();
@@ -756,12 +754,13 @@ export function HomeScreen({
         </Pressable>
       </View>
 
-      {/* Quick tiles: Icon + Title / value on next line */}
+      {/* Quick tiles: status + short purpose */}
       <View style={styles.statGrid}>
         <StatCard
           icon="📶"
           label="Wifi"
           value={wifiName}
+          purpose="Network name — open Wi‑Fi tools"
           accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
           styles={styles}
           onPress={() => goSecurityCenter('TOOLS')}
@@ -770,6 +769,7 @@ export function HomeScreen({
           icon="🔐"
           label="Wi‑Fi grade"
           value={wifiGrade}
+          purpose="Open / WEP / WPA strength of this network"
           accent={
             /open|wep|weak/i.test(wifiGrade)
               ? colors.red
@@ -784,6 +784,7 @@ export function HomeScreen({
           icon="🔒"
           label="Security"
           value={`${securityScore}%`}
+          purpose="Device posture score — open Advisor"
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
           styles={styles}
           onPress={() => goSecurityCenter('ADVISOR')}
@@ -792,6 +793,7 @@ export function HomeScreen({
           icon="📡"
           label="GPS"
           value={carrierName || '--'}
+          purpose="Location / carrier ready for events"
           accent={gps?.isLocationAvailable || liveLocation ? colors.emerald : colors.red}
           styles={styles}
         />
@@ -799,6 +801,7 @@ export function HomeScreen({
           icon="🧭"
           label="Advisor"
           value="Scan"
+          purpose="Misconfig checks (USB debug, battery…)"
           accent={colors.sky}
           styles={styles}
           onPress={() => goSecurityCenter('ADVISOR')}
@@ -807,6 +810,7 @@ export function HomeScreen({
           icon="📊"
           label="Threats"
           value="Analyze"
+          purpose="Risky / sideloaded app heuristics"
           accent={colors.amber}
           styles={styles}
           onPress={() => goSecurityCenter('ANALYZER')}
@@ -815,6 +819,7 @@ export function HomeScreen({
           icon="🆘"
           label="Fraud"
           value="Report"
+          purpose="Cybercrime portals & lost-phone links"
           accent={colors.red}
           styles={styles}
           onPress={() => goSecurityCenter('FRAUD')}
@@ -823,6 +828,7 @@ export function HomeScreen({
           icon="🔗"
           label="Scan URL"
           value="Paste"
+          purpose="Check a link before you open it"
           accent={colors.violet}
           styles={styles}
           onPress={() => goSecurityCenter('TOOLS')}
@@ -831,6 +837,7 @@ export function HomeScreen({
           icon="📷"
           label="Scan QR"
           value="Paste"
+          purpose="Check QR / WIFI: payload safely"
           accent={colors.sky}
           styles={styles}
           onPress={() => goSecurityCenter('TOOLS')}
@@ -839,6 +846,7 @@ export function HomeScreen({
           icon="📧"
           label="Breach"
           value="Email"
+          purpose="See if an email appeared in leaks"
           accent={colors.violet}
           styles={styles}
           onPress={() => goSecurityCenter('TOOLS')}
@@ -847,6 +855,7 @@ export function HomeScreen({
           icon="💬"
           label="OTP check"
           value="Paste"
+          purpose="Paste SMS to spot OTP scam wording"
           accent={colors.amber}
           styles={styles}
           onPress={() => goSecurityCenter('TOOLS')}
@@ -855,6 +864,7 @@ export function HomeScreen({
           icon="🎁"
           label="Hub"
           value="Offers"
+          purpose="Promotions & affiliates"
           accent={colors.amber}
           styles={styles}
           onPress={goPromotions}
@@ -863,6 +873,7 @@ export function HomeScreen({
           icon="ℹ️"
           label="How to Use"
           value="Guide"
+          purpose="Setup & how MRP protects you"
           accent={colors.sky}
           styles={styles}
           onPress={goMrpGuide}
@@ -871,6 +882,7 @@ export function HomeScreen({
           icon="🌐"
           label="Portal"
           value="MRP Web"
+          purpose="Open PathSync in the browser"
           accent={colors.violet}
           styles={styles}
           onPress={openWebConsole}
@@ -1099,6 +1111,7 @@ function StatCard({
   icon,
   label,
   value,
+  purpose,
   accent,
   styles,
   onPress,
@@ -1106,10 +1119,12 @@ function StatCard({
   icon: string;
   label: string;
   value: string;
+  purpose?: string;
   accent: string;
   styles: ReturnType<typeof createHomeStyles>;
   onPress?: () => void;
 }) {
+  const a11y = purpose ? `${label}. ${value}. ${purpose}` : `${label}. ${value}`;
   const inner = (
     <>
       <View style={styles.statTopRow}>
@@ -1126,6 +1141,11 @@ function StatCard({
       <Text style={styles.statValue} numberOfLines={1}>
         {value}
       </Text>
+      {purpose ? (
+        <Text style={styles.statPurpose} numberOfLines={2}>
+          {purpose}
+        </Text>
+      ) : null}
     </>
   );
 
@@ -1136,14 +1156,18 @@ function StatCard({
         onPress={onPress}
         activeOpacity={0.75}
         accessibilityRole="button"
-        accessibilityLabel={`${label}. ${value}`}>
+        accessibilityLabel={a11y}>
         {inner}
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={[styles.statCard, {borderColor: accent + '40'}]}>{inner}</View>
+    <View
+      style={[styles.statCard, {borderColor: accent + '40'}]}
+      accessibilityLabel={a11y}>
+      {inner}
+    </View>
   );
 }
 
@@ -1297,6 +1321,15 @@ function createHomeStyles(colors: ColorPalette) {
     textAlign: 'left',
     width: '100%',
     paddingRight: 8,
+  },
+  statPurpose: {
+    marginTop: 4,
+    marginLeft: 32,
+    marginRight: 4,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   statSub: {fontSize: 11, fontWeight: '700', marginTop: 4},
   statLabel: {

@@ -155,7 +155,36 @@ export function AppSafetyScreen() {
 
   const openAppBatteryUsage = async () => {
     try {
-      const ok = await (mrpmModule as any).openAppBatteryUsageSettings?.();
+      const bridge = mrpmModule as any;
+      if (typeof bridge.openEditableAppBatteryUsage === 'function') {
+        const result = await bridge.openEditableAppBatteryUsage();
+        if (result === 'locked_admin') {
+          Alert.alert(
+            'Allow background usage is locked',
+            'Android locks this while Device Admin is ON. Disable Device Admin temporarily to edit, then re-enable it for wrong-PIN protection.',
+            [
+              {text: 'OK'},
+              {
+                text: 'Disable Device Admin',
+                style: 'destructive',
+                onPress: () => {
+                  void (async () => {
+                    await bridge.disableDeviceAdmin?.();
+                    await bridge.openAppBatteryUsageSettings?.();
+                  })();
+                },
+              },
+            ],
+          );
+        } else if (result === 'locked') {
+          Alert.alert(
+            'Unlock App battery usage',
+            'Find MRP on the list → set Optimize / Optimized. Then Apps → MRP → App battery usage becomes editable.',
+          );
+        }
+        return;
+      }
+      const ok = await bridge.openAppBatteryUsageSettings?.();
       if (!ok) {
         Alert.alert(
           'Open Battery settings',
