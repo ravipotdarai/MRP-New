@@ -27,6 +27,7 @@ import {PromoLinksScreen} from './PromoLinksScreen';
 import {PolicyScreen} from './PolicyScreen';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
 import Animated, {FadeIn} from 'react-native-reanimated';
+import {SecurityCenterScreen} from '../security-center/SecurityCenterScreen';
 
 export type HubSection =
   | 'menu'
@@ -39,7 +40,8 @@ export type HubSection =
   | 'promotions'
   | 'affiliates'
   | 'policy'
-  | 'about';
+  | 'about'
+  | 'security-center';
 
 type HubRouteParams = {openSection?: HubSection};
 
@@ -52,6 +54,12 @@ type MenuItem = {
 };
 
 const MENU_ITEMS: MenuItem[] = [
+  {
+    id: 'security-center',
+    title: 'Security Center',
+    subtitle: 'Advisor · Threats · Report Fraud',
+    icon: '🛡️',
+  },
   {
     id: 'account',
     title: 'Account',
@@ -229,6 +237,14 @@ export function HubScreen({
       setSection('menu');
     }
   }, [section]);
+
+  if (section === 'security-center') {
+    return (
+      <HubSectionShell title="Security Center" styles={styles}>
+        <SecurityCenterScreen onLostMobileLocate={() => openSection('drive-sync')} />
+      </HubSectionShell>
+    );
+  }
 
   if (section === 'about') {
     return (

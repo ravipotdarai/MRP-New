@@ -1,8 +1,10 @@
 # MRP Anti-Clone & Client Hardening Plan
 
-**Status:** Deferred — start after pending MRP Web work.  
+**Status:** Phase 1 audit doc started — full execution still gated on Play-signed AAB.  
 **Strategy rating (review):** 9.8/10 with refinements below.  
 **Overview:** Protect the user’s data first, then harden the APK as a separate layer. Raise clone/tamper cost and keep vault, accounts, and billing useless to imposters—without claiming reverse engineering is preventable or rewriting core logic into JNI.
+
+**Baseline audit:** [`../security/SECURITY_AUDIT_HARDENING.md`](../security/SECURITY_AUDIT_HARDENING.md)
 
 ## Priority stack (execution order)
 

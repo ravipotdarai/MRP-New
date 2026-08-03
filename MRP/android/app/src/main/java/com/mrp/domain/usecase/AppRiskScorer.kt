@@ -24,7 +24,11 @@ data class AppRiskReport(
     val hasDeviceAdmin: Boolean,
     val hasAccessibility: Boolean,
     val hasOverlay: Boolean,
-    val hasSendSms: Boolean
+    val hasSendSms: Boolean,
+    val lastUpdateMs: Long = 0L,
+    val monthsSinceUpdate: Int = 0,
+    val staleUpdate: Boolean = false,
+    val adwareLikely: Boolean = false,
 )
 
 /**
@@ -57,6 +61,7 @@ class AppRiskScorer(private val context: Context) {
             val hasContacts = Manifest.permission.READ_CONTACTS in perms
             val hasUsage = "android.permission.PACKAGE_USAGE_STATS" in perms
             val hasQueryAll = "android.permission.QUERY_ALL_PACKAGES" in perms
+            val hasInternet = Manifest.permission.INTERNET in perms
 
             val playInstallers = setOf(
                 "com.android.vending",
@@ -101,6 +106,38 @@ class AppRiskScorer(private val context: Context) {
                 reasons.add("Can query installed apps / usage")
             }
 
+            val lastUpdateMs = lastUpdateTimeMs(packageName)
+            val monthsSince = if (lastUpdateMs > 0L) {
+                ((System.currentTimeMillis() - lastUpdateMs) / (30L * 24L * 60L * 60L * 1000L))
+                    .toInt()
+                    .coerceAtLeast(0)
+            } else {
+                0
+            }
+            val stale = !isSystem && lastUpdateMs > 0L && monthsSince >= 6
+            if (stale) {
+                score += if (monthsSince >= 12) 20 else 12
+                reasons.add("Not updated in $monthsSince months (stale update)")
+            }
+
+            // Adware-ish: overlay + internet + (sideload or aggressive ad-ish name), not system
+            val adishName = Regex(
+                "(ad(s|ware|mob|colony)?|reward|cash|earn|spin|lucky|offerwall)",
+                RegexOption.IGNORE_CASE
+            ).containsMatchIn(appName) ||
+                Regex("(ad(s|ware)?|reward|cash)", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(packageName)
+            val adwareLikely = !isSystem && hasOverlay && hasInternet && (sideloaded || adishName)
+            if (adwareLikely) {
+                val adwareDetail = if (sideloaded) {
+                    "Adware-style signals (overlay + network + non-Play install)"
+                } else {
+                    "Adware-style signals (overlay + network + ad-like name)"
+                }
+                score += 18
+                reasons.add(adwareDetail)
+            }
+
             val level = when {
                 score >= 70 || hasAdmin -> AppRiskLevel.CRITICAL
                 score >= 45 -> AppRiskLevel.HIGH
@@ -120,7 +157,11 @@ class AppRiskScorer(private val context: Context) {
                 hasDeviceAdmin = hasAdmin,
                 hasAccessibility = hasA11y,
                 hasOverlay = hasOverlay,
-                hasSendSms = hasSms
+                hasSendSms = hasSms,
+                lastUpdateMs = lastUpdateMs,
+                monthsSinceUpdate = monthsSince,
+                staleUpdate = stale,
+                adwareLikely = adwareLikely,
             )
         } catch (e: Exception) {
             Log.w(TAG, "scorePackage failed for $packageName", e)
@@ -187,6 +228,15 @@ class AppRiskScorer(private val context: Context) {
             enabled.split(':').any { it.startsWith("$packageName/") }
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun lastUpdateTimeMs(packageName: String): Long {
+        return try {
+            val pi = pm.getPackageInfo(packageName, 0)
+            pi.lastUpdateTime
+        } catch (_: Exception) {
+            0L
         }
     }
 

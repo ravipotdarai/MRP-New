@@ -78,6 +78,84 @@ object VaultExtrasBuilder {
                 DeviceTrackingPrefs.emergencyIntervalMinutes(context)
             )
             .put("importance", processImportance(context))
+            .put("security", buildSecuritySnapshot(context))
+    }
+
+    /**
+     * Advisor / Analyzer summary for PathSync overview — no PII beyond package risk counts.
+     */
+    private fun buildSecuritySnapshot(context: Context): JSONObject {
+        val posture = BreachPostureScanner(context)
+        var openIssues = 0
+        var wifiGrade = "unknown"
+        try {
+            val json = posture.lastScanJson()
+            if (!json.isNullOrBlank()) {
+                val root = JSONObject(json)
+                val checks = root.optJSONArray("checks")
+                if (checks != null) {
+                    for (i in 0 until checks.length()) {
+                        val c = checks.optJSONObject(i) ?: continue
+                        if (!c.optBoolean("ok", true)) openIssues++
+                        if (c.optString("id") == "wifi_crypto") {
+                            val detail = c.optString("detail", "")
+                            wifiGrade = when {
+                                detail.contains("·") -> detail.substringAfterLast("·").trim()
+                                detail.contains("Not connected", ignoreCase = true) -> "offline"
+                                !c.optBoolean("ok", true) -> "weak"
+                                else -> "ok"
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "security snapshot posture parse", e)
+        }
+
+        var critical = 0
+        var high = 0
+        var medium = 0
+        var low = 0
+        var sideload = 0
+        var stale = 0
+        var adware = 0
+        try {
+            val reports = AppRiskScorer(context).scanInstalledApps(80)
+            for (r in reports) {
+                when (r.riskLevel) {
+                    AppRiskLevel.CRITICAL -> critical++
+                    AppRiskLevel.HIGH -> high++
+                    AppRiskLevel.MEDIUM -> medium++
+                    AppRiskLevel.LOW -> low++
+                }
+                if (r.reasons.any { it.contains("non-Play", ignoreCase = true) ||
+                        it.contains("sideload", ignoreCase = true) ||
+                        it.contains("unknown", ignoreCase = true)
+                    }
+                ) {
+                    sideload++
+                }
+                if (r.staleUpdate) stale++
+                if (r.adwareLikely) adware++
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "security snapshot risk scan", e)
+        }
+
+        return JSONObject()
+            .put("postureGrade", posture.lastGrade())
+            .put("postureScanAtMs", posture.lastScanAt())
+            .put("openPostureIssues", openIssues)
+            .put("wifiGrade", wifiGrade)
+            .put("riskCritical", critical)
+            .put("riskHigh", high)
+            .put("riskMedium", medium)
+            .put("riskLow", low)
+            .put("sideloadCount", sideload)
+            .put("staleUpdateCount", stale)
+            .put("adwareLikelyCount", adware)
+            .put("heuristicNote", "local_only_not_antivirus")
     }
 
     fun buildGeofences(context: Context): JSONArray {

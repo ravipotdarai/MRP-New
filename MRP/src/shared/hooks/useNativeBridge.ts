@@ -97,6 +97,8 @@ export interface MrpNativeInterface {
   }>;
   getUiThemeId(): Promise<string>;
   setUiThemeId(themeId: string): Promise<boolean>;
+  getSecurityCenterLocale(): Promise<string>;
+  setSecurityCenterLocale(locale: string): Promise<boolean>;
   getPermissionSetupStatus(): Promise<{
     camera: boolean;
     location: boolean;

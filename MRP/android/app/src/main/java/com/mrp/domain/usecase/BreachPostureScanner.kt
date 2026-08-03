@@ -140,6 +140,16 @@ class BreachPostureScanner(private val context: Context) {
             severity = if (notifOk) "info" else "attention"
         )
 
+        // --- Security Advisor extensions (local heuristics) ---
+        checks += checkRoot()
+        checks += checkWirelessAdb()
+        checks += checkVpnActive()
+        checks += checkSystemProxy()
+        checks += checkHotspot()
+        checks += checkWifiCrypto()
+        checks += checkLockScreenNotifications()
+        checks += checkPlayProtectHints()
+
         val grade = when {
             checks.any { !it.ok && it.severity == "critical" } -> "Critical"
             checks.any { !it.ok && it.severity == "attention" } -> "Attention"
@@ -217,6 +227,203 @@ class BreachPostureScanner(private val context: Context) {
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    private fun checkRoot(): PostureCheck {
+        val tags = Build.TAGS ?: ""
+        val testKeys = tags.contains("test-keys")
+        val paths = listOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/data/local/xbin/su",
+            "/data/local/bin/su",
+            "/sbin/.magisk",
+            "/data/adb/magisk",
+        )
+        val found = paths.any { java.io.File(it).exists() }
+        val risky = testKeys || found
+        return PostureCheck(
+            id = "root_magisk",
+            title = "Root / Magisk signals",
+            ok = !risky,
+            detail = when {
+                found -> "Su/Magisk paths present — elevated risk if phone is lost"
+                testKeys -> "Build has test-keys"
+                else -> "No common root markers found"
+            },
+            severity = if (risky) "attention" else "info"
+        )
+    }
+
+    private fun checkWirelessAdb(): PostureCheck {
+        val on = if (Build.VERSION.SDK_INT >= 30) {
+            Settings.Global.getInt(context.contentResolver, "adb_wifi_enabled", 0) == 1
+        } else {
+            false
+        }
+        return PostureCheck(
+            id = "wireless_adb",
+            title = "Wireless debugging",
+            ok = !on,
+            detail = if (on) "ADB over Wi‑Fi is ON" else if (Build.VERSION.SDK_INT < 30) "N/A on this Android version" else "Off",
+            severity = if (on) "attention" else "info"
+        )
+    }
+
+    private fun checkVpnActive(): PostureCheck {
+        val active = try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            val nets = cm.allNetworks ?: emptyArray()
+            nets.any { n ->
+                val caps = cm.getNetworkCapabilities(n) ?: return@any false
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN)
+            }
+        } catch (_: Exception) {
+            false
+        }
+        return PostureCheck(
+            id = "vpn_active",
+            title = "VPN active",
+            ok = true, // informational — VPN can be legitimate
+            detail = if (active) "A VPN network is active" else "No VPN transport detected",
+            severity = "info"
+        )
+    }
+
+    private fun checkSystemProxy(): PostureCheck {
+        val proxy = Settings.Global.getString(context.contentResolver, Settings.Global.HTTP_PROXY)
+        val set = !proxy.isNullOrBlank() && proxy != ":0"
+        return PostureCheck(
+            id = "http_proxy",
+            title = "System HTTP proxy",
+            ok = !set,
+            detail = if (set) "Proxy configured: $proxy" else "None",
+            severity = if (set) "attention" else "info"
+        )
+    }
+
+    private fun checkHotspot(): PostureCheck {
+        val on = try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val method = wifi.javaClass.getDeclaredMethod("isWifiApEnabled")
+            method.isAccessible = true
+            method.invoke(wifi) as Boolean
+        } catch (_: Exception) {
+            false
+        }
+        return PostureCheck(
+            id = "hotspot_active",
+            title = "Wi‑Fi hotspot",
+            ok = !on,
+            detail = if (on) "Hotspot appears ON" else "Off (or undetectable)",
+            severity = if (on) "info" else "info"
+        )
+    }
+
+    private fun checkWifiCrypto(): PostureCheck {
+        return try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val info = wifi.connectionInfo
+            val ssid = info?.ssid?.trim('"') ?: ""
+            if (ssid.isBlank() || ssid == "<unknown ssid>" || info.networkId == -1) {
+                return PostureCheck(
+                    id = "wifi_crypto",
+                    title = "Wi‑Fi encryption",
+                    ok = true,
+                    detail = "Not connected to Wi‑Fi",
+                    severity = "info"
+                )
+            }
+            // Best-effort: infer from scan results for current BSSID/SSID
+            @Suppress("DEPRECATION")
+            val results = try {
+                wifi.scanResults
+            } catch (_: SecurityException) {
+                emptyList()
+            }
+            val match = results.firstOrNull {
+                it.SSID == ssid || it.BSSID.equals(info.bssid, ignoreCase = true)
+            }
+            val caps = match?.capabilities ?: ""
+            val open = caps.contains("ESS") && !caps.contains("WPA") && !caps.contains("WEP") &&
+                !caps.contains("PSK") && !caps.contains("EAP") && !caps.contains("SAE")
+            val wep = caps.contains("WEP")
+            val weak = open || wep
+            val grade = when {
+                caps.contains("SAE") || caps.contains("WPA3") -> "WPA3"
+                caps.contains("WPA2") || caps.contains("RSN") || caps.contains("PSK") -> "WPA2"
+                wep -> "WEP"
+                open -> "Open"
+                caps.isBlank() -> "Unknown"
+                else -> "Secured"
+            }
+            PostureCheck(
+                id = "wifi_crypto",
+                title = "Wi‑Fi encryption",
+                ok = !weak,
+                detail = if (caps.isBlank()) "Connected ($ssid) — crypto unknown without scan access"
+                else "$ssid · $grade",
+                severity = when {
+                    open -> "attention"
+                    wep -> "attention"
+                    else -> "info"
+                }
+            )
+        } catch (_: Exception) {
+            PostureCheck(
+                id = "wifi_crypto",
+                title = "Wi‑Fi encryption",
+                ok = true,
+                detail = "Unable to read Wi‑Fi security",
+                severity = "info"
+            )
+        }
+    }
+
+    private fun checkLockScreenNotifications(): PostureCheck {
+        // 0 = show all, 1 = hide sensitive content when locked (varies by OEM)
+        val raw = Settings.Secure.getInt(
+            context.contentResolver,
+            "lock_screen_allow_private_notifications",
+            1
+        )
+        // Also check notification redaction style when available
+        val showSensitive = raw == 1
+        return PostureCheck(
+            id = "lock_screen_notifs",
+            title = "Lock-screen notifications",
+            ok = true,
+            detail = if (showSensitive) "Private content may show on lock screen — review in system Settings"
+            else "Sensitive content likely hidden when locked",
+            severity = "info"
+        )
+    }
+
+    private fun checkPlayProtectHints(): PostureCheck {
+        val verifier = Settings.Global.getInt(
+            context.contentResolver,
+            "package_verifier_enable",
+            1
+        ) == 1
+        val playProtectPkg = try {
+            context.packageManager.getPackageInfo("com.google.android.gms", 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        return PostureCheck(
+            id = "play_protect",
+            title = "Play Protect / package verify",
+            ok = verifier,
+            detail = when {
+                !playProtectPkg -> "Play services not found"
+                verifier -> "Package verification enabled (Play Protect typically on)"
+                else -> "Package verification disabled"
+            },
+            severity = if (verifier) "info" else "attention"
+        )
     }
 
     private fun toJson(checks: List<PostureCheck>, grade: String): String {

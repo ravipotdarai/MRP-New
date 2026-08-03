@@ -3,7 +3,7 @@
 Living tracker for work that is **not fully Done**.  
 Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
 
-**Last updated:** 2026-08-01 (Web portal PathSync IA refresh — nav groups Home/Security/Hub/App Usage; Locate timeline icon+geo+fence+status+selfie; Find-my-device movement trail; Travel date path; Devices+Sync Policy under Hub)  
+**Last updated:** 2026-08-02 (P8-da consumer Device Admin Play-safe checklist; prior: 2026-08-01 Web portal PathSync IA)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.
 
 ### Status meanings
@@ -29,21 +29,21 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 
 ---
 
-## Security Center (mobile) — deferred after web
+## Security Center (mobile) — Phase 1 in progress
 
-### Untested / not started
+### Partial
 | ID | Item | Notes |
 |---|---|---|
-| SEC-CENTER | Security Advisor + Threat Analyzer + Report Fraud hub + Quick Tiles | Plan: [`SECURITY_CENTER_BACKLOG.md`](SECURITY_CENTER_BACKLOG.md). **Start only after web portal track.** No competitor branding in docs. |
+| SEC-CENTER | Security Advisor + Threat Analyzer + Report Fraud hub + Quick Tiles | Plan: [`SECURITY_CENTER_BACKLOG.md`](SECURITY_CENTER_BACKLOG.md). **Phases 1–3 done** (Tools, breach email via XposedOrNot, OTP paste heuristics, EN/HI, adware/stale lists + vault snapshot). |
 
 ---
 
-## Security — Anti-clone & hardening (deferred)
+## Security — Anti-clone & hardening
 
-### Not started
+### Partial
 | ID | Item | Notes |
 |---|---|---|
-| SEC-AC | Anti-clone / client hardening | Full plan: [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md). Start **after** MRP Web pending work; align with Play-signed AAB. Data-first → APK harden → detect/Integrity → evidence hash-chain → SQLCipher when schema stable. |
+| SEC-AC | Anti-clone / client hardening | Plan: [`ANTI_CLONE_HARDENING.md`](ANTI_CLONE_HARDENING.md). **Audit baseline:** [`../security/SECURITY_AUDIT_HARDENING.md`](../security/SECURITY_AUDIT_HARDENING.md). Full R8/Integrity/SQLCipher gated on Play-signed AAB + schema freeze. |
 
 ---
 
@@ -253,6 +253,7 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | ID | Item | Notes |
 |---|---|---|
 | P8-store | Store v1 checklist + billing gate + listing draft | **Started 2026-07-28** — Internal testing still needs Console steps |
+| P8-da | Consumer Device Admin Play-safe invariant | Checklist: consumer `mrp_device_admin.xml` = **`watch-login` only**; no `wipe-data` / `force-lock` / `reset-password`; no DO requirement for retail; Instant Lock = Accessibility; soft wipe + Find My Device only. Docs: [`docs/setup/PERMISSIONS_AND_TRUST.md`](../setup/PERMISSIONS_AND_TRUST.md) § Consumer Device Admin; never-item in [`SECURITY_CENTER_BACKLOG.md`](SECURITY_CENTER_BACKLOG.md) #22 |
 
 ### Ops follow-ups (code done; infra)
 | ID | Item | Notes |
@@ -327,3 +328,4 @@ Items that are **Done** (code + accepted) are listed only in the short Done log 
 | 2026-07-27 | P7 regression excl. P7-4; add P8 store-release scaffold |
 | 2026-07-27 | P8 kickoff — Nest JWT guards + release checklist doc |
 | 2026-07-28 | Store v1 track — checklist + Play Console handoff |
+| 2026-08-02 | P8-da — consumer Device Admin Play-safe checklist + PERMISSIONS_AND_TRUST / Security Center never-item |

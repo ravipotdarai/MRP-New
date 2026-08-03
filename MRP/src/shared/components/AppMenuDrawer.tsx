@@ -40,7 +40,9 @@ export type AppMenuTarget =
         | 'promotions'
         | 'affiliates'
         | 'policy'
-        | 'about';
+        | 'about'
+        | 'security-center';
+      securityCenterTab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS';
     };
 
 type Props = {
@@ -68,6 +70,29 @@ const MENU: MenuRow[] = [
   },
   {
     kind: 'section',
+    label: 'Security Center',
+    icon: '🧭',
+    children: [
+      {
+        label: 'Advisor',
+        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'ADVISOR'},
+      },
+      {
+        label: 'Threat Analyzer',
+        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'ANALYZER'},
+      },
+      {
+        label: 'Report Fraud',
+        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'FRAUD'},
+      },
+      {
+        label: 'Tools (URL / QR / USSD)',
+        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'TOOLS'},
+      },
+    ],
+  },
+  {
+    kind: 'section',
     label: 'App Usage',
     icon: '📊',
     children: [
@@ -82,6 +107,7 @@ const MENU: MenuRow[] = [
     label: 'Hub',
     icon: '⚙️',
     children: [
+      {label: 'Security Center', target: {screen: 'Hub', section: 'security-center'}},
       {label: 'Account', target: {screen: 'Hub', section: 'account'}},
       {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
       ...(CIRCLE_ENABLED

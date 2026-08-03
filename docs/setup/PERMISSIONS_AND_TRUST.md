@@ -143,6 +143,60 @@ MRP does **not** declare Device Admin `wipe-data`, `reset-password`, or `force-l
 
 ---
 
+## Consumer Device Admin & recovery — Play-safe by design
+
+Hard product invariant for the **consumer Play APK**: Device Admin stays **`watch-login` only** (`mrp_device_admin.xml`). Features that need Device Owner (DO), `wipe-data`, `force-lock`, or `reset-password` must **not** ship in that package.
+
+### Risks this rule removes
+
+| Risk | Why it must not drive consumer MRP |
+|------|-------------------------------------|
+| **OEM / custom recovery inconsistency** | Some vendors ignore or partially honor Device Policy / DO restrictions; custom recovery can bypass them. Retail product value must not depend on those APIs. |
+| **No DO on consumer devices** | Most users never get QR / NFC / zero-touch Device Owner provisioning. DO is not a retail setup path. |
+| **Wipe / lock policies in the consumer APK** | Declaring `wipe-data`, `force-lock`, or `reset-password` reintroduces bank / AV “risky app” false positives — why Device Admin XML is minimal today. |
+
+### Architecture rule (hard)
+
+| Layer | Consumer Play APK | Optional later (not Play consumer) |
+|-------|-------------------|-------------------------------------|
+| Device Admin XML | **`watch-login` only** | Separate Enterprise / MDM / DO product — **never** merge wipe/lock policies into the consumer APK |
+| Lock phone now | Accessibility `GLOBAL_ACTION_LOCK_SCREEN` only | DO / COSU lock APIs only in that separate product |
+| Erase data | **Soft wipe** MRP local data (`WIPE` token) | Full device wipe via **Google Find My Device**, OEM tools, or enterprise DPC |
+| Factory reset | Open / instruct **Find My Device** | Enterprise wipe under DO |
+| Wrong unlock | Device Admin password-failed callbacks | Unchanged |
+
+**Invariant:** If a feature needs `wipe-data`, `force-lock`, or `reset-password`, it does **not** ship in the consumer APK. Prefer Google Find My Device or a separate signed Enterprise build.
+
+### Consumer guarantees (OEM-independent)
+
+- Evidence capture (selfie / timeline)
+- Soft wipe of **MRP** data only
+- SMS / Drive / Panic / Find My Device handoff
+
+MRP **cannot** reliably prevent factory reset or custom recovery on consumer phones. Recovery story = Find My Device + evidence + contacts — not “block OEM recovery” or “survive wipe via DO.”
+
+### Store & in-app wording
+
+| Say | Don’t say |
+|-----|-----------|
+| Detect wrong PIN attempts | Device Owner / full control |
+| Lock screen now (Accessibility) | Force lock via Device Admin |
+| Erase MRP data (soft wipe) | Wipe device / factory reset from MRP |
+| Use Google Find My Device to erase the phone | MRP remote wipe |
+
+### Play publishing checklist (consumer)
+
+1. Consumer `device_admin` XML = `watch-login` only (automated check preferred).
+2. No undeclared Device Admin wipe/lock/reset policies in the merged manifest.
+3. Permissions justification: Device Admin = **failed password detection**, not wipe.
+4. Data Safety: deletion = soft wipe / uninstall / Drive revoke — not phone factory wipe.
+5. Manual QA: common banking apps + Play Protect on the release APK.
+6. Instant Lock works **without** Device Admin `force-lock`.
+
+Setup wizard never requires Device Owner. Lost-mobile / Security Center flows may deep-link Find My Device and soft-wipe MRP data; they must not add wipe/lock Device Admin policies.
+
+---
+
 ## Grant All Access flow
 
 One button chains: runtime dialogs → overlay → device admin → battery/OEM settings. Return to MRP after each step; the app advances automatically.

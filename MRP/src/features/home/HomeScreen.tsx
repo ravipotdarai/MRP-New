@@ -26,6 +26,7 @@ import {ActivityStatusBanner} from './ActivityStatusBanner';
 import {loadLocalCircles} from '../circle/circleLocalStore';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
 import {getTrackingConfig} from '../../native/DeviceTracking.types';
+import {setSecurityCenterTab} from '../security-center/securityCenterNav';
 
 const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
@@ -191,6 +192,7 @@ export function HomeScreen({
   const [postureGrade, setPostureGrade] = useState<string>('Unknown');
   const [postureIssueCount, setPostureIssueCount] = useState(0);
   const [highRiskCount, setHighRiskCount] = useState(0);
+  const [wifiGrade, setWifiGrade] = useState<string>('—');
 
   const loadAll = useCallback(async () => {
     const bridge = mrpmModule as any;
@@ -227,15 +229,29 @@ export function HomeScreen({
       const g = summary.grade;
       setPostureGrade(g && g.length ? g : 'Unknown');
       let issues = 0;
+      let wifiLabel = '—';
       if (summary.lastJson) {
         try {
           const parsed = JSON.parse(summary.lastJson);
           const checks = Array.isArray(parsed?.checks) ? parsed.checks : [];
           issues = checks.filter((c: {ok?: boolean}) => c && c.ok === false).length;
+          const wifi = checks.find((c: {id?: string}) => c?.id === 'wifi_crypto') as
+            | {detail?: string; ok?: boolean}
+            | undefined;
+          if (wifi?.detail) {
+            if (wifi.detail.includes('·')) {
+              wifiLabel = wifi.detail.split('·').pop()?.trim() || wifi.detail;
+            } else if (/not connected/i.test(wifi.detail)) {
+              wifiLabel = 'Off';
+            } else {
+              wifiLabel = wifi.ok === false ? 'Weak' : 'OK';
+            }
+          }
         } catch {
           issues = 0;
         }
       }
+      setWifiGrade(wifiLabel);
       // Critical / Attention with no parsed checks still counts as at least 1
       if (issues === 0 && (g === 'Critical' || g === 'Attention')) {
         issues = 1;
@@ -471,6 +487,9 @@ export function HomeScreen({
       return;
     }
     if (target.screen === 'Hub') {
+      if (target.securityCenterTab) {
+        setSecurityCenterTab(target.securityCenterTab);
+      }
       navigation.navigate(
         'Hub',
         target.section ? {openSection: target.section} : undefined,
@@ -484,6 +503,11 @@ export function HomeScreen({
     if (target.screen === 'App Usage') {
       navigation.navigate('App Usage', {initialTab: target.tab});
     }
+  };
+
+  const goSecurityCenter = (tab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS') => {
+    if (tab) setSecurityCenterTab(tab);
+    navigation?.navigate?.('Hub', {openSection: 'security-center'});
   };
 
   const handleAvatarPress = () => {
@@ -740,6 +764,21 @@ export function HomeScreen({
           value={wifiName}
           accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
           styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
+        />
+        <StatCard
+          icon="🔐"
+          label="Wi‑Fi grade"
+          value={wifiGrade}
+          accent={
+            /open|wep|weak/i.test(wifiGrade)
+              ? colors.red
+              : wifiGrade === '—' || wifiGrade === 'Off'
+                ? colors.amber
+                : colors.emerald
+          }
+          styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
         />
         <StatCard
           icon="🔒"
@@ -747,6 +786,7 @@ export function HomeScreen({
           value={`${securityScore}%`}
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
           styles={styles}
+          onPress={() => goSecurityCenter('ADVISOR')}
         />
         <StatCard
           icon="📡"
@@ -754,6 +794,62 @@ export function HomeScreen({
           value={carrierName || '--'}
           accent={gps?.isLocationAvailable || liveLocation ? colors.emerald : colors.red}
           styles={styles}
+        />
+        <StatCard
+          icon="🧭"
+          label="Advisor"
+          value="Scan"
+          accent={colors.sky}
+          styles={styles}
+          onPress={() => goSecurityCenter('ADVISOR')}
+        />
+        <StatCard
+          icon="📊"
+          label="Threats"
+          value="Analyze"
+          accent={colors.amber}
+          styles={styles}
+          onPress={() => goSecurityCenter('ANALYZER')}
+        />
+        <StatCard
+          icon="🆘"
+          label="Fraud"
+          value="Report"
+          accent={colors.red}
+          styles={styles}
+          onPress={() => goSecurityCenter('FRAUD')}
+        />
+        <StatCard
+          icon="🔗"
+          label="Scan URL"
+          value="Paste"
+          accent={colors.violet}
+          styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
+        />
+        <StatCard
+          icon="📷"
+          label="Scan QR"
+          value="Paste"
+          accent={colors.sky}
+          styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
+        />
+        <StatCard
+          icon="📧"
+          label="Breach"
+          value="Email"
+          accent={colors.violet}
+          styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
+        />
+        <StatCard
+          icon="💬"
+          label="OTP check"
+          value="Paste"
+          accent={colors.amber}
+          styles={styles}
+          onPress={() => goSecurityCenter('TOOLS')}
         />
         <StatCard
           icon="🎁"

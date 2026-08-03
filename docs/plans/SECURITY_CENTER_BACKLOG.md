@@ -1,7 +1,7 @@
 # MRP Security Center — feature backlog
 
-**Status:** Saved plan — **implement after web portal changes** (do not start coding this track yet).  
-**Last updated:** 2026-08-01
+**Status:** **Phase 1–3 complete** on mobile (anti-clone Play hardening still gated).  
+**Last updated:** 2026-08-02
 
 **MRP inventory baseline:**
 
@@ -115,6 +115,7 @@ Security rating + tiles: Scan QR, Wi‑Fi Security, Scan Website, OTP Security, 
 19. Paid social-media enumeration products
 20. Expert stories / content feed (unless marketing wants it)
 21. Replacing PathSync with a score-only consumer shell (wrong product)
+22. **Never — consumer Device Owner wipe/lock policies** — do not add `wipe-data`, `force-lock`, or `reset-password` to consumer Device Admin XML; do not require DO provisioning for retail users; do not depend on OEM-faithful Device Policy for recovery. Keep `watch-login` only. Lost mobile = Find My Device + soft wipe MRP data + Panic/Drive. See [PERMISSIONS_AND_TRUST.md](../setup/PERMISSIONS_AND_TRUST.md) § Consumer Device Admin & recovery.
 
 ---
 
@@ -153,6 +154,7 @@ flowchart LR
 - Keep **encrypted Drive vault** as locate/evidence store; do not put fraud reports or breach emails on MRP servers
 - Mark heuristic scans as **not antivirus**
 - Prefer **deep links to official portals** over collecting fraud case data
+- Consumer Device Admin stays **`watch-login` only** — never wipe/lock/reset policies or DO for retail (see Tier 3 #22)
 - After UI/docs structure changes: `graphify update .`
 
 ---
@@ -161,7 +163,10 @@ flowchart LR
 
 | Order | Work |
 |-------|------|
-| Now | Web portal changes (current track) |
-| Next | Implement this Security Center backlog (Phase 1 → 3) |
+| Done enough | Web portal PathSync track (further web testing deferred) |
+| **Done** | Security Center Phase 1 (Advisor / Analyzer / Fraud / Home tiles) |
+| **Done** | Phase 2 — URL/QR paste, Wi‑Fi grade, USSD, vault `deviceHealth.security` |
+| **Done** | Phase 3 — breach email, OTP paste heuristics, EN/HI, adware/stale polish |
+| Next | Anti-clone Play-signed hardening (R8 / Integrity / SQLCipher as schema allows) |
 
-Do not start Security Center implementation until web portal work is complete enough to hand off.
+Web portal parity smoke can continue in parallel; it no longer blocks Security Center coding.

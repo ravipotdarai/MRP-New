@@ -1513,6 +1513,10 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     putBoolean("hasAccessibility", r.hasAccessibility)
                     putBoolean("hasOverlay", r.hasOverlay)
                     putBoolean("hasSendSms", r.hasSendSms)
+                    putDouble("lastUpdateMs", r.lastUpdateMs.toDouble())
+                    putInt("monthsSinceUpdate", r.monthsSinceUpdate)
+                    putBoolean("staleUpdate", r.staleUpdate)
+                    putBoolean("adwareLikely", r.adwareLikely)
                     val reasons = Arguments.createArray()
                     r.reasons.forEach { reasons.pushString(it) }
                     putArray("reasons", reasons)
@@ -1685,6 +1689,28 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun getSecurityCenterLocale(promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            promise.resolve(prefs.getString(KEY_SEC_LOCALE, "en") ?: "en")
+        } catch (e: Exception) {
+            promise.resolve("en")
+        }
+    }
+
+    @ReactMethod
+    fun setSecurityCenterLocale(locale: String, promise: Promise) {
+        try {
+            val normalized = if (locale.equals("hi", ignoreCase = true)) "hi" else "en"
+            val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY_SEC_LOCALE, normalized).apply()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
     fun isPermissionWizardDismissed(promise: Promise) {
         try {
             val prefs = reactContext.getSharedPreferences(UI_PREFS, Context.MODE_PRIVATE)
@@ -1772,6 +1798,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         private const val PERM_REQUEST_CODE_BASE = 7100
         private const val UI_PREFS = "mrp_ui"
         private const val KEY_THEME_ID = "theme_id"
+        private const val KEY_SEC_LOCALE = "security_center_locale"
         private const val KEY_WIZARD_DISMISSED = "permission_wizard_dismissed"
         private const val KEY_CIRCLE_LOCAL_JSON = "circle_local_json"
         const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
