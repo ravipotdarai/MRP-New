@@ -12,8 +12,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.google.android.gms.location.LocationServices
 import com.mrp.data.local.DeviceTrackingPrefs
+import com.mrp.data.local.GeofenceStorage
 import com.mrp.data.local.LiveLocationStore
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
@@ -47,6 +47,7 @@ object DevicePresenceTracker {
             )
         }
         scheduleEmergency(context.applicationContext)
+        DriveLocationHeartbeat.start(context.applicationContext)
         Log.i(TAG, "presence ready (event-driven, no continuous location)")
     }
 
@@ -61,6 +62,7 @@ object DevicePresenceTracker {
     fun stop(context: Context) {
         running.set(false)
         cancelEmergency()
+        DriveLocationHeartbeat.stop()
     }
 
     fun restart(context: Context) {
@@ -117,9 +119,8 @@ object DevicePresenceTracker {
         val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
         val prevId = DeviceTrackingPrefs.lastGeofenceId(context)
 
-        // Soft heal: accurate or mid fixes that land inside a zone update prefs
-        // without inventing EXIT from coarse Magarpatta pings.
-        // Floor optimistic Wi‑Fi/cell (±2 m) so event seeds cannot invent EXIT at 1 km+.
+        // Soft heal: accurate fixes inside a zone update prefs.
+        // Floor optimistic Wi‑Fi/cell so event seeds cannot invent EXIT at 1 km+.
         val networkSeed =
             source.contains("wifi", ignoreCase = true) ||
                 source.contains("cell", ignoreCase = true) ||
@@ -129,6 +130,17 @@ object DevicePresenceTracker {
         val effectiveAccuracy =
             if (networkSeed && accuracy > 0f) maxOf(accuracy, 85f) else accuracy
         val accurateEnough = effectiveAccuracy in 0.1f..50f
+
+        // Never poison LiveLocationStore from untrusted event/cache seeds —
+        // LocationEngine owns live updates for TRUSTED fixes only.
+        val mayWriteLive = accurateEnough && !networkSeed
+        if (!mayWriteLive && (source.startsWith("event:") || source == "cache_seed")) {
+            if (geo.insideFence && geo.fenceId != null && accurateEnough) {
+                DeviceTrackingPrefs.rememberGeofence(context, true, geo.fenceId)
+            }
+            return
+        }
+
         if (geo.insideFence && geo.fenceId != null) {
             if (prevInside != true || prevId != geo.fenceId) {
                 DeviceTrackingPrefs.rememberGeofence(context, true, geo.fenceId)
@@ -138,7 +150,11 @@ object DevicePresenceTracker {
 
         val geofenceChanged =
             prevInside != null &&
-                (prevInside != geo.insideFence || (prevId ?: "") != (geo.fenceId ?: ""))
+                (
+                    prevInside != geo.insideFence ||
+                        // Zone-to-zone only matters while inside; outside has no fence path.
+                        (geo.insideFence && (prevId ?: "") != (geo.fenceId ?: ""))
+                    )
 
         val payload = JSONObject()
             .put("atMs", System.currentTimeMillis())
@@ -157,7 +173,13 @@ object DevicePresenceTracker {
             .put("geofenceName", geo.zoneName)
             .put(
                 "distanceToFenceM",
-                if (geo.distanceToCenter.isFinite()) geo.distanceToCenter.toDouble() else JSONObject.NULL
+                when {
+                    geo.insideFence && geo.distanceToCenter.isFinite() ->
+                        geo.distanceToCenter.toDouble()
+                    !geo.insideFence && geo.awayMeters.isFinite() ->
+                        geo.awayMeters.toDouble()
+                    else -> JSONObject.NULL
+                }
             )
             .put("batteryPct", readBattery(context))
             .put(
@@ -191,7 +213,7 @@ object DevicePresenceTracker {
             return
         }
 
-        // Leaving a zone: confirm not still inside another before global Outside.
+        // Leaving a zone: confirm not still inside another before global Away.
         val badgeInside: Boolean
         val badgeFenceId: String?
         val badgeZoneName: String?
@@ -208,19 +230,21 @@ object DevicePresenceTracker {
                 badgeFenceId = stillOther.id
                 badgeZoneName = stillOther.name
             } else {
+                // EXIT for the zone we left — name from prefs id, not live Away eval.
                 DeviceTrackingPrefs.rememberGeofence(context, false, prevId)
                 badgeInside = false
                 badgeFenceId = prevId
-                badgeZoneName = geo.zoneName
+                badgeZoneName = GeofenceStorage.list(context).firstOrNull { it.id == prevId }?.name
+                    ?: geo.zoneName
             }
         } else if (!accurateEnough) {
-            // Don't emit Outside from coarse evaluate.
+            // Don't emit Away from coarse evaluate.
             return
         } else {
-            DeviceTrackingPrefs.rememberGeofence(context, false, geo.fenceId)
+            DeviceTrackingPrefs.rememberGeofence(context, false, prevId ?: geo.fenceId)
             badgeInside = false
-            badgeFenceId = geo.fenceId
-            badgeZoneName = geo.zoneName
+            badgeFenceId = null
+            badgeZoneName = null
         }
 
         val entered = badgeInside && prevInside != true
@@ -236,7 +260,11 @@ object DevicePresenceTracker {
             entered = transitionEntered,
             zoneName = badgeZoneName,
             fenceId = badgeFenceId,
-            distanceM = geo.distanceToCenter,
+            distanceM = if (geo.insideFence) {
+                geo.distanceToCenter
+            } else {
+                geo.awayMeters
+            },
             lat = lat,
             lng = lng,
             accuracy = accuracy,
@@ -262,26 +290,12 @@ object DevicePresenceTracker {
         val r = object : Runnable {
             override fun run() {
                 if (!DeviceTrackingPrefs.isEmergencyTracking(app)) return
-                // One-shot only — never leave a continuous listener registered
                 try {
-                    val client = LocationServices.getFusedLocationProviderClient(app)
-                    client.lastLocation.addOnSuccessListener { loc ->
-                        if (loc != null) {
-                            persistLocal(
-                                app,
-                                loc.latitude,
-                                loc.longitude,
-                                loc.accuracy,
-                                "emergency_oneshot",
-                                emitGeofenceTimeline = false // OS GeofenceTransitionReceiver owns ENTER/EXIT
-                            )
-                        }
-                        DriveVaultSync.requestSyncAsync(app, "emergency")
-                    }.addOnFailureListener {
-                        DriveVaultSync.requestSyncAsync(app, "emergency")
-                    }
+                    // LocationEngine: TRUSTED GPS → cache + live; then Drive
+                    LocationEngine.obtain(app, LocationEngine.Demand.EmergencyTick)
+                    DriveVaultSync.requestSyncAsync(app, "emergency")
                 } catch (e: Exception) {
-                    Log.w(TAG, "emergency oneshot", e)
+                    Log.w(TAG, "emergency tick", e)
                     DriveVaultSync.requestSyncAsync(app, "emergency")
                 }
                 handler.postDelayed(this, intervalMs.coerceAtLeast(60_000L))
@@ -289,7 +303,7 @@ object DevicePresenceTracker {
         }
         emergencyRunnable = r
         handler.postDelayed(r, intervalMs.coerceAtLeast(60_000L))
-        Log.i(TAG, "emergency one-shot every ${intervalMs / 60000} min")
+        Log.i(TAG, "emergency LocationEngine tick every ${intervalMs / 60000} min")
     }
 
     private fun cancelEmergency() {

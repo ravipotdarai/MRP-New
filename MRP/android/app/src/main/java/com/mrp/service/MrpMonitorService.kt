@@ -336,6 +336,11 @@ class MrpMonitorService : Service() {
                 Log.w(TAG, "DevicePresenceTracker start skipped", e)
             }
             try {
+                com.mrp.domain.usecase.DriveLocationHeartbeat.start(this@MrpMonitorService)
+            } catch (e: Exception) {
+                Log.w(TAG, "DriveLocationHeartbeat start skipped", e)
+            }
+            try {
                 com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(this@MrpMonitorService)
             } catch (e: Exception) {
                 Log.w(TAG, "NativeGeofenceRegistrar sync skipped", e)

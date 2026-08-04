@@ -485,9 +485,10 @@ export function PhotoGallery() {
                                   matchedEvent.geofence_status?.fence_id ||
                                   'zone'
                                 }`
-                              : matchedEvent.metadata?.geofence_name
-                                ? `Outside ${matchedEvent.metadata.geofence_name}`
-                                : 'Outside zone'}
+                              : matchedEvent.metadata?.geofence_distance_m != null &&
+                                  Number.isFinite(Number(matchedEvent.metadata.geofence_distance_m))
+                                ? `Away · ${Math.round(Number(matchedEvent.metadata.geofence_distance_m))}m`
+                                : 'Away'}
                           </Text>
                           {matchedEvent.metadata?.geofence_distance_m != null &&
                           Number.isFinite(Number(matchedEvent.metadata.geofence_distance_m)) ? (

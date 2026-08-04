@@ -1078,53 +1078,59 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     /**
-     * Live location + reverse geocode for Home "Current Location".
-     * Falls back to lat/long label when geocoder is offline.
+     * Live location + reverse geocode for Home "Current Location" via [LocationEngine].
+     * @param forceRefresh force GPS publish (Home ↻).
      */
     @ReactMethod
-    fun getCurrentLocationWithAddress(promise: Promise) {
+    fun getCurrentLocationWithAddress(forceRefresh: Boolean, promise: Promise) {
         try {
             Thread {
                 try {
-                    val resolved = com.mrp.domain.usecase.LocationResolver.resolveSync(
-                        reactContext,
-                        com.mrp.domain.usecase.LocationResolver.Severity.UI
-                    )
-                    if (resolved == null) {
+                    val demand = if (forceRefresh) {
+                        com.mrp.domain.usecase.LocationEngine.Demand.HomeRefresh
+                    } else {
+                        com.mrp.domain.usecase.LocationEngine.Demand.Event("HOME_UI")
+                    }
+                    val result = com.mrp.domain.usecase.LocationEngine.obtain(reactContext, demand)
+                    val stamp = result.stamp
+                    val snap = result.snapshot
+                    if (!stamp.hasCoords && snap == null) {
                         promise.resolve(null)
                         return@Thread
                     }
-                    val loc = resolved.location
-                    val helper = LocationHelper(reactContext)
-                    val parts = helper.reverseGeocodePartsSync(loc.latitude, loc.longitude)
-                    val address = parts?.formatted
-                        ?: helper.reverseGeocodeSync(loc.latitude, loc.longitude)
-                    val geofence = helper.evaluateGeofence(loc.latitude, loc.longitude)
-                    com.mrp.domain.usecase.GeoSnapshotWriter.enqueueFromResolved(
-                        reactContext,
-                        resolved,
-                        "HOME_UI",
-                        address,
-                        geofence.insideFence,
-                        geofence.fenceId
-                    )
+                    val lat = if (stamp.hasCoords) stamp.latitude else snap!!.latitude
+                    val lng = if (stamp.hasCoords) stamp.longitude else snap!!.longitude
+                    val acc = if (stamp.hasCoords) stamp.accuracyM else snap!!.accuracyM
+                    val address = stamp.address ?: snap?.address
+                    val inside = stamp.insideFence
+                    val fenceId = stamp.fenceId ?: snap?.fenceId
+                    val zoneName = stamp.zoneName ?: snap?.zoneName
+                    val dist = when {
+                        inside -> stamp.distanceToCenterM ?: snap?.distanceToCenterM
+                        else -> stamp.awayM ?: snap?.awayM
+                    }
                     val map = Arguments.createMap().apply {
-                        putDouble("latitude", loc.latitude)
-                        putDouble("longitude", loc.longitude)
-                        putDouble("accuracy_meters", loc.accuracy.toDouble())
-                        putString("detailed_address", address)
-                        putString("country", parts?.country)
-                        putString("state", parts?.state)
-                        putString("city", parts?.city)
-                        putString("postalCode", parts?.postalCode)
-                        putString("street", parts?.street)
-                        putString("provider", resolved.provider)
-                        putString("location_tier", resolved.tier)
-                        putBoolean("inside_geofence", geofence.insideFence)
-                        putString("geofence_id", geofence.fenceId)
-                        putString("geofence_name", geofence.zoneName)
-                        if (geofence.distanceToCenter.isFinite()) {
-                            putDouble("geofence_distance_m", geofence.distanceToCenter.toDouble())
+                        putDouble("latitude", lat)
+                        putDouble("longitude", lng)
+                        putDouble("accuracy_meters", acc.toDouble())
+                        putString(
+                            "detailed_address",
+                            address ?: if (stamp.locationDeferred) {
+                                "Location deferred (awaiting GPS)"
+                            } else {
+                                "Address Unavailable (Offline)"
+                            }
+                        )
+                        putString("provider", stamp.tier)
+                        putString("location_tier", stamp.tier)
+                        putBoolean("cache_hit", !result.didWakeGps)
+                        putDouble("fix_ms", stamp.evaluatedAtMs.toDouble())
+                        putBoolean("inside_geofence", inside)
+                        putString("geofence_id", fenceId)
+                        putString("geofence_name", zoneName)
+                        putBoolean("location_deferred", stamp.locationDeferred)
+                        if (dist != null) {
+                            putDouble("geofence_distance_m", dist)
                         }
                     }
                     promise.resolve(map)
@@ -1137,6 +1143,11 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             Log.e(TAG, "Failed to get current location with address", e)
             promise.reject("LOCATION_ERROR", "Failed to get current location", e)
         }
+    }
+
+    @ReactMethod
+    fun getCurrentLocationWithAddress(promise: Promise) {
+        getCurrentLocationWithAddress(false, promise)
     }
 
     @ReactMethod

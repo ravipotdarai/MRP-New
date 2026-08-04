@@ -221,6 +221,7 @@ object DriveVaultSync {
         val needMs = when {
             reason.startsWith("event") -> 0L
             reason.startsWith("geofence") && DeviceTrackingPrefs.syncGeofenceChanges(context) -> 0L
+            reason.startsWith("drive_heartbeat") -> DriveLocationHeartbeat.INTERVAL_MS
             reason.startsWith("emergency") || DeviceTrackingPrefs.isEmergencyTracking(context) ->
                 DeviceTrackingPrefs.emergencyIntervalMinutes(context) * 60_000L
             else -> DeviceTrackingPrefs.syncFrequencyMinutes(context) * 60_000L

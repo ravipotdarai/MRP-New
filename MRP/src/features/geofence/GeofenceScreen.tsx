@@ -144,11 +144,13 @@ export function GeofenceScreen({onUpgrade}: Props) {
               {here.locationTier ? ` (${here.locationTier})` : ''}
             </Text>
             <Text style={[styles.meta, {fontWeight: '700', color: here.insideGeofence ? '#22c55e' : '#f97316'}]}>
-              {here.insideGeofence
-                ? `✓ Inside ${here.geofenceName || 'zone'}`
-                : here.distanceToFenceM >= 0
-                  ? `✗ Away · ${Math.round(here.distanceToFenceM)} m from nearest zone`
-                  : 'No zones yet'}
+              {zones.length === 0
+                ? 'No zones yet'
+                : here.insideGeofence
+                  ? `✓ Inside ${here.geofenceName || 'zone'}`
+                  : here.distanceToFenceM >= 0
+                    ? `✗ Away · ${Math.round(here.distanceToFenceM)} m`
+                    : '✗ Away'}
             </Text>
           </>
         ) : (

@@ -35,6 +35,12 @@ object LocationResolver {
     /** Fresh cache window — avoid re-awakening radios. */
     const val CACHE_MAX_AGE_MS = 90_000L
 
+    /** Home UI: shorter cache so Current Location does not linger on old Wi‑Fi/GPS. */
+    private const val UI_CACHE_MAX_AGE_MS = 30_000L
+
+    /** Reject last-known / fallback older than this for UI & security display. */
+    private const val UI_STALE_REJECT_MS = 3 * 60_000L
+
     /** Stale threshold for security events before allowing GPS. */
     const val SECURITY_STALE_MS = 120_000L
 
@@ -156,7 +162,12 @@ object LocationResolver {
      * Safe to call off the main thread; uses short latches for fused APIs.
      */
     @SuppressLint("MissingPermission")
-    fun resolveSync(context: Context, severity: Severity): ResolvedLocation? {
+    @JvmOverloads
+    fun resolveSync(
+        context: Context,
+        severity: Severity,
+        bypassCache: Boolean = false
+    ): ResolvedLocation? {
         val start = SystemClock.elapsedRealtime()
         if (!hasPermission(context)) {
             logBattery(severity, "denied", cacheHit = false, durationMs = 0, provider = "none")
@@ -175,47 +186,53 @@ object LocationResolver {
         }
 
         // 0) Process cache — only short-circuit when accuracy is good enough
-        peekCache()?.let { raw ->
-            val loc = withNetworkAccuracyFloor(raw, "cache")
-            val age = SystemClock.elapsedRealtime() - cachedAtElapsed
-            if (isGoodEnough(loc, severity)) {
-                val resolved = ResolvedLocation(
-                    location = loc,
-                    tier = "cache",
-                    cacheHit = true,
-                    durationMs = SystemClock.elapsedRealtime() - start,
-                    provider = loc.provider ?: cachedTier
-                )
+        if (!bypassCache) {
+            peekCache()?.let { raw ->
+                val loc = withNetworkAccuracyFloor(raw, "cache")
+                val age = SystemClock.elapsedRealtime() - cachedAtElapsed
+                val maxAge =
+                    if (severity == Severity.UI) UI_CACHE_MAX_AGE_MS else CACHE_MAX_AGE_MS
+                if (age <= maxAge && isGoodEnough(loc, severity)) {
+                    val resolved = ResolvedLocation(
+                        location = loc,
+                        tier = "cache",
+                        cacheHit = true,
+                        durationMs = SystemClock.elapsedRealtime() - start,
+                        provider = loc.provider ?: cachedTier
+                    )
+                    logBattery(
+                        severity,
+                        "cache",
+                        cacheHit = true,
+                        durationMs = resolved.durationMs,
+                        provider = resolved.provider,
+                        extra = "ageMs=$age acc=${loc.accuracy}"
+                    )
+                    return resolved
+                }
+                if (age <= maxAge) {
+                    consider(loc, "cache")
+                }
                 logBattery(
                     severity,
-                    "cache",
+                    "cache_skip",
                     cacheHit = true,
-                    durationMs = resolved.durationMs,
-                    provider = resolved.provider,
-                    extra = "ageMs=$age acc=${loc.accuracy}"
+                    durationMs = 0,
+                    provider = loc.provider ?: cachedTier,
+                    extra = "acc=${loc.accuracy} ageMs=$age escalate bypass=$bypassCache"
                 )
-                return resolved
             }
-            consider(loc, "cache")
-            logBattery(
-                severity,
-                "cache_skip",
-                cacheHit = true,
-                durationMs = 0,
-                provider = loc.provider ?: cachedTier,
-                extra = "acc=${loc.accuracy} escalate"
-            )
         }
 
         val wifi = isWifiConnected(context)
         val cellular = isCellularAvailable(context)
 
-        // 1) Wi‑Fi tier (low power) — escalate if coarse
+        // 1) Wi‑Fi tier (low power) — escalate if coarse (or force-refresh → GPS)
         if (wifi) {
             val wifiLoc = requestFused(context, Priority.PRIORITY_LOW_POWER, WIFI_TIMEOUT_MS)
                 ?.let { withNetworkAccuracyFloor(it, "wifi") }
             consider(wifiLoc, "wifi")
-            if (wifiLoc != null && isGoodEnough(wifiLoc, severity)) {
+            if (!bypassCache && wifiLoc != null && isGoodEnough(wifiLoc, severity)) {
                 return finish(context, wifiLoc, "wifi", start, severity)
             }
         }
@@ -225,27 +242,29 @@ object LocationResolver {
             val cellLoc = requestFused(context, Priority.PRIORITY_BALANCED_POWER_ACCURACY, CELL_TIMEOUT_MS)
                 ?.let { withNetworkAccuracyFloor(it, "cell") }
             consider(cellLoc, "cell")
-            if (cellLoc != null && isGoodEnough(cellLoc, severity)) {
+            if (!bypassCache && cellLoc != null && isGoodEnough(cellLoc, severity)) {
                 return finish(context, cellLoc, "cell", start, severity)
             }
         }
 
-        // Soft last-known before GPS
+        // Soft last-known before GPS (never as Home final if stale / force-refresh)
         val lastKnown = getLastKnownAny(context)?.let { withNetworkAccuracyFloor(it, "last_known") }
-        consider(lastKnown, "last_known")
-        if (lastKnown != null && isGoodEnough(lastKnown, severity)) {
-            val age = System.currentTimeMillis() - lastKnown.time
-            val allowAsFinal = severity == Severity.INFORMATIONAL ||
-                (severity != Severity.SIM_RECOVERY && age < SECURITY_STALE_MS)
-            if (allowAsFinal || !shouldAttemptGps(severity)) {
-                return finish(context, lastKnown, "last_known", start, severity)
+        if (lastKnown != null && isWallClockFresh(lastKnown, severity)) {
+            consider(lastKnown, "last_known")
+            if (isGoodEnough(lastKnown, severity) && !bypassCache) {
+                val age = System.currentTimeMillis() - lastKnown.time
+                val allowAsFinal = severity == Severity.INFORMATIONAL ||
+                    (severity != Severity.SIM_RECOVERY && age < SECURITY_STALE_MS)
+                if (allowAsFinal || !shouldAttemptGps(severity)) {
+                    return finish(context, lastKnown, "last_known", start, severity)
+                }
             }
         }
 
         // 3) GPS / high accuracy when cheaper tiers are missing or too coarse
-        if (shouldAttemptGps(severity) && (best == null || !isGoodEnough(best!!, severity))) {
+        if (shouldAttemptGps(severity) && (best == null || !isGoodEnough(best!!, severity) || bypassCache)) {
             val gpsTimeout = when (severity) {
-                Severity.UI -> GPS_TIMEOUT_UI_MS
+                Severity.UI -> if (bypassCache) 14_000L else GPS_TIMEOUT_UI_MS
                 Severity.SECURITY -> GPS_TIMEOUT_SECURITY_MS
                 Severity.SIM_RECOVERY -> GPS_TIMEOUT_SIM_MS
                 Severity.INFORMATIONAL -> 0L
@@ -259,8 +278,11 @@ object LocationResolver {
             }
         }
 
-        // Absolute fallback — best candidate we saw (may still be coarse)
-        if (best != null) {
+        // Absolute fallback — reject stale last-known for Home/security (avoids Magarpatta ghosts)
+        if (best != null && isWallClockFresh(best!!, severity)) {
+            return finish(context, best!!, bestTier, start, severity)
+        }
+        if (best != null && severity == Severity.INFORMATIONAL) {
             return finish(context, best!!, bestTier, start, severity)
         }
 
@@ -278,6 +300,13 @@ object LocationResolver {
             Severity.INFORMATIONAL ->
                 loc.accuracy <= SOFT_ACCURACY_M
         }
+    }
+
+    /** Wall-clock age of the fix — blocks days-old Android last-known on Home. */
+    private fun isWallClockFresh(loc: Location, severity: Severity): Boolean {
+        if (severity == Severity.INFORMATIONAL) return true
+        val age = System.currentTimeMillis() - loc.time
+        return age in 0L..UI_STALE_REJECT_MS
     }
 
     /**

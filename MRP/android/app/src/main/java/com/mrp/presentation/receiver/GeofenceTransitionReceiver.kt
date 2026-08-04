@@ -8,14 +8,13 @@ import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.data.local.GeofenceStorage
-import com.mrp.domain.usecase.AddressParts
 import com.mrp.domain.usecase.EventSyncPublisher
 import com.mrp.domain.usecase.GeofenceTimeline
-import com.mrp.domain.usecase.LocationHelper
+import com.mrp.domain.usecase.LocationEngine
 
 /**
- * OS geofence ENTER/EXIT → dedicated timeline rows with address.
- * Owns global inside prefs; never lets EXIT of zone A wipe Inside zone B.
+ * OS geofence ENTER/EXIT → [LocationEngine] trusted stamp → immutable timeline row.
+ * Overlapping OS noise is resolved by the engine's nearest-inside / Away evaluate.
  */
 class GeofenceTransitionReceiver : BroadcastReceiver() {
 
@@ -34,7 +33,7 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
         }
 
         val transition = event.geofenceTransition
-        val entered = when (transition) {
+        val osEntered = when (transition) {
             Geofence.GEOFENCE_TRANSITION_ENTER -> true
             Geofence.GEOFENCE_TRANSITION_EXIT -> false
             else -> {
@@ -46,93 +45,61 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
         val triggering = event.triggeringGeofences ?: emptyList()
         if (triggering.isEmpty()) return
 
-        val loc = event.triggeringLocation
-        val lat = loc?.latitude ?: 0.0
-        val lng = loc?.longitude ?: 0.0
-        val accuracy = loc?.accuracy ?: 0f
-
-        val helper = LocationHelper(context)
-        val parts: AddressParts? =
-            if (lat != 0.0 || lng != 0.0) helper.reverseGeocodePartsSync(lat, lng) else null
-
         val zones = GeofenceStorage.list(context).associateBy { it.id }
+        val primaryId = triggering.first().requestId
+        val primaryName = zones[primaryId]?.name ?: primaryId
 
-        for (gf in triggering) {
-            val zone = zones[gf.requestId]
-            val name = zone?.name ?: gf.requestId
-            val dist = if (zone != null && (lat != 0.0 || lng != 0.0)) {
-                val results = FloatArray(1)
-                android.location.Location.distanceBetween(
-                    lat, lng, zone.latitude, zone.longitude, results
-                )
-                results[0]
-            } else {
-                Float.NaN
-            }
+        val result = LocationEngine.onOsGeofenceTransition(
+            context = context,
+            entered = osEntered,
+            fenceId = primaryId,
+            zoneName = primaryName
+        )
+        val stamp = result.stamp
 
-            val badgeInside: Boolean
-            val badgeFenceId: String?
-            val badgeZoneName: String?
-
-            if (entered) {
-                DeviceTrackingPrefs.rememberGeofence(context, true, gf.requestId)
-                badgeInside = true
-                badgeFenceId = gf.requestId
-                badgeZoneName = name
-            } else {
-                // EXIT of zone A must not clear "inside" if still inside Home (or another zone).
-                val stillInside = helper.findContainingZone(
-                    latitude = lat,
-                    longitude = lng,
-                    excludeId = gf.requestId,
-                    allowMissingCoords = true,
-                    accuracyPad = maxOf(accuracy, 40f),
-                )
-                if (stillInside != null) {
-                    DeviceTrackingPrefs.rememberGeofence(context, true, stillInside.id)
-                    badgeInside = true
-                    badgeFenceId = stillInside.id
-                    badgeZoneName = stillInside.name
-                    Log.i(TAG, "EXIT $name but still inside ${stillInside.name}")
-                } else {
-                    val prevId = DeviceTrackingPrefs.lastGeofenceId(context)
-                    val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
-                    if (prevInside == true && prevId != null && prevId != gf.requestId && zones.containsKey(prevId)) {
-                        DeviceTrackingPrefs.rememberGeofence(context, true, prevId)
-                        badgeInside = true
-                        badgeFenceId = prevId
-                        badgeZoneName = zones[prevId]?.name
-                        Log.i(TAG, "EXIT $name; kept inside ${zones[prevId]?.name ?: prevId}")
-                    } else {
-                        DeviceTrackingPrefs.rememberGeofence(context, false, gf.requestId)
-                        badgeInside = false
-                        badgeFenceId = gf.requestId
-                        badgeZoneName = name
-                    }
-                }
-            }
-
-            GeofenceTimeline.emitTransition(
-                context = context,
-                entered = entered,
-                zoneName = name,
-                fenceId = gf.requestId,
-                distanceM = dist,
-                lat = lat,
-                lng = lng,
-                accuracy = accuracy,
-                addressParts = parts,
-                badgeInside = badgeInside,
-                badgeFenceId = badgeFenceId,
-                badgeZoneName = badgeZoneName
-            )
-            if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
-                val insideNow = DeviceTrackingPrefs.lastGeofenceInside(context) == true
-                val idNow = DeviceTrackingPrefs.lastGeofenceId(context)
-                EventSyncPublisher.onGeofenceChanged(context, insideNow, idNow)
-            }
-            Log.i(TAG, "${if (entered) "ENTER" else "EXIT"} $name badge=$badgeZoneName inside=$badgeInside")
+        // Prefer engine-chosen zone (nearest inside) over raw OS fence id when TRUSTED.
+        val entered = stamp.insideFence
+        val zoneName = stamp.zoneName ?: primaryName
+        val fenceId = stamp.fenceId ?: primaryId
+        val dist = when {
+            stamp.insideFence && stamp.distanceToCenterM != null ->
+                stamp.distanceToCenterM.toFloat()
+            !stamp.insideFence && stamp.awayM != null ->
+                stamp.awayM.toFloat()
+            else -> Float.NaN
         }
+
+        GeofenceTimeline.emitTransition(
+            context = context,
+            entered = entered,
+            zoneName = zoneName,
+            fenceId = fenceId,
+            distanceM = dist,
+            lat = if (stamp.hasCoords) stamp.latitude else 0.0,
+            lng = if (stamp.hasCoords) stamp.longitude else 0.0,
+            accuracy = if (stamp.hasCoords) stamp.accuracyM else 0f,
+            addressParts = null,
+            badgeInside = stamp.insideFence,
+            badgeFenceId = stamp.fenceId,
+            badgeZoneName = stamp.zoneName,
+            addressOverride = stamp.address,
+            locationDeferred = stamp.locationDeferred,
+            geoStrategy = stamp.strategy
+        )
+
+        if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
+            EventSyncPublisher.onGeofenceChanged(
+                context,
+                stamp.insideFence,
+                stamp.fenceId
+            )
+        }
+        Log.i(
+            TAG,
+            "OS ${if (osEntered) "ENTER" else "EXIT"} $primaryName → " +
+                "engine inside=${stamp.insideFence} zone=${stamp.zoneName} " +
+                "deferred=${stamp.locationDeferred} strategy=${stamp.strategy}"
+        )
     }
 
     companion object {

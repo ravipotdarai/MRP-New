@@ -291,12 +291,10 @@ export function TimelineScreen() {
               ]}>
               {item.geofence_status?.inside_fence
                 ? `🏠 Inside ${item.metadata?.geofence_name || 'zone'}`
-                : item.metadata?.geofence_name
-                  ? item.metadata?.geofence_distance_m != null &&
+                : item.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(item.metadata.geofence_distance_m))
-                    ? `📍 Outside ${item.metadata.geofence_name} · ${Math.round(Number(item.metadata.geofence_distance_m))}m`
-                    : `📍 Outside ${item.metadata.geofence_name}`
-                  : '📍 Outside zone'}
+                  ? `📍 Away · ${Math.round(Number(item.metadata.geofence_distance_m))}m`
+                  : '📍 Away'}
             </Text>
           </View>
         </View>
@@ -478,14 +476,23 @@ export function TimelineScreen() {
                     <Text style={styles.detailValue}>
                       {selectedEntry.geofence_status?.inside_fence
                         ? `🏠 Inside ${selectedEntry.metadata?.geofence_name || 'zone'}`
-                        : selectedEntry.metadata?.geofence_name
-                          ? `📍 Outside ${selectedEntry.metadata.geofence_name}`
-                          : '📍 Outside zone'}
+                        : selectedEntry.metadata?.geofence_distance_m != null &&
+                            Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m))
+                          ? `📍 Away · ${Math.round(Number(selectedEntry.metadata.geofence_distance_m))}m`
+                          : '📍 Away'}
                     </Text>
-                    {selectedEntry.metadata?.geofence_distance_m != null &&
+                    {selectedEntry.geofence_status?.inside_fence &&
+                    selectedEntry.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m)) ? (
                       <Text style={styles.detailSubvalue}>
                         Distance to zone center:{' '}
+                        {Math.round(Number(selectedEntry.metadata.geofence_distance_m))} m
+                      </Text>
+                    ) : !selectedEntry.geofence_status?.inside_fence &&
+                      selectedEntry.metadata?.geofence_distance_m != null &&
+                      Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m)) ? (
+                      <Text style={styles.detailSubvalue}>
+                        Distance past nearest zone edge:{' '}
                         {Math.round(Number(selectedEntry.metadata.geofence_distance_m))} m
                       </Text>
                     ) : null}

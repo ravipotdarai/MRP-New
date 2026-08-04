@@ -110,8 +110,13 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
                         putString("geofenceName", geo.zoneName)
                         putDouble(
                             "distanceToFenceM",
-                            if (geo.distanceToCenter.isFinite()) geo.distanceToCenter.toDouble()
-                            else -1.0
+                            when {
+                                geo.insideFence && geo.distanceToCenter.isFinite() ->
+                                    geo.distanceToCenter.toDouble()
+                                !geo.insideFence && geo.awayMeters.isFinite() ->
+                                    geo.awayMeters.toDouble()
+                                else -> -1.0
+                            }
                         )
                     }
                 )

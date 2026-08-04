@@ -259,7 +259,14 @@ class LocationHelper(private val context: Context) {
     }
 
     /**
-     * Evaluate if a location is inside any defined geofence zone
+     * Resolve which geofence applies at a point.
+     *
+     * - If inside one or more zones (d ≤ radius): pick the **nearest center**
+     *   among those overlaps (tie-break: smaller radius). Stamp that zone
+     *   (geofence path).
+     * - If outside all zones: no geofence path ([fenceId]/[zoneName] null —
+     *   callers label "Away"). [awayMeters] = smallest distToEdge
+     *   (`d - radius`) across zones (closest boundary).
      */
     fun evaluateGeofence(latitude: Double, longitude: Double): GeofenceResult {
         reloadGeofencesFromStorage()
@@ -268,11 +275,14 @@ class LocationHelper(private val context: Context) {
                 insideFence = false,
                 fenceId = null,
                 distanceToCenter = Float.NaN,
-                zoneName = null
+                zoneName = null,
+                awayMeters = Float.NaN
             )
         }
-        var nearest: GeofenceZone? = null
-        var nearestDist = Float.MAX_VALUE
+        var bestInside: GeofenceZone? = null
+        var bestInsideDist = Float.MAX_VALUE
+        var bestAwayDistToEdge = Float.MAX_VALUE
+        var bestAwayCenterDist = Float.NaN
         for (zone in geofenceZones) {
             val results = FloatArray(1)
             Location.distanceBetween(
@@ -281,24 +291,39 @@ class LocationHelper(private val context: Context) {
                 results
             )
             val distance = results[0]
+            val distToEdge = distance - zone.radiusMeters
             if (distance <= zone.radiusMeters) {
-                return GeofenceResult(
-                    insideFence = true,
-                    fenceId = zone.id,
-                    distanceToCenter = distance,
-                    zoneName = zone.name
-                )
-            }
-            if (distance < nearestDist) {
-                nearestDist = distance
-                nearest = zone
+                val closer = distance < bestInsideDist
+                val sameDistSmallerRadius =
+                    !closer &&
+                        kotlin.math.abs(distance - bestInsideDist) < 0.01f &&
+                        (bestInside == null || zone.radiusMeters < bestInside!!.radiusMeters)
+                if (closer || sameDistSmallerRadius) {
+                    bestInsideDist = distance
+                    bestInside = zone
+                }
+            } else if (distToEdge < bestAwayDistToEdge) {
+                bestAwayDistToEdge = distToEdge
+                bestAwayCenterDist = distance
             }
         }
+        val inside = bestInside
+        if (inside != null) {
+            return GeofenceResult(
+                insideFence = true,
+                fenceId = inside.id,
+                distanceToCenter = bestInsideDist,
+                zoneName = inside.name,
+                awayMeters = Float.NaN
+            )
+        }
+        // Outside every radius — Away only (no zone path); awayM = closest edge.
         return GeofenceResult(
             insideFence = false,
-            fenceId = nearest?.id,
-            distanceToCenter = nearestDist,
-            zoneName = nearest?.name
+            fenceId = null,
+            distanceToCenter = bestAwayCenterDist,
+            zoneName = null,
+            awayMeters = if (bestAwayDistToEdge < Float.MAX_VALUE) bestAwayDistToEdge else Float.NaN
         )
     }
 
@@ -325,7 +350,9 @@ class LocationHelper(private val context: Context) {
         val insideFence: Boolean,
         val fenceId: String?,
         val distanceToCenter: Float,
-        val zoneName: String?
+        val zoneName: String?,
+        /** When outside all zones: meters past the closest zone edge (`d - radius`). */
+        val awayMeters: Float = Float.NaN
     )
 
     data class GeofenceZone(

@@ -31,6 +31,9 @@ import {
 } from './breachEmailCheck';
 import {scanOtpSms, type OtpScanResult} from './otpHeuristics';
 import {fraudLinksFor, t, type SecLang} from './securityCenterI18n';
+import {useHorizontalTabSwipe} from '../../shared/hooks/useHorizontalTabSwipe';
+
+const SEC_CENTER_TABS: SecurityCenterTab[] = ['ADVISOR', 'ANALYZER', 'FRAUD', 'TOOLS'];
 
 type PostureCheck = {
   id: string;
@@ -67,6 +70,16 @@ export function SecurityCenterScreen({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [lang, setLang] = useState<SecLang>('en');
   const [tab, setTab] = useState<SecurityCenterTab>('ADVISOR');
+  const tabIndex = SEC_CENTER_TABS.indexOf(tab);
+  const onSwipeIndex = useCallback((i: number) => {
+    const next = SEC_CENTER_TABS[i];
+    if (next) setTab(next);
+  }, []);
+  const swipeHandlers = useHorizontalTabSwipe(
+    Math.max(0, tabIndex),
+    SEC_CENTER_TABS.length,
+    onSwipeIndex,
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -352,6 +365,7 @@ export function SecurityCenterScreen({
         ))}
       </View>
 
+      <View style={{flex: 1}} {...swipeHandlers}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         refreshControl={
@@ -735,6 +749,7 @@ export function SecurityCenterScreen({
           </>
         ) : null}
       </ScrollView>
+      </View>
     </View>
   );
 }

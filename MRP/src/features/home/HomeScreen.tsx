@@ -164,6 +164,8 @@ export function HomeScreen({
     detailed_address: string;
     provider?: string;
     location_tier?: string;
+    cache_hit?: boolean;
+    fix_ms?: number;
   } | null>(null);
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const [gps, setGps] = useState<GpsStatus | null>(null);
@@ -208,7 +210,7 @@ export function HomeScreen({
         mrpmModule.checkOverlayPermission(),
         mrpmModule.isDeviceAdminEnabled(),
         mrpmModule.hasUsageStatsPermission(),
-        mrpmModule.getCurrentLocationWithAddress?.() ?? Promise.resolve(null),
+        mrpmModule.getCurrentLocationWithAddress?.(false) ?? Promise.resolve(null),
         bridge.getSimRecoveryStatus?.() ?? Promise.resolve(null),
         bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
         bridge.getAppRiskReport?.() ?? Promise.resolve([]),
@@ -624,7 +626,8 @@ export function HomeScreen({
     if (!mrpmModule?.getCurrentLocationWithAddress) return;
     setLocRefreshing(true);
     try {
-      const loc = await mrpmModule.getCurrentLocationWithAddress();
+      // Force GPS path — skip stale process cache / last-known ghosts
+      const loc = await mrpmModule.getCurrentLocationWithAddress(true);
       if (loc) {
         setLiveLocation(loc as typeof liveLocation);
       }
@@ -937,9 +940,10 @@ export function HomeScreen({
                 ]}>
                 {latestEvent.geofence_status?.inside_fence
                   ? `🏠 Inside ${latestEvent.metadata?.geofence_name || 'zone'}`
-                  : latestEvent.metadata?.geofence_name
-                    ? `📍 Outside ${latestEvent.metadata.geofence_name}`
-                    : '📍 Outside zone'}
+                  : latestEvent.metadata?.geofence_distance_m != null &&
+                      Number.isFinite(Number(latestEvent.metadata.geofence_distance_m))
+                    ? `📍 Away · ${Math.round(Number(latestEvent.metadata.geofence_distance_m))}m`
+                    : '📍 Away'}
               </Text>
             </View>
           </View>
@@ -956,7 +960,15 @@ export function HomeScreen({
             {liveLocation ? (
               <View style={styles.liveBadge}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveBadgeText}>Live</Text>
+                <Text style={styles.liveBadgeText}>
+                  {locRefreshing
+                    ? '…'
+                    : liveLocation.cache_hit ||
+                        (liveLocation.location_tier || '').toLowerCase().includes('cache') ||
+                        (liveLocation.location_tier || '').toLowerCase().includes('last')
+                      ? 'Cached'
+                      : 'Live'}
+                </Text>
               </View>
             ) : null}
             <TouchableOpacity
@@ -971,14 +983,17 @@ export function HomeScreen({
           </View>
         </View>
         {(() => {
-          const loc = liveLocation ??
-            (latestEvent?.location && latestEvent.location.latitude !== 0
-              ? latestEvent.location
-              : null);
+          // Never fall back to a Timeline event location — those stamp historical
+          // places (e.g. Magarpatta) and look like a wrong "current" fix.
+          const loc = liveLocation;
           if (!loc) {
             return (
               <View style={styles.locTextBlock}>
-                <Text style={styles.emptyText}>No location yet. Tap ↻ to refresh.</Text>
+                <Text style={styles.emptyText}>
+                  {locRefreshing
+                    ? 'Getting GPS fix…'
+                    : 'No fresh location yet. Tap ↻ to refresh.'}
+                </Text>
               </View>
             );
           }
@@ -987,6 +1002,21 @@ export function HomeScreen({
             loc.detailed_address !== 'Address Unavailable (Offline)'
               ? loc.detailed_address
               : null;
+          const tier = (loc.location_tier || loc.provider || '').toLowerCase();
+          const isLiveGps = tier.includes('gps') || tier === 'fused';
+          const tierLabel = locRefreshing
+            ? 'Updating…'
+            : isLiveGps && !loc.cache_hit
+              ? 'GPS'
+              : tier.includes('cache') || loc.cache_hit
+                ? 'Cached'
+                : tier.includes('wifi')
+                  ? 'Wi‑Fi'
+                  : tier.includes('cell')
+                    ? 'Cell'
+                    : tier.includes('last')
+                      ? 'Last known'
+                      : 'Fix';
           return (
             <View style={styles.locTextBlock}>
               <View style={styles.locAddressRow}>
@@ -1000,7 +1030,7 @@ export function HomeScreen({
                   {loc.latitude.toFixed(5)}, {loc.longitude.toFixed(5)}
                 </Text>
                 <Text style={styles.locationAccuracy}>
-                  ±{Math.round(loc.accuracy_meters || 0)}m
+                  ±{Math.round(loc.accuracy_meters || 0)}m · {tierLabel}
                 </Text>
               </View>
               <TouchableOpacity

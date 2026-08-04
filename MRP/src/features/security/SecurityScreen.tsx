@@ -4,6 +4,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import Animated, {FadeIn} from 'react-native-reanimated';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {useHorizontalTabSwipe} from '../../shared/hooks/useHorizontalTabSwipe';
 import {MonitoringScreen} from '../monitoring/MonitoringScreen';
 import {TimelineScreen} from '../graph/TimelineScreen';
 import {PhotoGallery} from '../photos/PhotoGallery';
@@ -22,6 +23,17 @@ export function SecurityScreen({route}: {route?: any}) {
   const [active, setActive] = useState<SecurityTab>('MONITORING');
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const activeIndex = TABS.findIndex(t => t.key === active);
+  const onSwipeIndex = useCallback((i: number) => {
+    const tab = TABS[i];
+    if (tab) setActive(tab.key);
+  }, []);
+  const swipeHandlers = useHorizontalTabSwipe(
+    Math.max(0, activeIndex),
+    TABS.length,
+    onSwipeIndex,
+  );
 
   const applyInitialTab = useCallback(() => {
     const initial = route?.params?.initialTab as SecurityTab | undefined;
@@ -64,12 +76,14 @@ export function SecurityScreen({route}: {route?: any}) {
         </ScrollView>
       </View>
 
-      <Animated.View style={styles.content} key={active} entering={FadeIn.duration(200)}>
-        {active === 'MONITORING' && <MonitoringScreen />}
-        {active === 'TIMELINE' && <TimelineScreen />}
-        {active === 'PHOTOS' && <PhotoGallery />}
-        {active === 'PERMISSIONS' && <PermissionsScreen />}
-      </Animated.View>
+      <View style={styles.content} {...swipeHandlers}>
+        <Animated.View style={styles.content} key={active} entering={FadeIn.duration(200)}>
+          {active === 'MONITORING' && <MonitoringScreen />}
+          {active === 'TIMELINE' && <TimelineScreen />}
+          {active === 'PHOTOS' && <PhotoGallery />}
+          {active === 'PERMISSIONS' && <PermissionsScreen />}
+        </Animated.View>
+      </View>
     </View>
   );
 }

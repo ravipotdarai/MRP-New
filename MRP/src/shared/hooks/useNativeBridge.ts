@@ -69,12 +69,15 @@ export interface MrpNativeInterface {
     permissionGranted: boolean;
     isLocationAvailable: boolean;
   }>;
-  getCurrentLocationWithAddress(): Promise<{
+  getCurrentLocationWithAddress(forceRefresh?: boolean): Promise<{
     latitude: number;
     longitude: number;
     accuracy_meters: number;
     detailed_address: string;
     provider: string;
+    location_tier?: string;
+    cache_hit?: boolean;
+    fix_ms?: number;
   } | null>;
   getSimRecoveryStatus(): Promise<any>;
   setSimRecoveryEnabled(enabled: boolean, consent: boolean): Promise<boolean>;

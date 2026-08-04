@@ -3,6 +3,7 @@ import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicato
 import {useFocusEffect} from '@react-navigation/native';
 import Animated, {FadeIn} from 'react-native-reanimated';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
+import {useHorizontalTabSwipe} from '../../shared/hooks/useHorizontalTabSwipe';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
 import {AppUsageReports} from './AppUsageReports';
@@ -38,6 +39,8 @@ export type UnifiedEvent = {
 
 type AppUsageTab = 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY';
 
+const APP_TABS: AppUsageTab[] = ['DASHBOARD', 'TIMELINE', 'REPORTS', 'SAFETY'];
+
 export function AppUsageScreen({route}: {route?: any}) {
   const [activeTab, setActiveTab] = useState<AppUsageTab>('DASHBOARD');
   const [sessions, setSessions] = useState<AppUsageSession[]>([]);
@@ -48,6 +51,17 @@ export function AppUsageScreen({route}: {route?: any}) {
   const [hasPermission, setHasPermission] = useState(false);
   const {colors} = useTheme();
   const styles = useMemo(() => createAppUsageStyles(colors), [colors]);
+
+  const tabIndex = APP_TABS.indexOf(activeTab);
+  const onSwipeIndex = useCallback((i: number) => {
+    const next = APP_TABS[i];
+    if (next) setActiveTab(next);
+  }, []);
+  const swipeHandlers = useHorizontalTabSwipe(
+    Math.max(0, tabIndex),
+    APP_TABS.length,
+    onSwipeIndex,
+  );
 
   const applyInitialTab = useCallback(() => {
     const t = route?.params?.initialTab as AppUsageTab | undefined;
@@ -224,12 +238,14 @@ export function AppUsageScreen({route}: {route?: any}) {
         </TouchableOpacity>
       </View>
 
-      <Animated.View style={styles.content} key={activeTab} entering={FadeIn.duration(200)}>
-        {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
-        {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
-        {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
-        {activeTab === 'SAFETY' && <AppSafetyScreen />}
-      </Animated.View>
+      <View style={styles.content} {...swipeHandlers}>
+        <Animated.View style={styles.content} key={activeTab} entering={FadeIn.duration(200)}>
+          {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
+          {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
+          {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
+          {activeTab === 'SAFETY' && <AppSafetyScreen />}
+        </Animated.View>
+      </View>
     </SafeAreaView>
   );
 }
