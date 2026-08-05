@@ -47,7 +47,9 @@ type Native = {
 const native = NativeModules.DeviceTracking as Native | undefined;
 
 export async function getTrackingConfig(): Promise<DeviceTrackingConfig> {
-  if (!native?.getConfig) return {...defaults};
+  if (!native?.getConfig) {
+    return {...defaults};
+  }
   const cfg = await native.getConfig();
   return {
     ...defaults,
@@ -61,7 +63,9 @@ export async function getTrackingConfig(): Promise<DeviceTrackingConfig> {
 }
 
 export async function setTrackingConfig(cfg: DeviceTrackingConfig): Promise<boolean> {
-  if (!native?.setConfig) return false;
+  if (!native?.setConfig) {
+    return false;
+  }
   return native.setConfig({
     ...cfg,
     syncFrequencyMinutes: Math.max(
@@ -73,11 +77,15 @@ export async function setTrackingConfig(cfg: DeviceTrackingConfig): Promise<bool
 }
 
 export async function pullRemoteTrackingConfig(): Promise<boolean> {
-  if (!native?.pullRemoteConfig) return false;
+  if (!native?.pullRemoteConfig) {
+    return false;
+  }
   return native.pullRemoteConfig();
 }
 
 export async function startDevicePresence(): Promise<boolean> {
-  if (!native?.startPresence) return false;
+  if (!native?.startPresence) {
+    return false;
+  }
   return native.startPresence();
 }

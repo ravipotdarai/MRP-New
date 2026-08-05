@@ -16,6 +16,7 @@ import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.data.local.GeofenceStorage
 import com.mrp.data.local.LiveLocationStore
 import org.json.JSONObject
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -28,6 +29,9 @@ object DevicePresenceTracker {
     private val running = AtomicBoolean(false)
     private var emergencyHandler: Handler? = null
     private var emergencyRunnable: Runnable? = null
+    private val emergencyWorker = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "EmergencyLocTick").apply { isDaemon = true }
+    }
 
     fun start(context: Context) {
         if (!DeviceTrackingPrefs.isMovementTracking(context)) {
@@ -290,13 +294,15 @@ object DevicePresenceTracker {
         val r = object : Runnable {
             override fun run() {
                 if (!DeviceTrackingPrefs.isEmergencyTracking(app)) return
-                try {
-                    // LocationEngine: TRUSTED GPS → cache + live; then Drive
-                    LocationEngine.obtain(app, LocationEngine.Demand.EmergencyTick)
-                    DriveVaultSync.requestSyncAsync(app, "emergency")
-                } catch (e: Exception) {
-                    Log.w(TAG, "emergency tick", e)
-                    DriveVaultSync.requestSyncAsync(app, "emergency")
+                // GPS resolve blocks on latches — never on main (ANR).
+                emergencyWorker.execute {
+                    try {
+                        LocationEngine.obtain(app, LocationEngine.Demand.EmergencyTick)
+                        DriveVaultSync.requestSyncAsync(app, "emergency")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "emergency tick", e)
+                        DriveVaultSync.requestSyncAsync(app, "emergency")
+                    }
                 }
                 handler.postDelayed(this, intervalMs.coerceAtLeast(60_000L))
             }

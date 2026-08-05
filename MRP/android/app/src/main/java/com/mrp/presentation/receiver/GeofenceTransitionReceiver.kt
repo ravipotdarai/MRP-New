@@ -15,6 +15,9 @@ import com.mrp.domain.usecase.LocationEngine
 /**
  * OS geofence ENTER/EXIT → [LocationEngine] trusted stamp → immutable timeline row.
  * Overlapping OS noise is resolved by the engine's nearest-inside / Away evaluate.
+ *
+ * Work runs off the main thread via [goAsync] — [LocationEngine.obtain] blocks on GPS
+ * latches and must never run inside [onReceive] on the UI thread (ANR).
  */
 class GeofenceTransitionReceiver : BroadcastReceiver() {
 
@@ -45,10 +48,29 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
         val triggering = event.triggeringGeofences ?: emptyList()
         if (triggering.isEmpty()) return
 
-        val zones = GeofenceStorage.list(context).associateBy { it.id }
+        val app = context.applicationContext
+        val zones = GeofenceStorage.list(app).associateBy { it.id }
         val primaryId = triggering.first().requestId
         val primaryName = zones[primaryId]?.name ?: primaryId
 
+        val pending = goAsync()
+        Thread({
+            try {
+                handleTransition(app, osEntered, primaryId, primaryName)
+            } catch (e: Exception) {
+                Log.e(TAG, "geofence transition failed", e)
+            } finally {
+                pending.finish()
+            }
+        }, "GeofenceTransition").start()
+    }
+
+    private fun handleTransition(
+        context: Context,
+        osEntered: Boolean,
+        primaryId: String,
+        primaryName: String
+    ) {
         val result = LocationEngine.onOsGeofenceTransition(
             context = context,
             entered = osEntered,

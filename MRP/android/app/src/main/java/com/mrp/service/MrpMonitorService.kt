@@ -77,6 +77,7 @@ class MrpMonitorService : Service() {
     private var lastBluetoothState: Boolean? = null
     private var lastWifiAssociated: Boolean? = null
     private var lastBtDeviceAddress: String? = null
+    private var lastUsbFunctions: String? = null
     private val connectedBtAddresses = mutableSetOf<String>()
     private var bluetoothConnectionMonitor: com.mrp.domain.usecase.BluetoothConnectionMonitor? = null
     private var lastSimEventType: String? = null
@@ -153,10 +154,6 @@ class MrpMonitorService : Service() {
             val testSettingValue = if (action == "com.mrp.TEST_SET_SETTING") {
                 intent.getBooleanExtra("value", true)
             } else true
-
-            val usbConnected = if (action == "android.hardware.usb.action.USB_STATE") {
-                intent.getBooleanExtra("connected", false)
-            } else false
 
             val requestPhotoEventName = if (action == ACTION_REQUEST_PHOTO) {
                 intent.getStringExtra("eventName") ?: "unknown"
@@ -244,13 +241,16 @@ class MrpMonitorService : Service() {
                         }
                     }
                     "android.hardware.usb.action.USB_STATE" -> {
-                        handleUsbChangeExplicit(usbConnected, isSticky)
+                        handleUsbChangeExplicit(intent.extras, isSticky)
                     }
                     Intent.ACTION_POWER_CONNECTED -> {
-                        handleUsbChangeExplicit(true)
+                        // Power alone is not proof of USB data. Ignore for USB restriction logic.
                     }
                     "com.mrp.TEST_USB_CONNECTED" -> {
-                        handleUsbChangeExplicit(true)
+                        handleUsbChangeExplicit(Bundle().apply {
+                            putBoolean("connected", true)
+                            putBoolean("configured", false)
+                        })
                     }
                     "com.mrp.TEST_MOBILE_DATA_TOGGLE" -> {
                         handleMobileDataChange(testMobileDataState)
@@ -1136,28 +1136,99 @@ class MrpMonitorService : Service() {
 
     private var lastUsbState: Boolean? = null
 
-    private fun handleUsbChangeExplicit(isConnected: Boolean, isSticky: Boolean = false) {
+    private data class UsbMonitorSnapshot(
+        val connected: Boolean,
+        val configured: Boolean,
+        val unlocked: Boolean,
+        val adb: Boolean,
+        val mtp: Boolean,
+        val ptp: Boolean,
+        val midi: Boolean,
+        val accessory: Boolean,
+        val audioSource: Boolean,
+        val ncm: Boolean,
+        val tether: Boolean,
+        val whileLocked: Boolean
+    ) {
+        fun functionsLabel(): String {
+            val parts = buildList {
+                if (adb) add("adb")
+                if (mtp) add("mtp")
+                if (ptp) add("ptp")
+                if (midi) add("midi")
+                if (accessory) add("accessory")
+                if (audioSource) add("audio")
+                if (ncm) add("ncm")
+                if (tether) add("tether")
+            }
+            return if (parts.isEmpty()) {
+                if (connected) "charging_only" else "disconnected"
+            } else {
+                parts.joinToString(",")
+            }
+        }
+
+        fun dataActive(): Boolean =
+            adb || mtp || ptp || midi || accessory || audioSource || ncm || tether
+    }
+
+    private fun usbSnapshotFromExtras(extras: Bundle?): UsbMonitorSnapshot {
+        val km = getSystemService(KEYGUARD_SERVICE) as? android.app.KeyguardManager
+        return UsbMonitorSnapshot(
+            connected = extras?.getBoolean("connected", false) == true,
+            configured = extras?.getBoolean("configured", false) == true,
+            unlocked = extras?.getBoolean("unlocked", false) == true,
+            adb = extras?.getBoolean("adb", false) == true,
+            mtp = extras?.getBoolean("mtp", false) == true,
+            ptp = extras?.getBoolean("ptp", false) == true,
+            midi = extras?.getBoolean("midi", false) == true,
+            accessory = extras?.getBoolean("accessory", false) == true,
+            audioSource = extras?.getBoolean("audio_source", false) == true,
+            ncm = extras?.getBoolean("ncm", false) == true,
+            tether = extras?.getBoolean("rndis", false) == true ||
+                extras?.getBoolean("tethering", false) == true,
+            whileLocked = km?.isKeyguardLocked == true
+        )
+    }
+
+    private fun handleUsbChangeExplicit(extras: Bundle?, isSticky: Boolean = false) {
         if (!isMonitoringEnabled()) return
         val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
-        if (!settings.captureOnUsb) return
-
+        val usb = usbSnapshotFromExtras(extras)
         val prev = lastUsbState
-        lastUsbState = isConnected
+        val prevFunctions = lastUsbFunctions
+        lastUsbState = usb.connected
+        lastUsbFunctions = usb.functionsLabel()
 
         if (isSticky) return
 
-        if (prev == null || prev != isConnected) {
-            Log.d(TAG, "USB state changed: isConnected=$isConnected")
-            val eventName = if (isConnected) "USB_CONNECTED" else "USB_DISCONNECTED"
+        val stateChanged = prev == null || prev != usb.connected
+        val functionChanged = prevFunctions != usb.functionsLabel()
+        if (stateChanged || functionChanged) {
+            Log.d(TAG, "USB state changed: connected=${usb.connected} functions=${usb.functionsLabel()}")
+            val eventName = if (usb.connected) "USB_CONNECTED" else "USB_DISCONNECTED"
             eventLogger.logEvent(
                 eventName,
-                if (isConnected) StatusValues.ENABLED else StatusValues.DISABLED,
+                if (usb.connected) StatusValues.ENABLED else StatusValues.DISABLED,
                 mapOf(
-                    "description" to if (isConnected) "USB connection detected" else "USB disconnected",
-                    "source" to "MrpMonitorService"
+                    "description" to if (usb.connected) {
+                        "USB attached (${usb.functionsLabel()})"
+                    } else {
+                        "USB disconnected"
+                    },
+                    "source" to "MrpMonitorService",
+                    "usb_connected" to usb.connected,
+                    "usb_configured" to usb.configured,
+                    "usb_unlocked" to usb.unlocked,
+                    "usb_functions" to usb.functionsLabel(),
+                    "usb_data_active" to usb.dataActive(),
+                    "usb_while_locked" to usb.whileLocked,
+                    "usb_adb" to usb.adb
                 )
             )
-            requestPhoto(this, eventName)
+            if (settings.captureOnUsb) {
+                requestPhoto(this, eventName)
+            }
         }
     }
 

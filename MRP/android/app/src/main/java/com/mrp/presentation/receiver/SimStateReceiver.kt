@@ -3,17 +3,16 @@ package com.mrp.presentation.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import com.mrp.data.local.SettingsStorage
-import com.mrp.data.local.TimelineStorage
-import com.mrp.domain.model.*
+import com.mrp.domain.model.StatusValues
 import com.mrp.domain.usecase.TimelineEventLogger
 
 /**
  * BroadcastReceiver for SIM state changes and USB connections.
  * Logs SIM removal/insertion events with location and geofencing data.
+ *
+ * Heavy work (location + timeline) runs off the main thread via [goAsync].
  */
 class SimStateReceiver : BroadcastReceiver() {
 
@@ -31,7 +30,17 @@ class SimStateReceiver : BroadcastReceiver() {
         when (intent.action) {
             "android.intent.action.SIM_STATE_CHANGED" -> {
                 val simState = intent.getStringExtra("ss") ?: return
-                handleSimStateChange(context, simState, settings.captureOnSimChange)
+                if (!settings.captureOnSimChange) return
+                val pending = goAsync()
+                Thread({
+                    try {
+                        handleSimStateChange(context.applicationContext, simState)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "SIM state handling failed", e)
+                    } finally {
+                        pending.finish()
+                    }
+                }, "SimStateReceiver").start()
             }
 
             Intent.ACTION_BOOT_COMPLETED -> {
@@ -40,15 +49,22 @@ class SimStateReceiver : BroadcastReceiver() {
 
             Intent.ACTION_UMS_CONNECTED -> {
                 if (settings.captureOnUsb) {
-                    handleUsbConnection(context)
+                    val pending = goAsync()
+                    Thread({
+                        try {
+                            handleUsbConnection(context.applicationContext)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "USB handling failed", e)
+                        } finally {
+                            pending.finish()
+                        }
+                    }, "SimStateUsb").start()
                 }
             }
         }
     }
 
-    private fun handleSimStateChange(context: Context, simState: String, shouldCapture: Boolean) {
-        if (!shouldCapture) return
-
+    private fun handleSimStateChange(context: Context, simState: String) {
         Log.d(TAG, "SIM state changed: $simState")
 
         val eventType: String

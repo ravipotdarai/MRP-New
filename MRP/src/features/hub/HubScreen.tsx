@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
   BackHandler,
 } from 'react-native';
@@ -141,7 +140,7 @@ function HubSectionShell({
   return (
     <SafeAreaView style={styles.safe}>
       <HubTitleBar title={title} styles={styles} />
-      <Animated.View style={{flex: 1}} entering={FadeIn.duration(220)}>
+      <Animated.View style={styles.sectionBody} entering={FadeIn.duration(220)}>
         {children}
       </Animated.View>
     </SafeAreaView>
@@ -225,7 +224,9 @@ export function HubScreen({
   }, [route?.params?.openSection]);
 
   useEffect(() => {
-    if (!CIRCLE_ENABLED) return;
+    if (!CIRCLE_ENABLED) {
+      return;
+    }
     if (peekPendingCircleInvite()) {
       setSection('circle');
     }
@@ -416,6 +417,7 @@ function createStyles(colors: ColorPalette) {
       backgroundColor: colors.surface,
     },
     subTitle: {fontSize: 17, fontWeight: '800', color: colors.textPrimary},
+    sectionBody: {flex: 1},
     placeholderCard: {
       backgroundColor: colors.surface,
       borderRadius: radius.lg,

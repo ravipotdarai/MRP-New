@@ -62,7 +62,9 @@ const ENTERPRISE_ONLY = new Set<FeatureKey>([
 ]);
 
 function effectiveTier(snapshot: EntitlementSnapshot, now = Date.now()): SubscriptionTier {
-  if (snapshot.tier === 'free') return 'free';
+  if (snapshot.tier === 'free') {
+    return 'free';
+  }
   if (snapshot.expiryEpochMs > 0 && now <= snapshot.expiryEpochMs) {
     return snapshot.tier;
   }

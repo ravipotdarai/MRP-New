@@ -5,12 +5,16 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.mrp.data.local.DeviceTrackingPrefs
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Every 5 minutes: ensure TrustedSnapshot is fresh enough, then push Drive vault
  * (latest badge + coords + live + timeline). GPS only if snapshot older than
  * [LocationEngine.T_DRIVE_STALE_MS].
+ *
+ * Scheduling stays on the main Handler; GPS resolve always runs on [worker]
+ * so CountDownLatch waits never ANR the UI.
  */
 object DriveLocationHeartbeat {
 
@@ -20,6 +24,9 @@ object DriveLocationHeartbeat {
     private val running = AtomicBoolean(false)
     private var handler: Handler? = null
     private var runnable: Runnable? = null
+    private val worker = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "DriveLocHeartbeat").apply { isDaemon = true }
+    }
 
     fun start(context: Context) {
         val app = context.applicationContext
@@ -29,15 +36,17 @@ object DriveLocationHeartbeat {
         val r = object : Runnable {
             override fun run() {
                 if (!running.get()) return
-                try {
-                    if (DeviceTrackingPrefs.isEventSyncEnabled(app) ||
-                        DeviceTrackingPrefs.isEmergencyTracking(app)
-                    ) {
-                        LocationEngine.obtain(app, LocationEngine.Demand.DriveHeartbeat)
-                        DriveVaultSync.requestSyncAsync(app, "drive_heartbeat")
+                worker.execute {
+                    try {
+                        if (DeviceTrackingPrefs.isEventSyncEnabled(app) ||
+                            DeviceTrackingPrefs.isEmergencyTracking(app)
+                        ) {
+                            LocationEngine.obtain(app, LocationEngine.Demand.DriveHeartbeat)
+                            DriveVaultSync.requestSyncAsync(app, "drive_heartbeat")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "heartbeat", e)
                     }
-                } catch (e: Exception) {
-                    Log.w(TAG, "heartbeat", e)
                 }
                 h.postDelayed(this, INTERVAL_MS)
             }

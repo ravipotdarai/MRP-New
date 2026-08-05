@@ -160,6 +160,10 @@ object LocationResolver {
     /**
      * Blocking resolve for receivers / sync loggers.
      * Safe to call off the main thread; uses short latches for fused APIs.
+     *
+     * Never call on the main thread — fused/GPS callbacks also need the main looper,
+     * so [CountDownLatch.await] there deadlocks until timeout and triggers ANR.
+     * Accidental main-thread callers get cache-only (no latch).
      */
     @SuppressLint("MissingPermission")
     @JvmOverloads
@@ -168,6 +172,14 @@ object LocationResolver {
         severity: Severity,
         bypassCache: Boolean = false
     ): ResolvedLocation? {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.e(
+                TAG_BATTERY,
+                "resolveSync on main thread — refusing blocking GPS (ANR risk); cache only"
+            )
+            return resolveCacheOnly(context)
+        }
+
         val start = SystemClock.elapsedRealtime()
         if (!hasPermission(context)) {
             logBattery(severity, "denied", cacheHit = false, durationMs = 0, provider = "none")
