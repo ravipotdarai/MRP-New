@@ -14,6 +14,7 @@ import {
   asRows,
   eventTimeMs,
   liveLatLng,
+  liveLocationDetails,
   movementTrail,
   num,
   pathDistanceKm,
@@ -126,6 +127,7 @@ function MonitoringBody() {
   };
 
   const live = liveLatLng(vault);
+  const liveDetails = useMemo(() => liveLocationDetails(vault), [vault]);
   const trackingActive = policyEmergency || autoRefresh;
   const trail = useMemo(
     () => movementTrail(vault, trackingActive ? 6 : 2),
@@ -153,7 +155,6 @@ function MonitoringBody() {
   }, [vault, filter]);
 
   const simRows = vault?.simHistory || [];
-  const dh = vault?.deviceHealth || {};
   const trackingSnap = vault?.trackingConfigSnapshot || {};
 
   return (
@@ -190,22 +191,31 @@ function MonitoringBody() {
         <div className="panel locate-live-panel">
           <h2>Live location & movement</h2>
           <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "0.75rem" }}>
+            <li>Battery: {liveDetails.batteryPct != null ? `${liveDetails.batteryPct}%` : "—"}</li>
+            <li>Network: {liveDetails.network}</li>
             <li>
-              Battery:{" "}
-              {String(
-                dh.batteryPct ??
-                  (live
-                    ? (vault?.liveLocation as Record<string, unknown> | undefined)?.battery
-                    : undefined) ??
-                  "—",
-              )}
+              Accuracy:{" "}
+              {liveDetails.accuracyM != null ? `±${Math.round(liveDetails.accuracyM)} m` : "—"}
             </li>
-            <li>Network: {String((vault?.liveLocation as Record<string, unknown> | undefined)?.network ?? "—")}</li>
-            <li>Accuracy: {String(num((vault?.liveLocation as Record<string, unknown> | undefined)?.accuracy) ?? "—")}</li>
+            <li>
+              Geofence:{" "}
+              {liveDetails.insideGeofence == null
+                ? liveDetails.geofenceName || "—"
+                : liveDetails.insideGeofence
+                  ? `Inside${liveDetails.geofenceName ? ` · ${liveDetails.geofenceName}` : ""}`
+                  : `Outside${liveDetails.geofenceName ? ` · ${liveDetails.geofenceName}` : ""}`}
+            </li>
+            {liveDetails.address ? <li>Address: {liveDetails.address}</li> : null}
             <li>
               Trail: {trail.length} points · {trailKm.toFixed(2)} km
               {trackingActive ? " · updating while Find is active" : ""}
             </li>
+            {liveDetails.atMs ? (
+              <li className="mono" style={{ fontSize: "0.8rem" }}>
+                Fix: {new Date(liveDetails.atMs).toLocaleString()}
+                {liveDetails.source ? ` · ${liveDetails.source}` : ""}
+              </li>
+            ) : null}
           </ul>
           {live || trail.length ? (
             <InteractiveMap

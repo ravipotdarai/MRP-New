@@ -36,6 +36,8 @@ type PermSections = {
   sms: PermApp[];
   camera: PermApp[];
   microphone: PermApp[];
+  location: PermApp[];
+  contacts: PermApp[];
 };
 
 type PostureCheck = {
@@ -56,6 +58,8 @@ export function AppSafetyScreen() {
     sms: [],
     camera: [],
     microphone: [],
+    location: [],
+    contacts: [],
   });
   const [grade, setGrade] = useState('Unknown');
   const [checks, setChecks] = useState<PostureCheck[]>([]);
@@ -92,7 +96,13 @@ export function AppSafetyScreen() {
         bridge.getAppRiskReport?.() ?? Promise.resolve([]),
         bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
         bridge.getSensitivePermissionSections?.() ??
-          Promise.resolve({sms: [], camera: [], microphone: []}),
+          Promise.resolve({
+            sms: [],
+            camera: [],
+            microphone: [],
+            location: [],
+            contacts: [],
+          }),
       ]);
       applyRiskAndRules(risk);
       applyPostureSummary(summary);
@@ -101,6 +111,8 @@ export function AppSafetyScreen() {
           sms: Array.isArray(perms.sms) ? perms.sms : [],
           camera: Array.isArray(perms.camera) ? perms.camera : [],
           microphone: Array.isArray(perms.microphone) ? perms.microphone : [],
+          location: Array.isArray(perms.location) ? perms.location : [],
+          contacts: Array.isArray(perms.contacts) ? perms.contacts : [],
         });
       }
     } catch (e) {
@@ -287,6 +299,8 @@ export function AppSafetyScreen() {
           {key: 'sms' as const, title: 'SMS ACCESS', icon: '💬'},
           {key: 'camera' as const, title: 'CAMERA ACCESS', icon: '📷'},
           {key: 'microphone' as const, title: 'MICROPHONE ACCESS', icon: '🎙️'},
+          {key: 'location' as const, title: 'LOCATION ACCESS', icon: '📍'},
+          {key: 'contacts' as const, title: 'CONTACTS ACCESS', icon: '👤'},
         ] as const
       ).map(sec => (
         <View key={sec.key} style={styles.card}>
@@ -307,6 +321,14 @@ export function AppSafetyScreen() {
                   <Text style={styles.appPkg} numberOfLines={1}>
                     {app.packageName}
                   </Text>
+                  {Array.isArray(app.permissions) && app.permissions.length > 0 ? (
+                    <Text style={styles.muted} numberOfLines={2}>
+                      {[...new Set(app.permissions)]
+                        .map(p => String(p).replace(/^android\.permission\./i, ''))
+                        .sort()
+                        .join(', ')}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
             ))

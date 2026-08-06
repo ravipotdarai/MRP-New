@@ -1650,6 +1650,8 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putArray("sms", pack(scanner.appsWithSms()))
                 putArray("camera", pack(scanner.appsWithCamera()))
                 putArray("microphone", pack(scanner.appsWithMicrophone()))
+                putArray("location", pack(scanner.appsWithLocation()))
+                putArray("contacts", pack(scanner.appsWithContacts()))
             }
             promise.resolve(map)
         } catch (e: Exception) {

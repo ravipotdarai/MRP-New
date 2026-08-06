@@ -37,6 +37,7 @@ import com.mrp.domain.usecase.AppUsageTracker
 import com.mrp.domain.usecase.PackageChangeHandler
 import com.mrp.domain.usecase.BreachPostureScanner
 import com.mrp.domain.usecase.DriveVaultSync
+import com.mrp.domain.usecase.EmergencySyncCoordinator
 import com.mrp.domain.usecase.SelfieVaultPackager
 import java.util.Calendar
 import com.mrp.presentation.admin.MrpDeviceAdminReceiver
@@ -78,6 +79,7 @@ class MrpMonitorService : Service() {
     private var lastWifiAssociated: Boolean? = null
     private var lastBtDeviceAddress: String? = null
     private var lastUsbFunctions: String? = null
+    @Volatile private var emergencySyncStatusLine: String? = null
     private val connectedBtAddresses = mutableSetOf<String>()
     private var bluetoothConnectionMonitor: com.mrp.domain.usecase.BluetoothConnectionMonitor? = null
     private var lastSimEventType: String? = null
@@ -217,6 +219,11 @@ class MrpMonitorService : Service() {
                     "android.intent.action.SIM_STATE_CHANGED" -> {
                         handleSimStateChangeExplicit(simState, isSticky)
                     }
+                    "android.net.conn.CONNECTIVITY_CHANGE" -> {
+                        if (EmergencySyncCoordinator.hasValidatedInternet(this@MrpMonitorService)) {
+                            EmergencySyncCoordinator.onConnectivityValidated(this@MrpMonitorService)
+                        }
+                    }
                     Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT,
                     "android.intent.action.MASTER_CLEAR_NOTIFICATION",
                     "android.intent.action.FACTORY_RESET" -> {
@@ -244,7 +251,7 @@ class MrpMonitorService : Service() {
                         handleUsbChangeExplicit(intent.extras, isSticky)
                     }
                     Intent.ACTION_POWER_CONNECTED -> {
-                        // Power alone is not proof of USB data. Ignore for USB restriction logic.
+                        // Power alone is not proof of USB data; USB_STATE handles attach/detach.
                     }
                     "com.mrp.TEST_USB_CONNECTED" -> {
                         handleUsbChangeExplicit(Bundle().apply {
@@ -324,6 +331,15 @@ class MrpMonitorService : Service() {
 
         startBackgroundThread()
         createNotificationChannel()
+        EmergencySyncCoordinator.statusLineUpdater = { line ->
+            emergencySyncStatusLine = line
+            try {
+                val nm = getSystemService(NotificationManager::class.java)
+                nm.notify(NOTIFICATION_ID, createNotification())
+            } catch (e: Exception) {
+                Log.w(TAG, "emergency notification update", e)
+            }
+        }
 
         backgroundHandler?.post {
             initializeInitialToggleStates()
@@ -420,6 +436,8 @@ class MrpMonitorService : Service() {
         closeCamera()
         unregisterReceivers()
         stopBackgroundThread()
+        EmergencySyncCoordinator.statusLineUpdater = null
+        emergencySyncStatusLine = null
 
         super.onDestroy()
     }
@@ -594,8 +612,17 @@ class MrpMonitorService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MRP Monitoring Active")
-            .setContentText("Tracking device events and location")
+            .setContentTitle(
+                if (emergencySyncStatusLine != null) "MRP Emergency sync" else "MRP Monitoring Active"
+            )
+            .setContentText(
+                emergencySyncStatusLine
+                    ?: if (com.mrp.data.local.DeviceTrackingPrefs.isEmergencyTracking(this)) {
+                        "Emergency tracking on — syncing when network is available"
+                    } else {
+                        "Tracking device events and location"
+                    }
+            )
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -899,6 +926,9 @@ class MrpMonitorService : Service() {
             if (associated) StatusValues.CONNECTED else StatusValues.DISCONNECTED,
             metadata
         )
+        if (associated && EmergencySyncCoordinator.hasValidatedInternet(this)) {
+            EmergencySyncCoordinator.onConnectivityValidated(this)
+        }
         // Association changes are security events when Wi‑Fi capture is enabled
         requestPhoto(this, eventName)
     }
@@ -1058,10 +1088,6 @@ class MrpMonitorService : Service() {
 
     private fun handleSimStateChangeExplicit(simState: String, isSticky: Boolean = false) {
         if (!isMonitoringEnabled()) return
-        val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
-        if (!settings.captureOnSimChange) return
-
-        Log.d(TAG, "SIM state changed explicit: $simState")
 
         val eventType = when (simState) {
             "ABSENT", "NOT_READY" -> EventTypes.SIM_REMOVED
@@ -1075,6 +1101,14 @@ class MrpMonitorService : Service() {
         if (isSticky) return
 
         if (prevSimState == null || prevSimState != eventType) {
+            when (eventType) {
+                EventTypes.SIM_REMOVED -> EmergencySyncCoordinator.onSimRemoved(this)
+                EventTypes.SIM_INSERTED -> EmergencySyncCoordinator.onSimInserted(this)
+            }
+
+            val settings = try { settingsStorage.getSettings() } catch (e: Exception) { return }
+            if (!settings.captureOnSimChange) return
+
             Log.d(TAG, "Logging SIM event: $eventType")
             val simMeta = getSimMetadata(this)
             val finalMetadata = mutableMapOf<String, Any?>().apply {
@@ -1113,6 +1147,10 @@ class MrpMonitorService : Service() {
             Intent.ACTION_SHUTDOWN -> EventTypes.DEVICE_SHUTDOWN
             Intent.ACTION_REBOOT -> EventTypes.DEVICE_REBOOT
             else -> EventTypes.FACTORY_RESET
+        }
+
+        if (eventType == EventTypes.FACTORY_RESET) {
+            EmergencySyncCoordinator.onFactoryResetSignal(this)
         }
 
         // Only log factory reset if setting is enabled
@@ -1228,6 +1266,9 @@ class MrpMonitorService : Service() {
             )
             if (settings.captureOnUsb) {
                 requestPhoto(this, eventName)
+            }
+            if (usb.connected && (stateChanged || functionChanged)) {
+                EmergencySyncCoordinator.onUsbAttached(this)
             }
         }
     }

@@ -12,6 +12,7 @@ export type AppUsageSession = {
   durationSeconds?: number;
 };
 
+/** Packages that must never appear in usage reports / dashboard. */
 const IGNORED_PACKAGES = new Set([
   "android",
   "com.android.systemui",
@@ -26,6 +27,14 @@ const IGNORED_PACKAGES = new Set([
   "com.google.android.packageinstaller",
   "com.android.packageinstaller",
   "com.android.intentresolver",
+  "com.android.settings",
+  "com.android.settings.intelligence",
+  "com.google.android.googlequicksearchbox",
+  "com.google.android.gms",
+  "com.google.android.gsf",
+  "com.google.android.ext.services",
+  "com.samsung.android.app.telephonyui",
+  "com.miui.securitycenter",
 ]);
 
 const IGNORED_PREFIXES = [
@@ -37,7 +46,28 @@ const IGNORED_PREFIXES = [
   "com.oppo.launcher",
   "com.vivo.launcher",
   "com.nothing.launcher",
+  "com.google.android.inputmethod",
+  "com.samsung.android.inputmethod",
+  "com.android.inputmethod",
+  "com.google.android.as",
+  "com.google.android.apps.wellbeing",
 ];
+
+/** User-facing apps under com.android.* that we still want to show. */
+const KEEP_ANDROID_PACKAGES = new Set([
+  "com.android.chrome",
+  "com.android.vending",
+  "com.android.documentsui",
+]);
+
+const NOISE_LABELS = new Set([
+  "android",
+  "system",
+  "system ui",
+  "systemui",
+  "google",
+  "android system",
+]);
 
 export function formatDuration(seconds: number) {
   const safe = Math.max(0, Math.round(seconds || 0));
@@ -62,10 +92,16 @@ export function formatAppLabel(appName?: string, packageName?: string) {
   return formatAppName(appName || packageName || "Unknown");
 }
 
-export function isNoisePackage(packageName: string) {
+export function isNoisePackage(packageName: string, appName?: string) {
   if (!packageName) return true;
-  if (IGNORED_PACKAGES.has(packageName)) return true;
-  return IGNORED_PREFIXES.some((p) => packageName.startsWith(p));
+  const pkg = packageName.toLowerCase();
+  if (IGNORED_PACKAGES.has(pkg)) return true;
+  if (IGNORED_PREFIXES.some((p) => pkg.startsWith(p))) return true;
+  if (pkg.startsWith("com.android.") && !KEEP_ANDROID_PACKAGES.has(pkg)) return true;
+  if (pkg.includes("googlequicksearchbox")) return true;
+  const label = formatAppLabel(appName, packageName).trim().toLowerCase();
+  if (NOISE_LABELS.has(label)) return true;
+  return false;
 }
 
 export function dedupeSessions(sessions: AppUsageSession[]): AppUsageSession[] {
@@ -73,7 +109,7 @@ export function dedupeSessions(sessions: AppUsageSession[]): AppUsageSession[] {
   const unique: AppUsageSession[] = [];
   for (const s of sessions) {
     const pkg = s.packageName || "";
-    if (isNoisePackage(pkg)) continue;
+    if (isNoisePackage(pkg, s.appName)) continue;
     const key = `${pkg}_${s.startTime}_${s.endTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -103,6 +139,7 @@ export function mergeOverlappingSessions(sessions: AppUsageSession[]): AppUsageS
         cur.endTime = Math.max(cur.endTime || 0, s.endTime || 0);
         cur.durationSeconds = Math.max(0, ((cur.endTime || 0) - (cur.startTime || 0)) / 1000);
         if (s.appName && !s.appName.includes(".")) cur.appName = s.appName;
+        if (s.category && s.category !== "Other") cur.category = s.category;
       } else {
         merged.push(cur);
         cur = { ...s };
@@ -119,6 +156,7 @@ export type ConsolidatedApp = {
   durationSeconds: number;
   sessionCount: number;
   lastUsed: number;
+  category: string;
 };
 
 export function consolidateSessionsByApp(sessions: AppUsageSession[]): ConsolidatedApp[] {
@@ -126,7 +164,7 @@ export function consolidateSessionsByApp(sessions: AppUsageSession[]): Consolida
   const byPkg: Record<string, ConsolidatedApp> = {};
   for (const s of mergedSessions) {
     const pkg = s.packageName || "unknown";
-    if (isNoisePackage(pkg)) continue;
+    if (isNoisePackage(pkg, s.appName)) continue;
     const dur = Math.min(Math.max(0, s.durationSeconds || 0), 6 * 60 * 60);
     if (dur < 2) continue;
     if (!byPkg[pkg]) {
@@ -136,6 +174,7 @@ export function consolidateSessionsByApp(sessions: AppUsageSession[]): Consolida
         durationSeconds: 0,
         lastUsed: s.endTime || s.startTime || 0,
         sessionCount: 0,
+        category: guessCategory(s),
       };
     }
     byPkg[pkg].durationSeconds += dur;
@@ -143,6 +182,8 @@ export function consolidateSessionsByApp(sessions: AppUsageSession[]): Consolida
     const last = s.endTime || s.startTime || 0;
     if (last > byPkg[pkg].lastUsed) byPkg[pkg].lastUsed = last;
     if (s.appName && !s.appName.includes(".")) byPkg[pkg].appName = s.appName;
+    const cat = guessCategory(s);
+    if (cat !== "Other") byPkg[pkg].category = cat;
   }
   const byLabel: Record<string, ConsolidatedApp> = {};
   for (const app of Object.values(byPkg)) {
@@ -155,9 +196,11 @@ export function consolidateSessionsByApp(sessions: AppUsageSession[]): Consolida
     existing.durationSeconds += app.durationSeconds;
     existing.sessionCount += app.sessionCount;
     if (app.lastUsed > existing.lastUsed) existing.lastUsed = app.lastUsed;
+    if (app.category !== "Other") existing.category = app.category;
   }
   return Object.values(byLabel)
     .filter((a) => a.durationSeconds >= 5)
+    .filter((a) => !isNoisePackage(a.packageName, a.appName))
     .sort((a, b) => b.durationSeconds - a.durationSeconds);
 }
 
@@ -184,14 +227,34 @@ export function rankScreenTimeShare(sessions: AppUsageSession[], sinceMs: number
 }
 
 export function guessCategory(s: AppUsageSession): string {
+  if (s.category && s.category !== "Other" && s.category.trim()) return s.category.trim();
   const pkg = (s.packageName || "").toLowerCase();
-  if (pkg.includes("chrome") || pkg.includes("browser") || pkg.includes("firefox")) return "Browser";
-  if (pkg.includes("whatsapp") || pkg.includes("telegram") || pkg.includes("messenger") || pkg.includes("sms"))
+  const name = (s.appName || "").toLowerCase();
+  const blob = `${pkg} ${name}`;
+  if (/chrome|browser|firefox|brave|edge|opera|samsung\.internet|miui\.browser/.test(blob))
+    return "Browser";
+  if (/whatsapp|telegram|messenger|signal|sms|messages|discord|slack|teams/.test(blob))
     return "Communication";
-  if (pkg.includes("youtube") || pkg.includes("netflix") || pkg.includes("spotify") || pkg.includes("music"))
+  if (/youtube|netflix|spotify|music|hotstar|prime.?video|mxplayer|gaana|wynk/.test(blob))
     return "Media";
-  if (pkg.includes("maps") || pkg.includes("uber") || pkg.includes("ola")) return "Maps & travel";
-  if (pkg.includes("camera") || pkg.includes("gallery") || pkg.includes("photos")) return "Photos";
-  if (pkg.includes("mail") || pkg.includes("gmail") || pkg.includes("outlook")) return "Productivity";
-  return s.category && s.category !== "Other" ? s.category : "Other";
+  if (/maps|uber|ola|rapido|transit|navigation/.test(blob)) return "Maps & travel";
+  if (/camera|gallery|photos|photoshop|snapseed/.test(blob)) return "Photos";
+  if (/gmail|mail|outlook|docs|sheets|slides|office|notion|drive|keep|calendar/.test(blob))
+    return "Productivity";
+  if (/pay|paisa|phonepe|paytm|gpay|bank|wallet|upi|cred|bhim/.test(blob)) return "Finance";
+  if (/amazon|flipkart|myntra|meesho|shop|store|ajio/.test(blob)) return "Shopping";
+  if (/instagram|facebook|twitter|linkedin|snapchat|tiktok|reddit|pinterest/.test(blob))
+    return "Social";
+  if (/game|unity|roblox|pubg|freefire|candy/.test(blob)) return "Games";
+  return "Other";
+}
+
+/** Dedupe + shorten android.permission.* for Safety lists. */
+export function formatPermissionList(perms: string[] | undefined): string {
+  if (!perms?.length) return "—";
+  const uniq = [...new Set(perms.map((p) => String(p || "").trim()).filter(Boolean))];
+  return uniq
+    .map((p) => p.replace(/^android\.permission\./i, ""))
+    .sort()
+    .join(", ");
 }

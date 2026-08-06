@@ -206,6 +206,77 @@ export function liveLatLng(vault: VaultPayload | null): { lat: number; lng: numb
   return { lat, lng };
 }
 
+/** Normalized live-location snapshot for Locate UI (Android field names vary). */
+export function liveLocationDetails(vault: VaultPayload | null): {
+  lat: number | null;
+  lng: number | null;
+  accuracyM: number | null;
+  network: string;
+  batteryPct: number | null;
+  address: string;
+  insideGeofence: boolean | null;
+  geofenceName: string;
+  geofenceId: string;
+  atMs: number | null;
+  source: string;
+} {
+  const live = (vault?.liveLocation || {}) as Record<string, unknown>;
+  const dh = (vault?.deviceHealth || {}) as Record<string, unknown>;
+  const ll = liveLatLng(vault);
+  const insideRaw = live.insideGeofence ?? live.inside_fence ?? live.insideFence;
+  const inside =
+    typeof insideRaw === "boolean"
+      ? insideRaw
+      : typeof insideRaw === "string"
+        ? insideRaw.toLowerCase() === "true"
+        : null;
+  return {
+    lat: ll?.lat ?? null,
+    lng: ll?.lng ?? null,
+    accuracyM: num(live.accuracyM ?? live.accuracy ?? live.accuracyMeters),
+    network: String(live.network || live.networkType || "").trim() || "—",
+    batteryPct: num(live.batteryPct ?? live.battery ?? dh.batteryPct),
+    address: String(live.address || live.detailedAddress || "").trim(),
+    insideGeofence: inside,
+    geofenceName: String(live.geofenceName || live.geofence_name || "").trim(),
+    geofenceId: String(live.geofenceId || live.geofence_id || "").trim(),
+    atMs: num(live.atMs ?? live.timestamp),
+    source: String(live.source || "").trim(),
+  };
+}
+
+/** Match a selfie blob back to its timeline row for location / geofence. */
+export function findRowForSelfie(
+  vault: VaultPayload | null,
+  selfie: unknown,
+): TimelineRow | null {
+  const rows = asRows(vault);
+  if (!rows.length || !selfie) return null;
+  const o = selfie as Record<string, unknown>;
+  const id = String(o.eventId || o.event_id || "").trim();
+  if (id) {
+    const byId = rows.find((r) => String(r.id || r.eventId || "") === id);
+    if (byId) return byId;
+  }
+  const type = eventType({
+    eventType: o.eventType,
+    event_type: o.event_type,
+    event: o.event,
+  }).toUpperCase();
+  const at = num(o.atMs ?? o.timestamp ?? o.time) ?? 0;
+  let best: { row: TimelineRow; dist: number } | null = null;
+  for (const row of rows) {
+    const rt = eventType(row).toUpperCase();
+    if (type && rt && type !== rt && !type.includes(rt) && !rt.includes(type)) continue;
+    const t = eventTimeMs(row);
+    if (!at || !t) continue;
+    const dist = Math.abs(at - t);
+    if (dist > 5 * 60_000) continue;
+    if (!best || dist < best.dist) best = { row, dist };
+  }
+  return best?.row ?? null;
+}
+
 export function computeSecurityScore(vault: VaultPayload | null): {
   score: number;
   risk: string;

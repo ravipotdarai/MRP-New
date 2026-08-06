@@ -132,6 +132,8 @@ export type VaultPayload = {
       sms?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
       camera?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
       microphone?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
+      location?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
+      contacts?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;
       scannedAtMs?: number;
     };
   };

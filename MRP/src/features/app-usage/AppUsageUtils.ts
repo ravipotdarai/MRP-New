@@ -42,6 +42,12 @@ const IGNORED_PACKAGES = new Set([
   'com.google.android.packageinstaller',
   'com.android.packageinstaller',
   'com.android.intentresolver',
+  'com.android.settings',
+  'com.android.settings.intelligence',
+  'com.google.android.googlequicksearchbox',
+  'com.google.android.gms',
+  'com.google.android.gsf',
+  'com.google.android.ext.services',
   'com.samsung.android.app.telephonyui',
   'com.miui.securitycenter',
 ]);
@@ -55,12 +61,38 @@ const IGNORED_PACKAGE_PREFIXES = [
   'com.oppo.launcher',
   'com.vivo.launcher',
   'com.nothing.launcher',
+  'com.google.android.inputmethod',
+  'com.samsung.android.inputmethod',
+  'com.android.inputmethod',
+  'com.google.android.as',
+  'com.google.android.apps.wellbeing',
 ];
 
-export function isNoisePackage(packageName: string): boolean {
+const KEEP_ANDROID_PACKAGES = new Set([
+  'com.android.chrome',
+  'com.android.vending',
+  'com.android.documentsui',
+]);
+
+const NOISE_LABELS = new Set([
+  'android',
+  'system',
+  'system ui',
+  'systemui',
+  'google',
+  'android system',
+]);
+
+export function isNoisePackage(packageName: string, appName?: string): boolean {
   if (!packageName) return true;
-  if (IGNORED_PACKAGES.has(packageName)) return true;
-  return IGNORED_PACKAGE_PREFIXES.some(p => packageName.startsWith(p));
+  const pkg = packageName.toLowerCase();
+  if (IGNORED_PACKAGES.has(pkg)) return true;
+  if (IGNORED_PACKAGE_PREFIXES.some(p => pkg.startsWith(p))) return true;
+  if (pkg.startsWith('com.android.') && !KEEP_ANDROID_PACKAGES.has(pkg)) return true;
+  if (pkg.includes('googlequicksearchbox')) return true;
+  const label = formatAppLabel(appName || '', packageName).trim().toLowerCase();
+  if (NOISE_LABELS.has(label)) return true;
+  return false;
 }
 
 /** Drop exact duplicate rows (same package + start + end). */
@@ -68,7 +100,7 @@ export function dedupeSessions(sessions: AppUsageSession[]): AppUsageSession[] {
   const seen = new Set<string>();
   const unique: AppUsageSession[] = [];
   for (const s of sessions) {
-    if (isNoisePackage(s.packageName)) continue;
+    if (isNoisePackage(s.packageName, s.appName)) continue;
     const key = `${s.packageName}_${s.startTime}_${s.endTime}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -132,7 +164,7 @@ export function consolidateSessionsByApp(
   const byPkg: Record<string, ConsolidatedApp> = {};
 
   for (const s of mergedSessions) {
-    if (isNoisePackage(s.packageName)) continue;
+    if (isNoisePackage(s.packageName, s.appName)) continue;
     // Cap absurd durations (stuck sessions)
     const dur = Math.min(Math.max(0, s.durationSeconds || 0), 6 * 60 * 60);
     if (dur < 2) continue;
@@ -140,7 +172,7 @@ export function consolidateSessionsByApp(
       byPkg[s.packageName] = {
         packageName: s.packageName,
         appName: s.appName || s.packageName,
-        category: s.category || 'Other',
+        category: guessCategory(s),
         durationSeconds: 0,
         lastUsed: s.endTime || s.startTime,
         sessionCount: 0,
@@ -155,6 +187,8 @@ export function consolidateSessionsByApp(
     if (s.appName && !s.appName.includes('.')) {
       byPkg[s.packageName].appName = s.appName;
     }
+    const cat = guessCategory(s);
+    if (cat !== 'Other') byPkg[s.packageName].category = cat;
   }
 
   // Second pass: merge same display label (case-insensitive)
@@ -177,7 +211,31 @@ export function consolidateSessionsByApp(
 
   return Object.values(byLabel)
     .filter(a => a.durationSeconds >= 5)
+    .filter(a => !isNoisePackage(a.packageName, a.appName))
     .sort((a, b) => b.durationSeconds - a.durationSeconds);
+}
+
+export function guessCategory(s: AppUsageSession): string {
+  if (s.category && s.category !== 'Other' && s.category.trim()) return s.category.trim();
+  const pkg = (s.packageName || '').toLowerCase();
+  const name = (s.appName || '').toLowerCase();
+  const blob = `${pkg} ${name}`;
+  if (/chrome|browser|firefox|brave|edge|opera|samsung\.internet|miui\.browser/.test(blob))
+    return 'Browser';
+  if (/whatsapp|telegram|messenger|signal|sms|messages|discord|slack|teams/.test(blob))
+    return 'Communication';
+  if (/youtube|netflix|spotify|music|hotstar|prime.?video|mxplayer|gaana|wynk/.test(blob))
+    return 'Media';
+  if (/maps|uber|ola|rapido|transit|navigation/.test(blob)) return 'Maps & travel';
+  if (/camera|gallery|photos|photoshop|snapseed/.test(blob)) return 'Photos';
+  if (/gmail|mail|outlook|docs|sheets|slides|office|notion|drive|keep|calendar/.test(blob))
+    return 'Productivity';
+  if (/pay|paisa|phonepe|paytm|gpay|bank|wallet|upi|cred|bhim/.test(blob)) return 'Finance';
+  if (/amazon|flipkart|myntra|meesho|shop|store|ajio/.test(blob)) return 'Shopping';
+  if (/instagram|facebook|twitter|linkedin|snapchat|tiktok|reddit|pinterest/.test(blob))
+    return 'Social';
+  if (/game|unity|roblox|pubg|freefire|candy/.test(blob)) return 'Games';
+  return 'Other';
 }
 
 export const aggregateAppStats = (sessions: AppUsageSession[]) => {

@@ -3,6 +3,7 @@ package com.mrp
 import com.facebook.react.bridge.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import com.mrp.data.local.DeviceConfigMirror
 import com.mrp.data.local.DeviceTrackingPrefs
 import com.mrp.domain.usecase.DevicePresenceTracker
 
@@ -90,14 +91,7 @@ class DeviceTrackingModule(private val reactContext: ReactApplicationContext) :
     }
 
     private fun mirrorConfigToFirebase() {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        try {
-            FirebaseDatabase.getInstance(databaseUrl())
-                .getReference("device_config")
-                .child(uid)
-                .updateChildren(DeviceTrackingPrefs.toFirebaseConfigMap(reactContext))
-        } catch (_: Exception) {
-        }
+        DeviceConfigMirror.push(reactContext)
     }
 
     private fun databaseUrl(): String {

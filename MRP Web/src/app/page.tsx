@@ -9,8 +9,9 @@ export default function HomePage() {
         <p className="page-lead" style={{ marginBottom: 0 }}>
           PathSync keeps security data on <strong>your device</strong>. With backup on, an encrypted
           copy lives only in <strong>your private Google Drive app folder</strong>, unlocked with
-          your PIN. Open this console at <strong>pathsync.in</strong>. We do not sell your data and
-          do not keep a readable copy on MRP servers.
+          your PIN. Open this console at{" "}
+          <strong>mobileresilienceplatform.web.app</strong>. We do not sell your data and do not keep
+          a readable copy on MRP servers.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">

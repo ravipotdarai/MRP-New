@@ -59,7 +59,8 @@ object DriveVaultSync {
      * Always updates are local; this only pushes to Drive.
      */
     fun requestSyncAsync(context: Context, reason: String) {
-        if (!DeviceTrackingPrefs.isEventSyncEnabled(context) &&
+        if (!isPanicReason(reason) &&
+            !DeviceTrackingPrefs.isEventSyncEnabled(context) &&
             !DeviceTrackingPrefs.isEmergencyTracking(context) &&
             reason != "manual"
         ) {
@@ -67,21 +68,42 @@ object DriveVaultSync {
         }
         executor.execute {
             try {
-                trySync(context.applicationContext, reason)
+                trySync(context.applicationContext, reason, panic = false)
             } catch (e: Exception) {
                 Log.w(TAG, "requestSync $reason", e)
             }
         }
     }
 
-    fun trySync(context: Context, reason: String): Boolean {
+    /**
+     * Immediate emergency upload: bypasses sync interval, uses critical-first payload,
+     * allows any validated internet when emergency tracking is on.
+     */
+    fun requestPanicSync(context: Context, reason: String) {
+        executor.execute {
+            try {
+                trySync(context.applicationContext, reason, panic = true)
+            } catch (e: Exception) {
+                Log.w(TAG, "requestPanicSync $reason", e)
+            } finally {
+                EmergencySyncCoordinator.clearStatusLine()
+            }
+        }
+    }
+
+    private fun isPanicReason(reason: String): Boolean = reason.startsWith("panic:")
+
+    fun trySync(context: Context, reason: String): Boolean =
+        trySync(context, reason, panic = isPanicReason(reason))
+
+    private fun trySync(context: Context, reason: String, panic: Boolean): Boolean {
         if (!running.compareAndSet(false, true)) return false
         try {
-            if (!networkAllowed(context)) {
-                Log.d(TAG, "skip sync — network policy ($reason)")
+            if (!networkAllowed(context, panic)) {
+                Log.d(TAG, "skip sync — network policy ($reason panic=$panic)")
                 return false
             }
-            if (!intervalElapsed(context, reason)) {
+            if (!intervalElapsed(context, reason, panic)) {
                 Log.d(TAG, "skip sync — frequency ($reason)")
                 return false
             }
@@ -100,22 +122,28 @@ object DriveVaultSync {
                 return false
             }
             val token = obtainAccessToken(context, account) ?: return false
-            val result = performBackup(context, pin, token, account.email ?: "", reason)
+            val result = performBackup(context, pin, token, account.email ?: "", reason, panic)
             return result
         } finally {
             running.set(false)
         }
     }
 
-    fun buildPayload(context: Context, email: String, reason: String): JSONObject {
+    fun buildPayload(context: Context, email: String, reason: String, criticalOnly: Boolean = false): JSONObject {
         val timeline = TimelineStorage(context)
         val sim = SimRecoveryStorage(context)
+        val timelineJson = if (criticalOnly) {
+            timeline.exportCriticalTimelineJsonArray()
+        } else {
+            timeline.exportTimelineJsonArray()
+        }
         val payload = JSONObject()
             .put("version", 3)
             .put("createdAtMs", System.currentTimeMillis())
             .put("syncReason", reason)
             .put("email", email)
-            .put("timeline", timeline.exportTimelineJsonArray())
+            .put("emergencyPayload", criticalOnly)
+            .put("timeline", timelineJson)
             .put("pendingSync", JSONArray(sim.getPendingSyncJson()))
             .put("simHistory", JSONArray(sim.getHistoryJson()))
 
@@ -123,7 +151,7 @@ object DriveVaultSync {
             payload.put("liveLocation", LiveLocationStore.readOrEmpty(context))
         }
 
-        if (DeviceTrackingPrefs.shouldIncludeSelfies(context)) {
+        if (!criticalOnly && DeviceTrackingPrefs.shouldIncludeSelfies(context)) {
             payload.put("selfies", SelfieVaultPackager.collectSelfieBlobs(context, timeline.getTimeline()))
             payload.put("selfiesOmitted", false)
         } else {
@@ -138,15 +166,21 @@ object DriveVaultSync {
             }
         )
 
-        // v3 extras — built only at sync time (no background polling)
-        try {
-            payload.put("appUsage", VaultExtrasBuilder.buildAppUsageDaily(context))
-            payload.put("deviceHealth", VaultExtrasBuilder.buildDeviceHealth(context))
-            payload.put("geofences", VaultExtrasBuilder.buildGeofences(context))
-            // Light data-risk evaluate (debounced internally 6h) — no selfie
-            DataRiskRuleEngine(context).evaluateInstalled()
-        } catch (e: Exception) {
-            Log.w(TAG, "vault v3 extras failed", e)
+        if (!criticalOnly) {
+            try {
+                payload.put("appUsage", VaultExtrasBuilder.buildAppUsageDaily(context))
+                payload.put("deviceHealth", VaultExtrasBuilder.buildDeviceHealth(context))
+                payload.put("geofences", VaultExtrasBuilder.buildGeofences(context))
+                DataRiskRuleEngine(context).evaluateInstalled()
+            } catch (e: Exception) {
+                Log.w(TAG, "vault v3 extras failed", e)
+            }
+        } else {
+            try {
+                payload.put("deviceHealth", VaultExtrasBuilder.buildDeviceHealth(context))
+            } catch (e: Exception) {
+                Log.w(TAG, "vault critical health failed", e)
+            }
         }
         return payload
     }
@@ -156,10 +190,11 @@ object DriveVaultSync {
         pin: String,
         accessToken: String,
         email: String,
-        reason: String
+        reason: String,
+        criticalOnly: Boolean = isPanicReason(reason)
     ): Boolean {
         val sim = SimRecoveryStorage(context)
-        val payload = buildPayload(context, email, reason)
+        val payload = buildPayload(context, email, reason, criticalOnly)
         val cipherBytes = VaultBackupCrypto.encryptUtf8(payload.toString(), pin)
         val client = DriveAppDataClient(accessToken)
         val existing = client.listAppDataFiles(DriveAppDataClient.BACKUP_FILE_NAME)
@@ -195,24 +230,33 @@ object DriveVaultSync {
         }
     }
 
-    private fun networkAllowed(context: Context): Boolean {
+    private fun networkAllowed(context: Context, panic: Boolean): Boolean {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return false
         val net = cm.activeNetwork ?: return false
         val caps = cm.getNetworkCapabilities(net) ?: return false
+        if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return false
+        val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         val wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
         val cell = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
-        // Legacy Drive wifi-only still honored when set
+        val ethernet = caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+
+        if (panic || DeviceTrackingPrefs.isEmergencyTracking(context)) {
+            return validated && (wifi || cell || ethernet)
+        }
+
+        if (!validated) return false
         val legacyWifiOnly = vaultPrefs(context).getBoolean(KEY_WIFI_ONLY, true)
         if (legacyWifiOnly && !DeviceTrackingPrefs.syncOnMobileData(context)) {
             return wifi && DeviceTrackingPrefs.syncOnWifi(context)
         }
         if (wifi && DeviceTrackingPrefs.syncOnWifi(context)) return true
         if (cell && DeviceTrackingPrefs.syncOnMobileData(context)) return true
-        return false
+        return ethernet
     }
 
-    private fun intervalElapsed(context: Context, reason: String): Boolean {
+    private fun intervalElapsed(context: Context, reason: String, panic: Boolean): Boolean {
+        if (panic || reason.startsWith("panic:")) return true
         val last = DeviceTrackingPrefs.lastDriveSyncMs(context)
         if (last <= 0) return true
         val elapsed = System.currentTimeMillis() - last

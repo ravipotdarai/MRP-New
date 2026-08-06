@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   eventIcon,
   eventTimeMs,
@@ -32,6 +33,20 @@ export function EventDetailDrawer({
   onPrev?: () => void;
   onNext?: () => void;
 }) {
+  useEffect(() => {
+    if (!row) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [row, onClose]);
+
   if (!row) return null;
   const ll = rowLatLng(row);
   const type = eventType(row);
@@ -49,15 +64,23 @@ export function EventDetailDrawer({
   const meta = (row.metadata || {}) as Record<string, unknown>;
   const battery = row.battery ?? meta.battery ?? meta.batteryPct;
   const network = row.network ?? meta.network;
-  const accuracy = row.accuracy ?? meta.accuracy ?? (row.location as Record<string, unknown> | undefined)?.accuracy;
+  const accuracy =
+    row.accuracy ?? meta.accuracy ?? (row.location as Record<string, unknown> | undefined)?.accuracy;
 
-  return (
-    <div className="drawer-backdrop" role="presentation" onClick={onClose}>
+  const panel = (
+    <div
+      className="drawer-backdrop"
+      role="presentation"
+      onClick={onClose}
+      data-testid="event-drawer-backdrop"
+    >
       <aside
-        className="event-drawer sensitive-surface rise"
+        className="event-drawer sensitive-surface"
         role="dialog"
-        aria-label="Event details"
+        aria-modal="true"
+        aria-label="Event evidence details"
         onClick={(e) => e.stopPropagation()}
+        data-testid="event-drawer"
       >
         <div className="drawer-head">
           <div className="drawer-title-row">
@@ -74,7 +97,9 @@ export function EventDetailDrawer({
           {new Date(eventTimeMs(row) || Date.now()).toLocaleString()}
         </p>
         <div className="drawer-badges">
-          <span className={`badge ${sev === "alert" ? "badge-alert" : sev === "safe" ? "badge-safe" : ""}`}>
+          <span
+            className={`badge ${sev === "alert" ? "badge-alert" : sev === "safe" ? "badge-safe" : ""}`}
+          >
             {sev}
           </span>
           <span className="badge">{status}</span>
@@ -123,7 +148,11 @@ export function EventDetailDrawer({
             </>
           ) : null}
         </dl>
-        {ll ? <InteractiveMap center={ll} markers={[{ ...ll, id: "ev" }]} height={200} /> : null}
+        {ll ? (
+          <div className="drawer-map-wrap">
+            <InteractiveMap center={ll} markers={[{ ...ll, id: "ev" }]} height={200} />
+          </div>
+        ) : null}
         <div className="drawer-nav">
           {onPrev ? (
             <button type="button" className="btn btn-sm" onClick={onPrev}>
@@ -139,6 +168,9 @@ export function EventDetailDrawer({
       </aside>
     </div>
   );
+
+  if (typeof document === "undefined") return panel;
+  return createPortal(panel, document.body);
 }
 
 /** Compact security timeline — type, status, time only (no photos in the list). */
@@ -164,7 +196,11 @@ export function TimelineList({
         const status = rowStatus(row);
         return (
           <li key={String(row.id || `${t}-${eventTimeMs(row)}-${i}`)} className="timeline-item">
-            <button type="button" className="timeline-row timeline-row-compact" onClick={() => onSelect(row, i)}>
+            <button
+              type="button"
+              className="timeline-row timeline-row-compact"
+              onClick={() => onSelect(row, i)}
+            >
               <span className={`tl-icon tl-icon-${sev}`} aria-hidden title={t}>
                 {eventIcon(t)}
               </span>

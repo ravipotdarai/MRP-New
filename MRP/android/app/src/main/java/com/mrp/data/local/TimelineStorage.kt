@@ -105,6 +105,30 @@ class TimelineStorage(private val context: Context) {
         return arr
     }
 
+    /** Recent events for panic / emergency sync (smaller, faster upload). */
+    fun exportRecentTimelineJsonArray(maxEvents: Int = 40): JSONArray {
+        val arr = JSONArray()
+        getTimeline().takeLast(maxEvents.coerceAtLeast(1)).forEach { arr.put(it.toJsonObject()) }
+        return arr
+    }
+
+    private val CRITICAL_EVENT_TYPES = setOf(
+        "SIM_REMOVED", "SIM_INSERTED", "SIM_CHANGE", "USB_CONNECTED", "USB_DISCONNECTED",
+        "FACTORY_RESET", "DEVICE_SHUTDOWN", "DEVICE_REBOOT", "WRONG_PASSWORD",
+        "WRONG_UNLOCK_ATTEMPT", "WRONG_BIOMETRIC", "SCREEN_LOCK", "SCREEN_UNLOCK"
+    )
+
+    /** Security-critical events first, then most recent, capped for panic sync. */
+    fun exportCriticalTimelineJsonArray(maxEvents: Int = 30): JSONArray {
+        val all = getTimeline()
+        val critical = all.filter { it.eventType.uppercase() in CRITICAL_EVENT_TYPES }
+        val merged = (critical + all.takeLast(maxEvents)).distinctBy { it.id }
+            .takeLast(maxEvents.coerceAtLeast(1))
+        val arr = JSONArray()
+        merged.forEach { arr.put(it.toJsonObject()) }
+        return arr
+    }
+
     /**
      * Merge restored entries. Skips ids already present. Returns inserted count.
      */

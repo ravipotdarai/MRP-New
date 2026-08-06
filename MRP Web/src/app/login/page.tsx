@@ -12,7 +12,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!loading && user) router.replace("/dashboard");
+    if (!loading && user) {
+      router.replace("/dashboard/");
+    }
   }, [loading, user, router]);
 
   const onSignIn = async () => {
@@ -20,49 +22,57 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInWithGoogle();
-      router.replace("/dashboard");
+      window.location.assign("/dashboard/");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign-in failed");
-    } finally {
       setBusy(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="hero-landing" style={{ maxWidth: 960, margin: "0 auto" }} data-testid="auth-loading">
+        <div className="rise">
+          <p className="muted">Checking session…</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="hero-landing" style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div className="hero-landing" style={{ maxWidth: 960, margin: "0 auto" }} data-testid="login-page">
       <div className="rise">
         <Link href="/" className="hero-kicker">
-          ← MRP Web
+          ← PathSync Web
         </Link>
         <h1 style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}>Sign in</h1>
         <p className="page-lead">
-          Use the same Google account linked on your phone. Your encrypted backup stays on your device
-          and private Drive — decryption happens only in this browser with your PathSync PIN. MRP does
-          not keep a readable copy on MRP servers.
+          <strong>Step 1 — Google:</strong> use the same account linked on your phone.{" "}
+          <strong>Step 2 — PathSync PIN:</strong> unlock your encrypted backup on the next screen
+          (decryption stays in this browser).
         </p>
+
         {!configured ? (
           <p className="badge badge-alert">Configure Firebase in .env.local first</p>
         ) : (
           <button
             type="button"
             className="btn btn-primary"
-            disabled={busy || loading}
+            disabled={busy}
+            data-testid="login-google-popup"
             onClick={() => void onSignIn()}
           >
             {busy ? "Opening Google…" : "Continue with Google"}
           </button>
         )}
         {error ? (
-          <p className="muted" style={{ color: "var(--alert)", marginTop: "1rem" }}>
+          <p className="muted" style={{ color: "var(--alert)", marginTop: "1rem" }} data-testid="login-error">
             {error}
           </p>
         ) : null}
-      </div>
-      <div className="panel rise rise-delay-1">
-        <h2>What we ask for</h2>
-        <p className="muted">
-          Firebase Auth for identity. Drive <code className="mono">appdata</code> only when you
-          open Monitoring — never your full Drive.
+        <p className="muted" style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
+          Complete the Google account picker. After sign-in you should see the PathSync PIN unlock
+          panel on Overview.
         </p>
       </div>
     </div>

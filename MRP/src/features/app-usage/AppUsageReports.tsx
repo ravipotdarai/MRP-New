@@ -42,9 +42,14 @@ export function AppUsageReports({sessions}: Props) {
     );
   }, [sessions, timeframe]);
 
-  const totalUsage = useMemo(
-    () => filteredSessions.reduce((sum, s) => sum + Math.max(0, s.durationSeconds || 0), 0),
+  const aggregatedApps = useMemo(
+    () => consolidateSessionsByApp(filteredSessions),
     [filteredSessions],
+  );
+
+  const totalUsage = useMemo(
+    () => aggregatedApps.reduce((sum, a) => sum + Math.max(0, a.durationSeconds || 0), 0),
+    [aggregatedApps],
   );
 
   // Average over days that actually have activity (not empty calendar days)
@@ -61,17 +66,12 @@ export function AppUsageReports({sessions}: Props) {
 
   const categoryStats = useMemo(() => {
     const map: Record<string, number> = {};
-    filteredSessions.forEach(s => {
-      const cat = s.category && s.category !== 'Other' ? s.category : guessCategory(s);
-      map[cat] = (map[cat] || 0) + Math.max(0, s.durationSeconds || 0);
+    aggregatedApps.forEach(a => {
+      const cat = a.category || 'Other';
+      map[cat] = (map[cat] || 0) + Math.max(0, a.durationSeconds || 0);
     });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
-  }, [filteredSessions]);
-
-  const aggregatedApps = useMemo(
-    () => consolidateSessionsByApp(filteredSessions),
-    [filteredSessions],
-  );
+  }, [aggregatedApps]);
 
   const topApps = aggregatedApps.slice(0, 5);
   const bottomApps = useMemo(() => {
@@ -277,20 +277,6 @@ export function AppUsageReports({sessions}: Props) {
       ) : null}
     </ScrollView>
   );
-}
-
-function guessCategory(s: AppUsageSession): string {
-  const n = `${s.appName || ''} ${s.packageName || ''}`.toLowerCase();
-  if (/whatsapp|telegram|instagram|facebook|twitter|snapchat|discord|signal/.test(n)) {
-    return 'Social';
-  }
-  if (/youtube|netflix|hotstar|prime|spotify|music|video/.test(n)) return 'Media';
-  if (/chrome|firefox|brave|browser|safari/.test(n)) return 'Browser';
-  if (/gmail|outlook|slack|teams|docs|office|notion|mail/.test(n)) return 'Productivity';
-  if (/maps|uber|ola|rapido|navi/.test(n)) return 'Maps';
-  if (/game|pubg|freefire|candy|clash/.test(n)) return 'Game';
-  if (/camera|gallery|photos|image/.test(n)) return 'Image';
-  return s.category || 'Other';
 }
 
 function createStyles(colors: ColorPalette) {

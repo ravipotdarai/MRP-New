@@ -110,10 +110,15 @@ export function SyncPolicyPanel() {
             </Text>
             {!!cfg.emergencyTracking ? (
               <Text style={[styles.meta, {marginTop: 4, color: colors.amber}]}>
-                Emergency tracking is active now. `1-4 min` gives faster find-my-device updates but
-                uses much more battery; turn it off when done.
+                Emergency tracking is active. MRP syncs faster over any validated network
+                (saved Wi‑Fi or mobile data) and panics on USB attach or SIM removal. SIM
+                removal also turns emergency on automatically. Turn off when done to save battery.
               </Text>
-            ) : null}
+            ) : (
+              <Text style={[styles.meta, {marginTop: 4}]}>
+                Removing the SIM automatically enables emergency tracking and panic sync to Drive.
+              </Text>
+            )}
           </>
         ) : (
           <Text style={styles.meta}>Loading policy…</Text>

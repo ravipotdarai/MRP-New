@@ -29,7 +29,7 @@ object VaultExtrasBuilder {
         val dayStart = startOfDayMs()
         val now = System.currentTimeMillis()
         val sessions = querySessions(context, dayStart, now)
-            .filter { !isSystemPackage(context, it.packageName) }
+            .filter { !isNoiseUsagePackage(context, it.packageName, it.appName) }
             .take(MAX_DAILY_SESSIONS)
         val arr = JSONArray()
         for (s in sessions) {
@@ -56,6 +56,8 @@ object VaultExtrasBuilder {
             .put("sms", toAppArray(scanner.appsWithSms()))
             .put("camera", toAppArray(scanner.appsWithCamera()))
             .put("microphone", toAppArray(scanner.appsWithMicrophone()))
+            .put("location", toAppArray(scanner.appsWithLocation()))
+            .put("contacts", toAppArray(scanner.appsWithContacts()))
             .put("scannedAtMs", System.currentTimeMillis())
     }
 
@@ -177,11 +179,13 @@ object VaultExtrasBuilder {
     private fun toAppArray(apps: List<SensitivePermissionScanner.AppPerm>): JSONArray {
         val arr = JSONArray()
         for (a in apps) {
+            val perms = JSONArray()
+            a.permissions.distinct().sorted().forEach { perms.put(it) }
             arr.put(
                 JSONObject()
                     .put("packageName", a.packageName)
                     .put("appName", a.appName)
-                    .put("permissions", JSONArray(a.permissions))
+                    .put("permissions", perms)
             )
         }
         return arr
@@ -293,6 +297,25 @@ object VaultExtrasBuilder {
             false
         }
     }
+
+    /** System flags + known noise (launcher, Search, bare "Android", most com.android.*). */
+    private fun isNoiseUsagePackage(context: Context, packageName: String, appName: String): Boolean {
+        if (isSystemPackage(context, packageName)) return true
+        val pkg = packageName.lowercase()
+        if (pkg == "android" || pkg.contains("googlequicksearchbox")) return true
+        if (pkg.startsWith("com.google.android.gms") || pkg.startsWith("com.google.android.gsf")) return true
+        if (pkg.startsWith("com.android.launcher") || pkg.startsWith("com.android.systemui")) return true
+        if (pkg.startsWith("com.android.") && pkg !in KEEP_ANDROID_USAGE) return true
+        val label = appName.trim().lowercase()
+        if (label == "android" || label == "system" || label == "system ui" || label == "google") return true
+        return false
+    }
+
+    private val KEEP_ANDROID_USAGE = setOf(
+        "com.android.chrome",
+        "com.android.vending",
+        "com.android.documentsui",
+    )
 
     private fun appLabel(pm: PackageManager, pkg: String): String {
         return try {

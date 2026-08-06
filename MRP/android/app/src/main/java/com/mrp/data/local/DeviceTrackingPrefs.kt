@@ -23,6 +23,7 @@ object DeviceTrackingPrefs {
     private const val KEY_SYNC_FREQ_MIN = "sync_frequency_minutes"
     private const val KEY_EMERGENCY = "emergency_tracking"
     private const val KEY_EMERGENCY_MIN = "emergency_interval_minutes"
+    private const val KEY_EMERGENCY_SIM_AUTO = "emergency_auto_sim"
     private const val KEY_LAST_GEOFENCE_INSIDE = "last_geofence_inside"
     private const val KEY_LAST_GEOFENCE_ID = "last_geofence_id"
     private const val KEY_LAST_SYNC_MS = "last_drive_sync_ms"
@@ -96,6 +97,42 @@ object DeviceTrackingPrefs {
     /** Emergency sync interval — default 1, never less than 1. */
     fun emergencyIntervalMinutes(context: Context): Int =
         p(context).getInt(KEY_EMERGENCY_MIN, 1).coerceAtLeast(1)
+
+    fun isEmergencySimAuto(context: Context): Boolean =
+        p(context).getBoolean(KEY_EMERGENCY_SIM_AUTO, false)
+
+    /**
+     * Find-my-device profile when SIM is removed (theft / swap).
+     * Marks auto-emergency only when emergency was off; manual emergency stays manual.
+     */
+    fun activateEmergencyForSimRemoval(context: Context) {
+        val prefs = p(context)
+        val wasOn = prefs.getBoolean(KEY_EMERGENCY, false)
+        val e = prefs.edit()
+            .putBoolean(KEY_EMERGENCY, true)
+            .putBoolean(KEY_EVENT_SYNC, true)
+            .putBoolean(KEY_SYNC_LOCATION, true)
+            .putBoolean(KEY_SYNC_WIFI, true)
+            .putBoolean(KEY_SYNC_MOBILE, true)
+            .putBoolean(KEY_BACKGROUND, true)
+            .putBoolean(KEY_HIGH_ACCURACY, true)
+            .putInt(KEY_EMERGENCY_MIN, 1)
+        if (!wasOn) {
+            e.putBoolean(KEY_EMERGENCY_SIM_AUTO, true)
+        }
+        e.apply()
+    }
+
+    /** Turn off emergency only when it was auto-enabled by SIM removal. */
+    fun clearEmergencyIfSimAuto(context: Context): Boolean {
+        val prefs = p(context)
+        if (!prefs.getBoolean(KEY_EMERGENCY_SIM_AUTO, false)) return false
+        prefs.edit()
+            .putBoolean(KEY_EMERGENCY, false)
+            .remove(KEY_EMERGENCY_SIM_AUTO)
+            .apply()
+        return true
+    }
 
     fun lastDriveSyncMs(context: Context): Long =
         p(context).getLong(KEY_LAST_SYNC_MS, 0L)

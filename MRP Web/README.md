@@ -43,11 +43,9 @@ npm run build
 npx firebase-tools deploy --only hosting --project mobileresilienceplatform
 ```
 
-Live: https://pathsync.in (also https://mobileresilienceplatform.web.app)
+Live: https://mobileresilienceplatform.web.app
 
-Custom domain: `pathsync.in` / `www.pathsync.in` (Firebase Hosting + OAuth clients).
-
-CORS (Nest) includes pathsync.in origins by default.
+CORS (Nest) should allow the Hosting origin above.
 
 RTDB rules (`device_config` + `admin_audit` for `ravipotdarai@gmail.com`):
 
@@ -58,13 +56,19 @@ npx firebase-tools deploy --only database --project mobileresilienceplatform
 
 ### OAuth checklist (P6-12)
 
-In Google Cloud Console → Credentials → Web OAuth client, add **Authorized JavaScript origins**:
+Web login uses **Google Identity Services** + Firebase `signInWithCredential` (not Firebase
+`signInWithPopup`), so you mainly need **Authorized JavaScript origins** on the Web OAuth client:
 
 - `https://mobileresilienceplatform.web.app`
 - `https://mobileresilienceplatform.firebaseapp.com`
 - `http://localhost:3001` (local)
 
+Also keep Firebase Auth → Authorized domains including `mobileresilienceplatform.web.app`.
+
 Drive scope (web + mobile): **`https://www.googleapis.com/auth/drive.appdata` only** (P5-10 / P6-12).
+
+`NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` should stay `mobileresilienceplatform.firebaseapp.com`.
+`NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID` must be the same Web client ID used above.
 
 ## P6 features on this site
 

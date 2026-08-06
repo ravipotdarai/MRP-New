@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.mrp.data.local.SettingsStorage
+import com.mrp.domain.model.MonitoringSettings
 import com.mrp.domain.model.StatusValues
+import com.mrp.domain.usecase.EmergencySyncCoordinator
 import com.mrp.domain.usecase.TimelineEventLogger
 
 /**
@@ -30,11 +32,10 @@ class SimStateReceiver : BroadcastReceiver() {
         when (intent.action) {
             "android.intent.action.SIM_STATE_CHANGED" -> {
                 val simState = intent.getStringExtra("ss") ?: return
-                if (!settings.captureOnSimChange) return
                 val pending = goAsync()
                 Thread({
                     try {
-                        handleSimStateChange(context.applicationContext, simState)
+                        handleSimStateChange(context.applicationContext, simState, settings)
                     } catch (e: Exception) {
                         Log.e(TAG, "SIM state handling failed", e)
                     } finally {
@@ -64,7 +65,7 @@ class SimStateReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun handleSimStateChange(context: Context, simState: String) {
+    private fun handleSimStateChange(context: Context, simState: String, settings: MonitoringSettings) {
         Log.d(TAG, "SIM state changed: $simState")
 
         val eventType: String
@@ -89,6 +90,13 @@ class SimStateReceiver : BroadcastReceiver() {
             }
             else -> return
         }
+
+        when (eventType) {
+            "SIM_REMOVED" -> EmergencySyncCoordinator.onSimRemoved(context)
+            "SIM_INSERTED" -> EmergencySyncCoordinator.onSimInserted(context)
+        }
+
+        if (!settings.captureOnSimChange) return
 
         val eventLogger = TimelineEventLogger(context)
         eventLogger.logEventSync(
@@ -123,6 +131,7 @@ class SimStateReceiver : BroadcastReceiver() {
                 "source" to "SimStateReceiver"
             )
         )
+        EmergencySyncCoordinator.onUsbAttached(context)
     }
 
     companion object {

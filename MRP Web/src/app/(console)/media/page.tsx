@@ -7,8 +7,12 @@ import { InteractiveMap } from "@/components/InteractiveMap";
 import { SessionInlineControls } from "@/components/SessionInlineControls";
 import {
   eventIcon,
+  findRowForSelfie,
   formatEventType,
   num,
+  rowAddress,
+  rowGeofence,
+  rowLatLng,
   selfieSrc,
   severityOf,
 } from "@/lib/vault-selectors";
@@ -36,8 +40,16 @@ function MediaBody() {
         const src = selfieSrc(s);
         const type = String(o.eventType || o.event_type || o.event || "SELFIE");
         const at = num(o.atMs ?? o.timestamp ?? o.time) ?? 0;
-        const lat = num(o.latitude ?? o.lat);
-        const lng = num(o.longitude ?? o.lng);
+        let lat = num(o.latitude ?? o.lat);
+        let lng = num(o.longitude ?? o.lng);
+        const linked = findRowForSelfie(vault, s);
+        const linkedLl = linked ? rowLatLng(linked) : null;
+        if ((lat == null || lng == null) && linkedLl) {
+          lat = linkedLl.lat;
+          lng = linkedLl.lng;
+        }
+        const fence = linked ? rowGeofence(linked) : null;
+        const address = linked ? rowAddress(linked) : String(o.address || "");
         return {
           s,
           i,
@@ -47,6 +59,8 @@ function MediaBody() {
           at,
           lat,
           lng,
+          address,
+          fence,
           sev: severityOf(type),
         };
       })
@@ -180,6 +194,20 @@ function MediaBody() {
               <dd className="mono">
                 {full.lat != null && full.lng != null
                   ? `${full.lat.toFixed(5)}, ${full.lng.toFixed(5)}`
+                  : "—"}
+              </dd>
+              <dt>Address</dt>
+              <dd>{full.address || "—"}</dd>
+              <dt>Geofence</dt>
+              <dd>
+                {full.fence
+                  ? full.fence.fenceName ||
+                    full.fence.label ||
+                    (full.fence.inside == null
+                      ? "—"
+                      : full.fence.inside
+                        ? "Inside fence"
+                        : "Outside fence")
                   : "—"}
               </dd>
             </dl>

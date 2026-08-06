@@ -16,7 +16,7 @@ import {
   dedupeSessions,
   formatAppLabel,
   formatDuration,
-  guessCategory,
+  formatPermissionList,
   mergeOverlappingSessions,
   rankScreenTimeShare,
   type AppUsageSession,
@@ -138,18 +138,25 @@ function AppUsageBody() {
     );
   }, [sessions, reportFrame, todayStart]);
 
-  const reportTotal = reportSessions.reduce((n, s) => n + Math.max(0, s.durationSeconds || 0), 0);
   const reportApps = useMemo(() => consolidateSessionsByApp(reportSessions), [reportSessions]);
+  const reportTotal = useMemo(
+    () => reportApps.reduce((n, a) => n + Math.max(0, a.durationSeconds || 0), 0),
+    [reportApps],
+  );
   const categoryStats = useMemo(() => {
     const map = new Map<string, number>();
-    for (const s of reportSessions) {
-      const cat = guessCategory(s);
-      map.set(cat, (map.get(cat) || 0) + Math.max(0, s.durationSeconds || 0));
+    for (const a of reportApps) {
+      const cat = a.category || "Other";
+      map.set(cat, (map.get(cat) || 0) + Math.max(0, a.durationSeconds || 0));
     }
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
-  }, [reportSessions]);
+  }, [reportApps]);
 
   const safety = vault?.appUsage?.safety;
+  const safetyKeys = useMemo(() => {
+    const base = ["sms", "camera", "microphone", "location", "contacts"] as const;
+    return base.filter((key) => (safety?.[key]?.length || 0) > 0 || key === "sms" || key === "camera" || key === "microphone");
+  }, [safety]);
   const dayLabel = vault?.appUsage?.dayStartMs
     ? new Date(vault.appUsage.dayStartMs).toLocaleDateString()
     : "today";
@@ -397,7 +404,7 @@ function AppUsageBody() {
 
       {tab === "safety" ? (
         <div className="grid-2 rise rise-delay-2">
-          {(["sms", "camera", "microphone"] as const).map((key) => (
+          {safetyKeys.map((key) => (
             <div className="panel" key={key}>
               <h2>Safety · {key}</h2>
               <p className="muted" style={{ fontSize: "0.8rem", marginBottom: "0.5rem" }}>
@@ -408,7 +415,7 @@ function AppUsageBody() {
               ) : (
                 <ul className="muted" style={{ listStyle: "none", lineHeight: 1.6 }}>
                   {(safety?.[key] || []).map((a, i) => (
-                    <li key={i} style={{ marginBottom: "0.55rem" }}>
+                    <li key={`${a.packageName}-${i}`} style={{ marginBottom: "0.55rem" }}>
                       <strong>{a.appName || a.packageName}</strong>
                       <br />
                       <span className="mono" style={{ fontSize: "0.75rem" }}>
@@ -416,7 +423,7 @@ function AppUsageBody() {
                       </span>
                       <br />
                       <span className="mono" style={{ fontSize: "0.72rem" }}>
-                        {(a.permissions || []).join(", ") || "—"}
+                        {formatPermissionList(a.permissions)}
                       </span>
                     </li>
                   ))}

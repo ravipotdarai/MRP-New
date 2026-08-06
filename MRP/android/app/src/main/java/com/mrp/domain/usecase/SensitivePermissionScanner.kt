@@ -33,6 +33,21 @@ class SensitivePermissionScanner(private val context: Context) {
 
     fun appsWithMicrophone(): List<AppPerm> = scan(setOf(Manifest.permission.RECORD_AUDIO))
 
+    fun appsWithLocation(): List<AppPerm> = scan(
+        setOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION,
+        )
+    )
+
+    fun appsWithContacts(): List<AppPerm> = scan(
+        setOf(
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.WRITE_CONTACTS,
+        )
+    )
+
     /** Sideloaded / high-risk apps with SMS+Contacts or SMS+Camera combos (for timeline rules). */
     fun dataRiskCandidates(limit: Int = 40): List<AppPerm> {
         return try {
@@ -79,9 +94,9 @@ class SensitivePermissionScanner(private val context: Context) {
                 .filter { (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
                 .filter { it.packageName != context.packageName }
                 .mapNotNull { ai ->
-                    val hit = requested(ai.packageName).intersect(wanted)
+                    val hit = requested(ai.packageName).intersect(wanted).distinct().sorted()
                     if (hit.isEmpty()) null
-                    else AppPerm(ai.packageName, label(ai), hit.sorted())
+                    else AppPerm(ai.packageName, label(ai), hit)
                 }
                 .sortedBy { it.appName.lowercase() }
                 .toList()

@@ -194,7 +194,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loading && configured && !user) {
-      router.replace("/login");
+      router.replace("/login/");
     }
   }, [loading, configured, user, router]);
 

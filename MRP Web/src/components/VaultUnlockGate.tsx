@@ -35,10 +35,11 @@ export function VaultUnlockGate({
   };
 
   return (
-    <div className="panel unlock-panel rise">
+    <div className="panel unlock-panel rise" data-testid="pin-unlock-panel">
       <h2 className="panel-title unlock-title">{title}</h2>
       <p className="muted unlock-lead">
-        Enter your PathSync PIN. Decryption stays in this browser; plaintext is never sent to Nest.
+        Enter your <strong>PathSync PIN</strong> (the same PIN used for Drive backup on your phone).
+        Decryption stays in this browser; plaintext is never sent to MRP servers.
       </p>
       <form onSubmit={(e) => void onSubmit(e)} className="unlock-form">
         <div className="field">
@@ -49,6 +50,7 @@ export function VaultUnlockGate({
             type="password"
             inputMode="numeric"
             autoComplete="current-password"
+            data-testid="pathsync-pin"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
             minLength={4}
