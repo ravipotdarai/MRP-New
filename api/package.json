@@ -10,7 +10,8 @@
     "test:load-health": "node scripts/p7-load-health.js",
     "test:auth-guard": "node scripts/p8-auth-guard.js",
     "test:jwt-live": "node scripts/p8-jwt-live.js",
-    "test:circle-purge": "node scripts/p8-circle-live-purge.js"
+    "test:circle-purge": "node scripts/p8-circle-live-purge.js",
+    "test:geocoding": "node scripts/p9-geocoding-smoke.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

@@ -357,6 +357,11 @@ class MrpMonitorService : Service() {
                 Log.w(TAG, "DriveLocationHeartbeat start skipped", e)
             }
             try {
+                com.mrp.domain.usecase.GpsTrailIdleTicker.start(this@MrpMonitorService)
+            } catch (e: Exception) {
+                Log.w(TAG, "GpsTrailIdleTicker start skipped", e)
+            }
+            try {
                 com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(this@MrpMonitorService)
             } catch (e: Exception) {
                 Log.w(TAG, "NativeGeofenceRegistrar sync skipped", e)

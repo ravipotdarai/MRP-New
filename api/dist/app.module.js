@@ -13,12 +13,13 @@ const health_controller_1 = require("./health.controller");
 const circle_module_1 = require("./circle/circle.module");
 const device_module_1 = require("./device/device.module");
 const circle_live_admin_controller_1 = require("./admin/circle-live-admin.controller");
+const geocoding_module_1 = require("./geocoding/geocoding.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
-        imports: [auth_module_1.AuthModule, circle_module_1.CircleModule, device_module_1.DeviceModule],
+        imports: [auth_module_1.AuthModule, circle_module_1.CircleModule, device_module_1.DeviceModule, geocoding_module_1.GeocodingModule],
         controllers: [health_controller_1.HealthController, circle_live_admin_controller_1.CircleLiveAdminController],
     })
 ], AppModule);

@@ -6,7 +6,6 @@ import { useVaultSession } from "@/lib/vault-session";
 import { InteractiveMap } from "@/components/InteractiveMap";
 import {
   asRows,
-  eventIcon,
   eventTimeMs,
   eventType,
   formatEventType,
@@ -92,7 +91,6 @@ function GeofencesBody() {
           day: toDayKey(t),
           zone: resolveZoneName(r),
           type: eventType(r),
-          status: rowStatus(r),
           kind: enterExitKind(eventType(r), rowStatus(r)),
           ll: rowLatLng(r),
           address: rowAddress(r),
@@ -200,7 +198,7 @@ function GeofencesBody() {
                         color: "#0d9488",
                       }))
                 }
-                height={340}
+                height={360}
               />
               {selected ? (
                 <p className="muted" style={{ marginTop: "0.65rem", fontSize: "0.85rem" }}>
@@ -247,7 +245,7 @@ function GeofencesBody() {
             <button
               type="button"
               className="btn btn-sm"
-              style={{ alignSelf: "end" }}
+              style={{ alignSelf: "flex-end" }}
               onClick={() => {
                 setZoneFilter("all");
                 setDateFilter("");
@@ -268,41 +266,29 @@ function GeofencesBody() {
               <li key={String(e.row.id || `${e.type}-${e.timeMs}-${i}`)} className="timeline-item">
                 <div className="timeline-row geo-timeline-row" style={{ cursor: "default" }}>
                   <span
-                    className={`tl-icon ${e.kind === "Exit" ? "tl-icon-alert" : "tl-icon-safe"}`}
+                    className={`tl-icon geo-tl-dot ${e.kind === "Exit" ? "tl-icon-alert" : "tl-icon-safe"}`}
                     aria-hidden
-                  >
-                    {eventIcon(e.type)}
-                  </span>
+                  />
                   <div className="timeline-row-body geo-timeline-body">
                     <div className="geo-timeline-head">
-                      <strong>{e.kind === "Enter" || e.kind === "Exit" ? e.kind : formatEventType(e.type)}</strong>
-                      <span className={`badge badge-sm ${e.kind === "Exit" ? "badge-alert" : "badge-safe"}`}>
-                        {e.kind}
-                      </span>
-                    </div>
-                    <div className="geo-timeline-meta">
-                      <span>
-                        <span className="geo-k">Zone</span> {e.zone}
-                      </span>
-                      <span>
-                        <span className="geo-k">Time</span>{" "}
+                      <div className="geo-timeline-title">
+                        <span className={`badge badge-sm ${e.kind === "Exit" ? "badge-alert" : "badge-safe"}`}>
+                          {e.kind === "Enter" || e.kind === "Exit" ? e.kind : formatEventType(e.type)}
+                        </span>
+                        <strong className="geo-zone-name">{e.zone}</strong>
+                      </div>
+                      <time className="mono muted geo-timeline-when" dateTime={e.timeMs ? new Date(e.timeMs).toISOString() : undefined}>
                         {e.timeMs ? new Date(e.timeMs).toLocaleString() : "—"}
-                      </span>
-                      <span>
-                        <span className="geo-k">Location</span>{" "}
-                        <span className="mono">
-                          {e.ll ? `${e.ll.lat.toFixed(5)}, ${e.ll.lng.toFixed(5)}` : "—"}
-                        </span>
-                      </span>
-                      {e.address ? (
-                        <span>
-                          <span className="geo-k">Address</span> {e.address}
-                        </span>
-                      ) : null}
-                      <span>
-                        <span className="geo-k">Status</span> {e.status}
-                      </span>
+                      </time>
                     </div>
+                    <dl className="geo-timeline-meta">
+                      <dt>Location</dt>
+                      <dd className="mono">
+                        {e.ll ? `${e.ll.lat.toFixed(5)}, ${e.ll.lng.toFixed(5)}` : "—"}
+                      </dd>
+                      <dt>Address</dt>
+                      <dd className="geo-address">{e.address || "—"}</dd>
+                    </dl>
                   </div>
                 </div>
               </li>

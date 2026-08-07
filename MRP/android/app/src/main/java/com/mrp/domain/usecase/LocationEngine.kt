@@ -177,6 +177,7 @@ object LocationEngine {
             TrustedSnapshotStore.write(app, published)
             LocationResolver.updateCache(loc, resolved.tier)
             writeLiveStore(app, published, "engine:$strategy")
+            GpsTrailWriter.enqueueTrusted(app, loc, loc.accuracy, resolved.tier)
             Log.i(
                 TAG,
                 "published TRUSTED inside=${geo.insideFence} zone=${geo.zoneName} " +

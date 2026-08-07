@@ -45,6 +45,12 @@ const ICONS: Record<string, ReactNode> = {
       <circle cx="18" cy="16" r="2" />
     </svg>
   ),
+  emergency: (
+    <svg viewBox="0 0 24 24" aria-hidden width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
+      <path d="M12 3l8 5v4c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V8l8-5z" />
+      <path d="M12 9v4M12 16h.01" />
+    </svg>
+  ),
   media: (
     <svg viewBox="0 0 24 24" aria-hidden width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.75">
       <rect x="3" y="5" width="18" height="14" rx="2" />
@@ -110,6 +116,7 @@ const NAV: NavItem[] = [
   { href: "/profile", label: "Profile", group: "Home", icon: "profile" },
 
   { href: "/monitoring", label: "Locate & Timeline", group: "Security", icon: "locate" },
+  { href: "/emergency-monitoring", label: "Emergency monitoring", group: "Security", icon: "emergency" },
   { href: "/travel", label: "Travel", group: "Security", icon: "travel" },
   { href: "/media", label: "Media", group: "Security", icon: "media" },
 

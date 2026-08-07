@@ -601,6 +601,42 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     @ReactMethod
+    fun getGpsTrailDays(promise: Promise) {
+        try {
+            val dao = com.mrp.data.local.GpsTrailDao(reactContext)
+            val days = dao.allDayKeys()
+            val arr = Arguments.createArray()
+            days.forEach { arr.pushString(it) }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("GPS_TRAIL_DAYS", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun getGpsTrailForDay(dayKey: String, promise: Promise) {
+        try {
+            val dao = com.mrp.data.local.GpsTrailDao(reactContext)
+            val points = dao.pointsForLocalDay(dayKey)
+            val arr = Arguments.createArray()
+            for (p in points) {
+                arr.pushMap(Arguments.createMap().apply {
+                    putDouble("latitude", p.latitude)
+                    putDouble("longitude", p.longitude)
+                    putDouble("t", p.capturedAtMs.toDouble())
+                    putDouble("speed", p.speedMps.toDouble())
+                    putDouble("heading", p.headingDeg.toDouble())
+                    putDouble("accuracy", p.accuracyM.toDouble())
+                    putString("motion", p.motion)
+                })
+            }
+            promise.resolve(arr)
+        } catch (e: Exception) {
+            promise.reject("GPS_TRAIL_DAY", e.message, e)
+        }
+    }
+
+    @ReactMethod
     fun deleteTimelineEntry(entryId: String, promise: Promise) {
         try {
             val storage = TimelineStorage(reactContext)

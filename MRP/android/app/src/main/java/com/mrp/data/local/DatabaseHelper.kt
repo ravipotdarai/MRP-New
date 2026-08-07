@@ -8,7 +8,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     companion object {
         private const val DATABASE_NAME = "mrp_telemetry.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
 
         // Table: events
         const val TABLE_EVENTS = "events"
@@ -76,6 +76,22 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         const val COL_GEO_NETWORK = "NetworkType"
         const val COL_GEO_SYNC_STATUS = "SyncStatus"
         const val COL_GEO_JSON_META = "JsonMeta"
+
+        // Table: gps_trail (JPNI dense journey samples → encrypted Drive day packs)
+        const val TABLE_GPS_TRAIL = "gps_trail"
+        const val COL_TRAIL_ID = "Id"
+        const val COL_TRAIL_CAPTURED_AT = "CapturedAtMs"
+        const val COL_TRAIL_LATITUDE = "Latitude"
+        const val COL_TRAIL_LONGITUDE = "Longitude"
+        const val COL_TRAIL_SPEED = "SpeedMps"
+        const val COL_TRAIL_HEADING = "HeadingDeg"
+        const val COL_TRAIL_ACCURACY = "AccuracyM"
+        const val COL_TRAIL_ALTITUDE = "AltitudeM"
+        const val COL_TRAIL_BATTERY = "BatteryPct"
+        const val COL_TRAIL_NETWORK = "NetworkType"
+        const val COL_TRAIL_GPS_OK = "GpsOk"
+        const val COL_TRAIL_MOTION = "Motion"
+        const val COL_TRAIL_SYNC_STATUS = "SyncStatus"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -135,6 +151,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         db.execSQL(createAppUsageTable)
         db.execSQL(createApplicationsTable)
         db.execSQL(createGeoSnapshotsTable())
+        db.execSQL(createGpsTrailTable())
     }
 
     private fun createGeoSnapshotsTable(): String = """
@@ -160,9 +177,30 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             )
         """.trimIndent()
 
+    private fun createGpsTrailTable(): String = """
+            CREATE TABLE $TABLE_GPS_TRAIL (
+                $COL_TRAIL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COL_TRAIL_CAPTURED_AT INTEGER NOT NULL,
+                $COL_TRAIL_LATITUDE REAL NOT NULL,
+                $COL_TRAIL_LONGITUDE REAL NOT NULL,
+                $COL_TRAIL_SPEED REAL,
+                $COL_TRAIL_HEADING REAL,
+                $COL_TRAIL_ACCURACY REAL,
+                $COL_TRAIL_ALTITUDE REAL,
+                $COL_TRAIL_BATTERY INTEGER,
+                $COL_TRAIL_NETWORK TEXT,
+                $COL_TRAIL_GPS_OK INTEGER DEFAULT 1,
+                $COL_TRAIL_MOTION TEXT,
+                $COL_TRAIL_SYNC_STATUS TEXT DEFAULT 'PENDING'
+            )
+        """.trimIndent()
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL(createGeoSnapshotsTable())
+        }
+        if (oldVersion < 3) {
+            db.execSQL(createGpsTrailTable())
         }
     }
 }

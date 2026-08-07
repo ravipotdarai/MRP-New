@@ -25,8 +25,9 @@ object SelfieVaultPackager {
     private const val MATCH_WINDOW_MS = 45_000L
     private const val FALLBACK_WINDOW_MS = 120_000L
     const val MAX_SELFIES = 100
-    const val MAX_BYTES_TOTAL = 15L * 1024L * 1024L
-    const val MAX_FILE_BYTES = 2_500_000L
+    const val MAX_BYTES_TOTAL = 28L * 1024L * 1024L
+    /** ~5–8MP JPEG @ q96 typically 1.5–4MB. */
+    const val MAX_FILE_BYTES = 5_500_000L
 
     private val ISO_UTC = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")

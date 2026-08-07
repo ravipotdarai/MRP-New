@@ -52,6 +52,7 @@ object DevicePresenceTracker {
         }
         scheduleEmergency(context.applicationContext)
         DriveLocationHeartbeat.start(context.applicationContext)
+        GpsTrailIdleTicker.start(context.applicationContext)
         Log.i(TAG, "presence ready (event-driven, no continuous location)")
     }
 
@@ -67,6 +68,7 @@ object DevicePresenceTracker {
         running.set(false)
         cancelEmergency()
         DriveLocationHeartbeat.stop()
+        GpsTrailIdleTicker.stop()
     }
 
     fun restart(context: Context) {

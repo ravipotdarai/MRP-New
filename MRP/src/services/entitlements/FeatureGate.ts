@@ -15,6 +15,7 @@ export type FeatureKey =
   | 'appsafety.full'
   | 'reports.export'
   | 'geofence'
+  | 'journey.playback'
   | 'push.alerts'
   | 'cloud.sync'
   | 'circle.one_to_one'
@@ -47,6 +48,7 @@ const PREMIUM_FEATURES = new Set<FeatureKey>([
   'appsafety.full',
   'reports.export',
   'geofence',
+  'journey.playback',
   'push.alerts',
   'cloud.sync',
 ]);

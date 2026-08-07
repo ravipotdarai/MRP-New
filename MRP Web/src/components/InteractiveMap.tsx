@@ -246,8 +246,7 @@ export function InteractiveMap({
           source: "geofence-circles",
           paint: {
             "fill-color": GF_FILL,
-            "fill-opacity": 0.28,
-            "fill-outline-color": GF_LINE,
+            "fill-opacity": 0.32,
           },
         });
         map.addLayer({
@@ -256,7 +255,7 @@ export function InteractiveMap({
           source: "geofence-circles",
           paint: {
             "line-color": GF_LINE,
-            "line-width": 3,
+            "line-width": 3.5,
             "line-opacity": 1,
           },
         });
@@ -279,14 +278,15 @@ export function InteractiveMap({
             return `${ring[0]?.join(",")}:${ring.length}`;
           })
           .join("|");
-        if (fenceSig !== fittedFenceRef.current && !center) {
+        if (fenceSig !== fittedFenceRef.current) {
           const bounds = new maplibregl.LngLatBounds();
           for (const f of fenceFc.features) {
             const ring = f.geometry.coordinates[0] || [];
             for (const c of ring) bounds.extend(c as [number, number]);
           }
           if (!bounds.isEmpty()) {
-            map.fitBounds(bounds, { padding: 48, maxZoom: 17, duration: 650 });
+            // Small radii (e.g. 30m) need a high zoom or the circle looks like a dot.
+            map.fitBounds(bounds, { padding: 64, maxZoom: 18, duration: 650 });
             fittedFenceRef.current = fenceSig;
           }
         }
@@ -355,7 +355,7 @@ export function InteractiveMap({
       <div ref={containerRef} className="map-canvas" style={{ height }} />
       {fallback ? (
         <a
-          className="btn mt-sm"
+          className="btn btn-sm map-gmaps-btn"
           href={`https://www.google.com/maps?q=${fallback.lat},${fallback.lng}`}
           target="_blank"
           rel="noopener noreferrer"
@@ -363,7 +363,7 @@ export function InteractiveMap({
           Open in Google Maps
         </a>
       ) : (
-        <p className="muted mt-sm">No coordinates yet — unlock session or use Find my device on the phone.</p>
+        <p className="muted map-empty-hint">No coordinates yet — unlock session or use Find my device on the phone.</p>
       )}
     </div>
   );

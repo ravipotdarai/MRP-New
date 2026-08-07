@@ -1,37 +1,117 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState } from "react";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
-import { InteractiveMap } from "@/components/InteractiveMap";
-import { num, pathDistanceKm, travelPoints } from "@/lib/vault-selectors";
+import { num } from "@/lib/vault-selectors";
+import { useGpsDayTrail } from "@/features/journey/hooks/useGpsDayTrail";
+import { useNavigableTrail } from "@/features/journey/hooks/useNavigableTrail";
+import {
+  formatJourneyClock,
+  formatLiveClock,
+  localTodayISO,
+  shiftLocalDate,
+} from "@/features/journey/lib/local-date";
+import {
+  PLAYBACK_SPEEDS,
+  type GpsPoint,
+  type InterpolatedPose,
+  type PlaybackSpeeds,
+} from "@/features/journey/types";
+import type { FenceCircle, PathMode } from "@/features/journey/components/JourneyMap";
 
-function dayBounds(isoDate: string): { from: number; to: number } {
-  const from = new Date(`${isoDate}T00:00:00`);
-  const to = new Date(`${isoDate}T23:59:59.999`);
-  return { from: from.getTime(), to: to.getTime() };
-}
+const JourneyMap = dynamic(
+  () => import("@/features/journey/components/JourneyMap").then((m) => m.JourneyMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="panel muted" style={{ minHeight: 400, display: "grid", placeItems: "center" }}>
+        Loading map…
+      </div>
+    ),
+  },
+);
 
-function shiftDate(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+function poseAt(points: GpsPoint[], idx: number): InterpolatedPose | null {
+  if (!points.length) return null;
+  const i = Math.min(Math.max(0, idx), points.length - 1);
+  const p = points[i];
+  const next = points[Math.min(i + 1, points.length - 1)];
+  const start = points[0].t;
+  const end = points[points.length - 1].t;
+  const progress = end > start ? (p.t - start) / (end - start) : 0;
+  const heading =
+    p.h ?? (Math.atan2(next.lng - p.lng, next.lat - p.lat) * 180) / Math.PI;
+  return {
+    t: p.t,
+    lat: p.lat,
+    lng: p.lng,
+    heading: ((heading % 360) + 360) % 360,
+    speed: p.s ?? 0,
+    accuracy: p.a ?? 40,
+    motion: p.m ?? "drive",
+    progress,
+  };
 }
 
 function TravelBody() {
-  const { vault } = useVaultSession();
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [playIdx, setPlayIdx] = useState(0);
+  const { vault, unlocked } = useVaultSession();
+  const trailState = useGpsDayTrail({ autoLoad: unlocked });
+  const {
+    date,
+    points,
+    index,
+    source,
+    loading,
+    error,
+    banner,
+    availableDays,
+    distanceKm,
+    eventMarkers,
+    loadDay,
+  } = trailState;
 
-  const { from, to } = dayBounds(date);
-  const points = useMemo(() => travelPoints(vault, from, to), [vault, from, to]);
-  const km = pathDistanceKm(points);
+  const { trail, routing } = useNavigableTrail(points);
+  const [playIdx, setPlayIdx] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [follow, setFollow] = useState(true);
+  const [pathMode, setPathMode] = useState<PathMode>("roads");
+  const [speed, setSpeed] = useState<PlaybackSpeeds>(1);
+  const [liveNow, setLiveNow] = useState(() => formatLiveClock());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setLiveNow(formatLiveClock()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    setPlayIdx(0);
+    setPlaying(false);
+  }, [date, points.length]);
+
+  useEffect(() => {
+    if (!playing || points.length < 2) return;
+    const stepMs = Math.max(40, Math.round(350 / speed));
+    const id = window.setInterval(() => {
+      setPlayIdx((i) => {
+        const next = i + 1;
+        if (next >= points.length - 1) {
+          setPlaying(false);
+          return points.length - 1;
+        }
+        return next;
+      });
+    }, stepMs);
+    return () => window.clearInterval(id);
+  }, [playing, points.length, speed]);
+
+  const pose = poseAt(points, playIdx);
+  const progress = pose?.progress ?? 0;
   const durationMin =
     points.length >= 2 ? Math.round((points[points.length - 1].t - points[0].t) / 60000) : 0;
 
-  const playPoint = points[Math.min(playIdx, Math.max(0, points.length - 1))];
-
-  const mapFences = useMemo(() => {
+  const mapFences: FenceCircle[] = useMemo(() => {
     return (vault?.geofences || [])
       .map((g, i) => {
         const lat = num(g.latitude);
@@ -40,110 +120,218 @@ function TravelBody() {
         if (lat == null || lng == null) return null;
         return { id: g.id || `gf-${i}`, lat, lng, radiusMeters: r, name: g.name };
       })
-      .filter(Boolean) as Array<{ id: string; lat: number; lng: number; radiusMeters: number; name?: string }>;
+      .filter(Boolean) as FenceCircle[];
   }, [vault?.geofences]);
 
   return (
-    <div>
-      <h1 className="page-title rise">Travel</h1>
-      <p className="page-lead rise rise-delay-1">
-        Path from GPS-tagged security events for the selected day. Filter by date, then step or play the trail.
-      </p>
-      <div className="panel rise rise-delay-1" style={{ marginBottom: "1rem" }}>
-        <label className="muted" htmlFor="travel-day">
-          Date
-        </label>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.35rem", alignItems: "center" }}>
-          <button type="button" className="btn" onClick={() => { setDate((d) => shiftDate(d, -1)); setPlayIdx(0); }}>
-            ← Prev
-          </button>
-          <input
-            id="travel-day"
-            className="input"
-            type="date"
-            value={date}
-            onChange={(e) => {
-              setDate(e.target.value);
-              setPlayIdx(0);
-            }}
-            style={{ maxWidth: 220 }}
-          />
-          <button type="button" className="btn" onClick={() => { setDate((d) => shiftDate(d, 1)); setPlayIdx(0); }}>
-            Next →
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setDate(new Date().toISOString().slice(0, 10));
-              setPlayIdx(0);
-            }}
-          >
-            Today
-          </button>
+    <div className="travel-desk">
+      <header className="travel-hero rise">
+        <div>
+          <p className="travel-kicker">Day trips · GPS trail</p>
+          <h1 className="page-title" style={{ marginBottom: 0 }}>
+            Travel
+          </h1>
+          <p className="page-lead" style={{ marginBottom: 0, marginTop: "0.35rem" }}>
+            Review where the phone moved — dense GPS day packs from Drive (5–90s samples). Not a
+            security investigation desk.
+          </p>
         </div>
-        <ul className="muted travel-stats" style={{ listStyle: "none", marginTop: "0.75rem", lineHeight: 1.7 }}>
-          <li>Points: {points.length}</li>
-          <li>Distance: {km.toFixed(2)} km</li>
-          <li>Span: {durationMin} min</li>
-          <li>
-            Start → end:{" "}
-            {points.length
-              ? `${points[0].lat.toFixed(4)},${points[0].lng.toFixed(4)} → ${points[points.length - 1].lat.toFixed(4)},${points[points.length - 1].lng.toFixed(4)}`
-              : "—"}
-          </li>
-        </ul>
-        {points.length > 1 ? (
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" className="btn" onClick={() => setPlayIdx(0)}>
+        <div className="travel-live-chip mono" title="Device wall clock (browser)">
+          Live {liveNow}
+        </div>
+      </header>
+
+      {banner ? (
+        <div className="panel rise" style={{ marginBottom: "0.75rem", borderColor: "var(--warn, #d97706)" }}>
+          <span className="muted">{banner}</span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="panel rise" style={{ marginBottom: "0.75rem" }}>
+          <span className="muted">{error}</span>
+        </div>
+      ) : null}
+
+      <div className="travel-layout">
+        <aside className="panel travel-side rise rise-delay-1">
+          <h2>Day</h2>
+          <div className="travel-day-row">
+            <button type="button" className="btn btn-sm" onClick={() => void loadDay(shiftLocalDate(date, -1))}>
+              ←
+            </button>
+            <input
+              className="input"
+              type="date"
+              value={date}
+              onChange={(e) => void loadDay(e.target.value)}
+            />
+            <button type="button" className="btn btn-sm" onClick={() => void loadDay(shiftLocalDate(date, 1))}>
+              →
+            </button>
+            <button type="button" className="btn btn-sm btn-primary" onClick={() => void loadDay(localTodayISO())}>
+              Today
+            </button>
+          </div>
+          {availableDays.length > 0 ? (
+            <p className="muted" style={{ fontSize: "0.78rem", marginTop: "0.5rem" }}>
+              Packs on Drive: {availableDays.slice(0, 6).join(", ")}
+              {availableDays.length > 6 ? "…" : ""}
+            </p>
+          ) : (
+            <p className="muted" style={{ fontSize: "0.78rem", marginTop: "0.5rem" }}>
+              No day packs listed yet — unlock + phone sync uploads <code>mrp_gps_*</code> files.
+            </p>
+          )}
+
+          <h2 style={{ marginTop: "1.1rem" }}>Trip summary</h2>
+          <ul className="travel-stats muted">
+            <li>
+              Source:{" "}
+              <strong>
+                {loading
+                  ? "…"
+                  : source === "daypack"
+                    ? "GPS day pack"
+                    : source === "merged"
+                      ? "Day pack + events"
+                      : source === "vault-sparse"
+                        ? "Vault events (path)"
+                        : "—"}
+              </strong>
+            </li>
+            <li>Points: {loading ? "…" : points.length}</li>
+            <li>Distance: {distanceKm.toFixed(2)} km</li>
+            <li>Span: {durationMin} min</li>
+            {index ? (
+              <>
+                <li>Max speed: {(index.maxSpeed * 3.6).toFixed(1)} km/h</li>
+                <li>Stops: {index.stopCount}</li>
+                <li>Moving: {Math.round(index.movingMs / 60000)} min</li>
+              </>
+            ) : null}
+            <li>
+              Roads:{" "}
+              {routing
+                ? "Snapping to roads…"
+                : trail?.source === "osrm"
+                  ? "Travelled route (OSRM)"
+                  : "GPS only (snap failed)"}
+            </li>
+          </ul>
+        </aside>
+
+        <section className="panel travel-map rise rise-delay-2" style={{ padding: 0, overflow: "hidden" }}>
+          {points.length ? (
+            <JourneyMap
+              points={points}
+              pose={pose}
+              fences={mapFences}
+              follow={follow}
+              onFollowChange={setFollow}
+              roadPath={trail?.path}
+              pathLegs={trail?.pathLegs}
+              routing={routing}
+              pathMode={pathMode}
+              onPathModeChange={setPathMode}
+              eventMarkers={eventMarkers}
+              showControls
+            />
+          ) : (
+            <p className="muted" style={{ padding: "1.25rem" }}>
+              {loading
+                ? "Loading trail…"
+                : "No GPS trail for this day. Ensure location tracking is on and the phone has synced Drive."}
+            </p>
+          )}
+        </section>
+      </div>
+
+      <div className="panel travel-transport rise rise-delay-2">
+        <div className="travel-transport-top">
+          <div className="travel-transport-btns">
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={!points.length}
+              onClick={() => {
+                setPlayIdx(0);
+                setPlaying(false);
+              }}
+            >
               Start
             </button>
             <button
               type="button"
-              className="btn"
-              onClick={() => setPlayIdx((i) => Math.min(points.length - 1, i + 1))}
+              className="btn btn-sm"
+              disabled={points.length < 2}
+              onClick={() => setPlayIdx((i) => Math.max(0, i - 1))}
             >
-              Step
+              − Step
             </button>
             <button
               type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                let i = playIdx;
-                const id = window.setInterval(() => {
-                  i += 1;
-                  setPlayIdx(i);
-                  if (i >= points.length - 1) window.clearInterval(id);
-                }, 400);
-              }}
+              className="btn btn-sm btn-primary"
+              disabled={points.length < 2}
+              onClick={() => setPlaying((p) => !p)}
             >
-              Playback
+              {playing ? "Pause" : "Play"}
             </button>
-            <span className="muted mono" style={{ fontSize: "0.85rem" }}>
-              {playIdx + 1}/{points.length}
-              {playPoint ? ` · ${new Date(playPoint.t).toLocaleTimeString()}` : ""}
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={points.length < 2}
+              onClick={() => setPlayIdx((i) => Math.min(points.length - 1, i + 1))}
+            >
+              Step +
+            </button>
+            <label className="travel-speed-label muted">
+              Speed
+              <select
+                className="input"
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value) as PlaybackSpeeds)}
+                aria-label="Playback speed"
+              >
+                {PLAYBACK_SPEEDS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}×
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="travel-transport-times mono muted">
+            <span title="Playback position on the trail">
+              Trail {pose ? formatJourneyClock(pose.t) : "—"}
+            </span>
+            <span className="travel-time-sep">·</span>
+            <span title="Current wall clock">Live {liveNow}</span>
+            <span className="travel-time-sep">·</span>
+            <span>
+              {points.length ? `${playIdx + 1}/${points.length}` : "0/0"}
             </span>
           </div>
-        ) : null}
-      </div>
-      <div className="panel rise rise-delay-2">
-        {points.length ? (
-          <InteractiveMap
-            key={date}
-            center={playPoint ? { lat: playPoint.lat, lng: playPoint.lng } : undefined}
-            polyline={points}
-            markers={
-              playPoint
-                ? [{ lat: playPoint.lat, lng: playPoint.lng, id: "play", color: "#c45c3e" }]
-                : [{ lat: points[0].lat, lng: points[0].lng, id: "start" }]
-            }
-            geofences={mapFences}
-            height={400}
-            pathColor="#e85d04"
-          />
-        ) : (
-          <p className="muted">No GPS-tagged events this day. Ensure the phone backs up timeline with location.</p>
-        )}
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0, points.length - 1)}
+          value={playIdx}
+          onChange={(e) => {
+            setPlaying(false);
+            setPlayIdx(Number(e.target.value));
+          }}
+          disabled={points.length < 2}
+          className="travel-scrubber"
+          aria-label="Travel timeline"
+        />
+        <div className="travel-scrubber-labels muted mono">
+          <span>{points[0] ? formatJourneyClock(points[0].t) : "—"}</span>
+          <span>{Math.round(progress * 100)}%</span>
+          <span>
+            {points.length ? formatJourneyClock(points[points.length - 1].t) : "—"}
+          </span>
+        </div>
       </div>
     </div>
   );

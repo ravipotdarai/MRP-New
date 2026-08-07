@@ -125,6 +125,16 @@ class TimelineEventLogger(private val context: Context) {
 
             // Append-only — never rewrite past events' location/geofence.
             timelineStorage.appendTimelineEntrySync(entry)
+            // Path breadcrumb without GPS wake — fills gps_trail when events have/reuse coords.
+            GpsTrailWriter.enqueueFromEventCoords(
+                context = context,
+                hasCoords = stamp.hasCoords,
+                latitude = stamp.latitude,
+                longitude = stamp.longitude,
+                accuracyM = stamp.accuracyM,
+                tier = stamp.tier,
+                reason = GpsTrailWriter.StampReason.EVENT,
+            )
             EventSyncPublisher.publishAsync(context, entry, addressParts)
 
             Log.d(

@@ -5,8 +5,10 @@ import { CircleModule } from './circle/circle.module';
 import { DeviceModule } from './device/device.module';
 import { CircleLiveAdminController } from './admin/circle-live-admin.controller';
 
+import { GeocodingModule } from './geocoding/geocoding.module';
+
 @Module({
-  imports: [AuthModule, CircleModule, DeviceModule],
+  imports: [AuthModule, CircleModule, DeviceModule, GeocodingModule],
   controllers: [HealthController, CircleLiveAdminController],
 })
 export class AppModule {}

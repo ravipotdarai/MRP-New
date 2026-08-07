@@ -42,6 +42,8 @@ object DriveLocationHeartbeat {
                             DeviceTrackingPrefs.isEmergencyTracking(app)
                         ) {
                             LocationEngine.obtain(app, LocationEngine.Demand.DriveHeartbeat)
+                            // Breadcrumb before sync so day packs include this tick even without GPS wake.
+                            GpsTrailWriter.enqueueStamp(app, GpsTrailWriter.StampReason.HEARTBEAT)
                             DriveVaultSync.requestSyncAsync(app, "drive_heartbeat")
                         }
                     } catch (e: Exception) {

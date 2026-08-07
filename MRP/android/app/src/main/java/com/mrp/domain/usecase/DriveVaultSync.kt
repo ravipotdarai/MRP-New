@@ -219,6 +219,13 @@ object DriveVaultSync {
                 .apply()
             DeviceTrackingPrefs.markDriveSynced(context)
             rememberPinForAutoSync(context, pin)
+            if (!criticalOnly) {
+                try {
+                    GpsDayPackWriter.uploadDirtyDays(context, pin, accessToken)
+                } catch (e: Exception) {
+                    Log.w(TAG, "GPS day pack upload", e)
+                }
+            }
             Log.i(TAG, "Drive sync ok reason=$reason bytes=${cipherBytes.size}")
             return true
         } catch (e: Exception) {

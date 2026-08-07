@@ -302,7 +302,7 @@ function AppUsageBody() {
           {timelineSessions.length === 0 ? (
             <p className="muted">No session timeline in this backup yet.</p>
           ) : (
-            <ul className="usage-timeline">
+            <ul className="usage-timeline usage-timeline-spine">
               {timelineSessions.map((s, i) => {
                 const prev = timelineSessions[i - 1];
                 const day =
@@ -311,7 +311,7 @@ function AppUsageBody() {
                     ? new Date(s.startTime || 0).toLocaleDateString([], { month: "short", day: "numeric" })
                     : null;
                 return (
-                  <li key={`${s.packageName}-${s.startTime}-${i}`}>
+                  <li key={`${s.packageName}-${s.startTime}-${i}`} className="usage-timeline-item">
                     {day ? <p className="usage-day-label">{day}</p> : null}
                     <div className="usage-timeline-row">
                       <span className="mono muted usage-time">
@@ -319,7 +319,9 @@ function AppUsageBody() {
                           ? new Date(s.startTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                           : "—"}
                       </span>
-                      <span className="usage-timeline-dot" aria-hidden />
+                      <span className="usage-timeline-rail" aria-hidden>
+                        <span className="usage-timeline-dot" />
+                      </span>
                       <div>
                         <strong>{formatAppLabel(s.appName, s.packageName)}</strong>
                         <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>

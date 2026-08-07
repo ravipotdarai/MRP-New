@@ -38,6 +38,18 @@ export interface MrpNativeInterface {
   getSettings(): Promise<any>;
   saveSettings(settings: any): Promise<boolean>;
   getTimeline(): Promise<any[]>;
+  getGpsTrailDays(): Promise<string[]>;
+  getGpsTrailForDay(dayKey: string): Promise<
+    Array<{
+      latitude: number;
+      longitude: number;
+      t: number;
+      speed?: number;
+      heading?: number;
+      accuracy?: number;
+      motion?: string;
+    }>
+  >;
   deleteTimelineEntry(entryId: string): Promise<boolean>;
   clearTimeline(): Promise<boolean>;
   getPhotosDirectory(): Promise<string>;

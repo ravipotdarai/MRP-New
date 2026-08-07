@@ -54,7 +54,13 @@ describe('FeatureGate', () => {
   it('unlocks premium features for premium', () => {
     expect(canUse('cloud.sync', premiumActive)).toBe(true);
     expect(canUse('reports.export', premiumActive)).toBe(true);
+    expect(canUse('journey.playback', premiumActive)).toBe(true);
     expect(canUse('circle.family', premiumActive)).toBe(false);
+  });
+
+  it('gates journey playback on free', () => {
+    expect(canUse('journey.playback', free)).toBe(false);
+    expect(requireEntitlement('journey.playback', free).ok).toBe(false);
   });
 
   it('unlocks Circle only for enterprise', () => {

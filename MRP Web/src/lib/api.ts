@@ -57,6 +57,32 @@ export async function apiGet<T>(
   }
 }
 
+export async function apiPost<T>(
+  path: string,
+  body: unknown,
+  token?: string | null,
+): Promise<{ ok: boolean; data?: T; error?: string }> {
+  const b = base();
+  if (!b) return { ok: false, error: "API not configured" };
+  try {
+    const res = await fetch(`${b}${path.startsWith("/") ? path : `/${path}`}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      return { ok: false, error: errBody || `${res.status} ${res.statusText}` };
+    }
+    return { ok: true, data: (await res.json()) as T };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+}
+
 export async function apiPatch<T>(
   path: string,
   body: unknown,

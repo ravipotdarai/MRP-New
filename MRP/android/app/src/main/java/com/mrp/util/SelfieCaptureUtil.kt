@@ -17,35 +17,37 @@ import android.util.Size
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.abs
 
 /**
- * Shared selfie JPEG helpers: pick a better capture size, set quality/orientation,
+ * Shared selfie JPEG helpers: pick a high-res capture size, set quality/orientation,
  * and physically rotate pixels so React Native Image (which ignores EXIF) shows upright.
  */
 object SelfieCaptureUtil {
 
     private const val TAG = "SelfieCapture"
     /**
-     * Prefer a wider FOV still (~2–3MP / 16:9 when available) without huge files.
-     * Picking larger JPEG outputs uses more of the sensor than a tight 1.2MP center crop.
+     * Aim for ~5MP stills (clear faces on web/phone). Cap below ~8MP so vault sync stays
+     * within Drive appData budgets (see SelfieVaultPackager.MAX_FILE_BYTES).
      */
-    private const val TARGET_PIXELS = 1920 * 1080
-    private const val MIN_WIDTH = 1280
-    private const val MIN_HEIGHT = 720
-    private const val JPEG_QUALITY = 92
+    private const val TARGET_PIXELS = 2592 * 1944 // ~5.0 MP
+    private const val MAX_PIXELS = 3264 * 2448 // ~8.0 MP
+    private const val MIN_PIXELS = 1280 * 720
+    private const val JPEG_QUALITY = 96
 
     fun chooseJpegSize(sizes: Array<Size>): Size {
         if (sizes.isEmpty()) return Size(1920, 1080)
-        // Prefer landscape / wide-ish frames ≥ 720p, closest to ~1080p target
-        val wide = sizes.filter {
-            it.width >= MIN_WIDTH && it.height >= MIN_HEIGHT && it.width.toFloat() / it.height >= 1.3f
+        val usable = sizes.filter { s ->
+            val p = s.width.toLong() * s.height
+            p in MIN_PIXELS.toLong()..MAX_PIXELS.toLong()
+        }.ifEmpty {
+            sizes.filter { it.width * it.height.toLong() <= MAX_PIXELS }.ifEmpty { sizes.toList() }
         }
-        val pool = when {
-            wide.isNotEmpty() -> wide
-            else -> sizes.filter { it.width >= 800 && it.height >= 600 }.ifEmpty { sizes.toList() }
-        }
-        return pool.minByOrNull { kotlin.math.abs(it.width * it.height - TARGET_PIXELS) }
-            ?: Size(1920, 1080)
+        // Closest to ~5MP; prefer the larger of two equally close options.
+        return usable.minWithOrNull(
+            compareBy<Size> { abs(it.width.toLong() * it.height - TARGET_PIXELS) }
+                .thenByDescending { it.width.toLong() * it.height },
+        ) ?: Size(1920, 1080)
     }
 
     fun sensorOrientation(chars: CameraCharacteristics): Int =
@@ -61,7 +63,7 @@ object SelfieCaptureUtil {
      */
     fun applyStillCaptureSettings(
         builder: CaptureRequest.Builder,
-        sensorOrientation: Int,
+        @Suppress("UNUSED_PARAMETER") sensorOrientation: Int,
         chars: CameraCharacteristics? = null,
     ) {
         builder.set(CaptureRequest.JPEG_QUALITY, JPEG_QUALITY.toByte())
@@ -70,19 +72,18 @@ object SelfieCaptureUtil {
         builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
         builder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF)
 
-        // Prefer continuous AF when available (front cameras often support it)
         val afModes = chars?.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
         if (afModes != null && afModes.contains(CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)) {
             builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
         }
 
-        // Brighten a bit — silent captures without preview often underexpose
+        // Mild lift only — heavy positive EV washes detail / looks soft.
         val aeRange: Range<Int>? = chars?.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
-        if (aeRange != null) {
-            val boost = (aeRange.upper.coerceAtMost(2)).coerceAtLeast(aeRange.lower)
-            if (boost != 0) {
-                builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, boost)
-            }
+        if (aeRange != null && aeRange.upper > 0) {
+            val step = chars?.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)?.toFloat() ?: 0.33f
+            // Aim for about +0.3 to +0.5 EV
+            val steps = ((0.4f / step).toInt()).coerceIn(1, aeRange.upper.coerceAtMost(2))
+            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, steps)
         } else {
             try {
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, 1)
@@ -120,7 +121,7 @@ object SelfieCaptureUtil {
         FileOutputStream(destFile).use { it.write(corrected) }
         Log.d(
             TAG,
-            "Saved selfie ${destFile.name} orient=${sensorOrientationDeg}° size=${corrected.size}",
+            "Saved selfie ${destFile.name} orient=${sensorOrientationDeg}° bytes=${corrected.size}",
         )
         return destFile.absolutePath
     }
@@ -130,11 +131,15 @@ object SelfieCaptureUtil {
         sensorOrientationDeg: Int,
         mirrorFront: Boolean = false,
     ): ByteArray {
-        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size, options)
             ?: return jpegBytes
         return try {
+            val needsTransform = sensorOrientationDeg % 360 != 0 || mirrorFront
             var working = bitmap
-            if (sensorOrientationDeg % 360 != 0 || mirrorFront) {
+            if (needsTransform) {
                 val matrix = Matrix()
                 matrix.postRotate(sensorOrientationDeg.toFloat())
                 if (mirrorFront) matrix.postScale(-1f, 1f)
@@ -144,9 +149,16 @@ object SelfieCaptureUtil {
                 if (rotated !== bitmap) bitmap.recycle()
                 working = rotated
             }
-            val enhanced = enhanceBrightnessAndWarmth(working)
-            if (enhanced !== working) working.recycle()
-            val baos = ByteArrayOutputStream()
+            // Only lift shadows when the frame is dark (silent captures).
+            // Skipping preserve camera JPEG detail when already bright.
+            val enhanced = if (needsShadowLift(working)) {
+                val e = enhanceBrightnessAndWarmth(working)
+                if (e !== working) working.recycle()
+                e
+            } else {
+                working
+            }
+            val baos = ByteArrayOutputStream(enhanced.byteCount.coerceAtLeast(jpegBytes.size))
             enhanced.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, baos)
             enhanced.recycle()
             baos.toByteArray()
@@ -156,22 +168,48 @@ object SelfieCaptureUtil {
         }
     }
 
+    /** Sample a few pixels; return true when the frame is underexposed. */
+    private fun needsShadowLift(src: Bitmap): Boolean {
+        val w = src.width
+        val h = src.height
+        if (w < 8 || h < 8) return true
+        var sum = 0L
+        var n = 0
+        val stepX = (w / 8).coerceAtLeast(1)
+        val stepY = (h / 8).coerceAtLeast(1)
+        var y = stepY / 2
+        while (y < h) {
+            var x = stepX / 2
+            while (x < w) {
+                val c = src.getPixel(x, y)
+                val r = (c shr 16) and 0xff
+                val g = (c shr 8) and 0xff
+                val b = c and 0xff
+                sum += (r * 3 + g * 6 + b) / 10
+                n++
+                x += stepX
+            }
+            y += stepY
+        }
+        val avg = if (n > 0) sum / n else 128
+        return avg < 95
+    }
+
     /**
-     * Lift shadows and reduce cool/blue cast common on front-camera silent captures.
+     * Mild shadow lift + slight warmth. Kept gentle so faces stay sharp after recompress.
      */
     private fun enhanceBrightnessAndWarmth(src: Bitmap): Bitmap {
         val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
-        // R/G slightly up, B slightly down + lift brightness (last column)
         val matrix = ColorMatrix(
             floatArrayOf(
-                1.12f, 0f, 0f, 0f, 18f,
-                0f, 1.08f, 0f, 0f, 14f,
-                0f, 0f, 0.90f, 0f, 8f,
+                1.06f, 0f, 0f, 0f, 10f,
+                0f, 1.04f, 0f, 0f, 8f,
+                0f, 0f, 0.98f, 0f, 4f,
                 0f, 0f, 0f, 1f, 0f,
             ),
         )
-        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         paint.colorFilter = ColorMatrixColorFilter(matrix)
         canvas.drawBitmap(src, 0f, 0f, paint)
         return out

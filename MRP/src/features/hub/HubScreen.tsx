@@ -27,12 +27,14 @@ import {PolicyScreen} from './PolicyScreen';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
 import Animated, {FadeIn} from 'react-native-reanimated';
 import {SecurityCenterScreen} from '../security-center/SecurityCenterScreen';
+import {EmergencyMonitoringScreen} from '../journey/EmergencyMonitoringScreen';
 
 export type HubSection =
   | 'menu'
   | 'account'
   | 'circle'
   | 'geofence'
+  | 'emergency-monitoring'
   | 'drive-sync'
   | 'sim-recovery'
   | 'subscriptions'
@@ -70,6 +72,13 @@ const MENU_ITEMS: MenuItem[] = [
     title: 'Geofence',
     subtitle: 'Zones, distance & address',
     icon: '🗺️',
+    badge: 'Premium',
+  },
+  {
+    id: 'emergency-monitoring',
+    title: 'Emergency monitoring',
+    subtitle: 'Journey playback — Premium+',
+    icon: '🚨',
     badge: 'Premium',
   },
   ...(CIRCLE_ENABLED
@@ -312,6 +321,14 @@ export function HubScreen({
     return (
       <HubSectionShell title="Geofence" styles={styles}>
         <GeofenceScreen onUpgrade={() => openSection('subscriptions')} />
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'emergency-monitoring') {
+    return (
+      <HubSectionShell title="Emergency monitoring" styles={styles}>
+        <EmergencyMonitoringScreen onUpgrade={() => openSection('subscriptions')} />
       </HubSectionShell>
     );
   }

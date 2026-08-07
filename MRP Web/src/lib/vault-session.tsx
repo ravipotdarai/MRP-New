@@ -44,6 +44,10 @@ type VaultSessionValue = {
   lock: () => void;
   clearError: () => void;
   setInfo: (msg: string | null) => void;
+  /** Session PIN for decrypting GPS day packs (memory only; null when locked). */
+  getSessionPin: () => string | null;
+  /** Decrypt an MRP1 blob with the unlocked session PIN. */
+  decryptWithSessionPin: (blob: ArrayBuffer) => Promise<string>;
 };
 
 const VaultSessionContext = createContext<VaultSessionValue | null>(null);
@@ -242,6 +246,14 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
+  const getSessionPin = useCallback(() => pinRef.current, []);
+
+  const decryptWithSessionPin = useCallback(async (blob: ArrayBuffer) => {
+    const pin = pinRef.current;
+    if (!pin) throw new Error("Vault locked — unlock to decrypt GPS packs");
+    return decryptVaultUtf8(blob, pin);
+  }, []);
+
   const value = useMemo<VaultSessionValue>(
     () => ({
       vault,
@@ -256,8 +268,10 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       lock,
       clearError: () => setError(null),
       setInfo,
+      getSessionPin,
+      decryptWithSessionPin,
     }),
-    [vault, meta, busy, unlockStage, error, info, unlock, refresh, lock],
+    [vault, meta, busy, unlockStage, error, info, unlock, refresh, lock, getSessionPin, decryptWithSessionPin],
   );
 
   return (

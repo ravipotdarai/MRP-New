@@ -80,6 +80,19 @@ object GeofenceTimeline {
         )
         try {
             TimelineStorage(context).appendTimelineEntrySync(entry)
+            if (hasCoords) {
+                GpsTrailWriter.enqueueStamp(
+                    context = context,
+                    reason = GpsTrailWriter.StampReason.GEOFENCE,
+                    latitude = lat,
+                    longitude = lng,
+                    accuracyM = accuracy,
+                    tier = "geofence",
+                    force = true,
+                )
+            } else {
+                GpsTrailWriter.enqueueStamp(context, GpsTrailWriter.StampReason.GEOFENCE)
+            }
             EventSyncPublisher.publishAsync(context, entry, addressParts)
             Log.i(TAG, "$eventType $name badgeInside=$badgeInside deferred=$locationDeferred")
         } catch (e: Exception) {
