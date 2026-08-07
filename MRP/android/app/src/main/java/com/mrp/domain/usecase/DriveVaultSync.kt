@@ -69,8 +69,9 @@ object DriveVaultSync {
         executor.execute {
             try {
                 trySync(context.applicationContext, reason, panic = false)
-            } catch (e: Exception) {
-                Log.w(TAG, "requestSync $reason", e)
+            } catch (t: Throwable) {
+                // OutOfMemoryError must not kill the UI process.
+                Log.e(TAG, "requestSync $reason", t)
             }
         }
     }
@@ -83,8 +84,8 @@ object DriveVaultSync {
         executor.execute {
             try {
                 trySync(context.applicationContext, reason, panic = true)
-            } catch (e: Exception) {
-                Log.w(TAG, "requestPanicSync $reason", e)
+            } catch (t: Throwable) {
+                Log.e(TAG, "requestPanicSync $reason", t)
             } finally {
                 EmergencySyncCoordinator.clearStatusLine()
             }
@@ -129,13 +130,23 @@ object DriveVaultSync {
         }
     }
 
-    fun buildPayload(context: Context, email: String, reason: String, criticalOnly: Boolean = false): JSONObject {
+    fun buildPayload(
+        context: Context,
+        email: String,
+        reason: String,
+        criticalOnly: Boolean = false,
+        omitSelfies: Boolean = false,
+    ): JSONObject {
         val timeline = TimelineStorage(context)
         val sim = SimRecoveryStorage(context)
+        val entries = timeline.getTimeline()
         val timelineJson = if (criticalOnly) {
             timeline.exportCriticalTimelineJsonArray()
         } else {
-            timeline.exportTimelineJsonArray()
+            // Cap timeline rows in vault to keep JSON under heap limits.
+            val arr = org.json.JSONArray()
+            entries.take(400).forEach { arr.put(it.toJsonObject()) }
+            arr
         }
         val payload = JSONObject()
             .put("version", 3)
@@ -151,8 +162,8 @@ object DriveVaultSync {
             payload.put("liveLocation", LiveLocationStore.readOrEmpty(context))
         }
 
-        if (!criticalOnly && DeviceTrackingPrefs.shouldIncludeSelfies(context)) {
-            payload.put("selfies", SelfieVaultPackager.collectSelfieBlobs(context, timeline.getTimeline()))
+        if (!criticalOnly && !omitSelfies && DeviceTrackingPrefs.shouldIncludeSelfies(context)) {
+            payload.put("selfies", SelfieVaultPackager.collectSelfieBlobs(context, entries))
             payload.put("selfiesOmitted", false)
         } else {
             payload.put("selfies", JSONArray())
@@ -194,8 +205,7 @@ object DriveVaultSync {
         criticalOnly: Boolean = isPanicReason(reason)
     ): Boolean {
         val sim = SimRecoveryStorage(context)
-        val payload = buildPayload(context, email, reason, criticalOnly)
-        val cipherBytes = VaultBackupCrypto.encryptUtf8(payload.toString(), pin)
+        val cipherBytes = encryptPayloadSafely(context, pin, email, reason, criticalOnly)
         val client = DriveAppDataClient(accessToken)
         val existing = client.listAppDataFiles(DriveAppDataClient.BACKUP_FILE_NAME)
             .maxByOrNull { it.modifiedTime ?: "" }
@@ -234,6 +244,33 @@ object DriveVaultSync {
                 vaultPrefs(context).edit().putBoolean(KEY_PAUSED_QUOTA, true).apply()
             }
             throw e
+        }
+    }
+
+    /** Build + encrypt; on OOM retry without selfies / critical-only so sync never kills the app. */
+    private fun encryptPayloadSafely(
+        context: Context,
+        pin: String,
+        email: String,
+        reason: String,
+        criticalOnly: Boolean,
+    ): ByteArray {
+        fun encrypt(omitSelfies: Boolean, critical: Boolean): ByteArray {
+            val payload = buildPayload(context, email, reason, critical, omitSelfies)
+            return VaultBackupCrypto.encryptUtf8(payload.toString(), pin)
+        }
+        return try {
+            encrypt(omitSelfies = false, critical = criticalOnly)
+        } catch (oom: OutOfMemoryError) {
+            Log.e(TAG, "OOM building vault — retry without selfies", oom)
+            System.gc()
+            try {
+                encrypt(omitSelfies = true, critical = criticalOnly)
+            } catch (oom2: OutOfMemoryError) {
+                Log.e(TAG, "OOM again — critical-only vault", oom2)
+                System.gc()
+                encrypt(omitSelfies = true, critical = true)
+            }
         }
     }
 

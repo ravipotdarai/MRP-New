@@ -199,7 +199,8 @@ export function HomeScreen({
 
   const loadAll = useCallback(async () => {
     const bridge = mrpmModule as any;
-    const [tRes, pRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes, simRes, postureRes, riskRes] =
+    // Critical path only — keep Home first paint light.
+    const [tRes, pRes, nRes, gRes, camRes, locRes, ovRes, adRes, usRes, liveRes] =
       await Promise.allSettled([
         mrpmModule.getTimeline(),
         mrpmModule.getPhotos(),
@@ -211,9 +212,6 @@ export function HomeScreen({
         mrpmModule.isDeviceAdminEnabled(),
         mrpmModule.hasUsageStatsPermission(),
         mrpmModule.getCurrentLocationWithAddress?.(false) ?? Promise.resolve(null),
-        bridge.getSimRecoveryStatus?.() ?? Promise.resolve(null),
-        bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
-        bridge.getAppRiskReport?.() ?? Promise.resolve([]),
       ]);
 
     if (tRes.status === 'fulfilled') setTimeline(Array.isArray(tRes.value) ? tRes.value : []);
@@ -223,53 +221,6 @@ export function HomeScreen({
     if (liveRes.status === 'fulfilled' && liveRes.value) {
       setLiveLocation(liveRes.value as typeof liveLocation);
     }
-    if (simRes.status === 'fulfilled' && simRes.value) {
-      const st = simRes.value as {enabled?: boolean; hasContacts?: boolean};
-      setRecoveryContactOk(!!(st.enabled && st.hasContacts));
-    }
-    if (postureRes.status === 'fulfilled' && postureRes.value) {
-      const summary = postureRes.value as {grade?: string; lastJson?: string};
-      const g = summary.grade;
-      setPostureGrade(g && g.length ? g : 'Unknown');
-      let issues = 0;
-      let wifiLabel = '—';
-      if (summary.lastJson) {
-        try {
-          const parsed = JSON.parse(summary.lastJson);
-          const checks = Array.isArray(parsed?.checks) ? parsed.checks : [];
-          issues = checks.filter((c: {ok?: boolean}) => c && c.ok === false).length;
-          const wifi = checks.find((c: {id?: string}) => c?.id === 'wifi_crypto') as
-            | {detail?: string; ok?: boolean}
-            | undefined;
-          if (wifi?.detail) {
-            if (wifi.detail.includes('·')) {
-              wifiLabel = wifi.detail.split('·').pop()?.trim() || wifi.detail;
-            } else if (/not connected/i.test(wifi.detail)) {
-              wifiLabel = 'Off';
-            } else {
-              wifiLabel = wifi.ok === false ? 'Weak' : 'OK';
-            }
-          }
-        } catch {
-          issues = 0;
-        }
-      }
-      setWifiGrade(wifiLabel);
-      // Critical / Attention with no parsed checks still counts as at least 1
-      if (issues === 0 && (g === 'Critical' || g === 'Attention')) {
-        issues = 1;
-      }
-      setPostureIssueCount(issues);
-    }
-    if (riskRes.status === 'fulfilled') {
-      const apps = Array.isArray(riskRes.value) ? riskRes.value : [];
-      setHighRiskCount(
-        apps.filter(
-          (a: {riskLevel?: string}) =>
-            a.riskLevel === 'HIGH' || a.riskLevel === 'CRITICAL',
-        ).length,
-      );
-    }
     setPermFlags({
       camera: camRes.status === 'fulfilled' ? !!camRes.value : false,
       location: locRes.status === 'fulfilled' ? !!locRes.value : false,
@@ -277,27 +228,86 @@ export function HomeScreen({
       admin: adRes.status === 'fulfilled' ? !!adRes.value : false,
       usageStats: usRes.status === 'fulfilled' ? !!usRes.value : false,
     });
-    // Prefer aggregated setup status when available (more reliable for Device Admin / overlay)
-    try {
-      const setup = await bridge.getPermissionSetupStatus?.();
-      if (setup && typeof setup === 'object') {
-        setPermFlags(prev => ({
-          camera: setup.camera ?? prev.camera,
-          location: setup.location ?? prev.location,
-          overlay: setup.overlay ?? prev.overlay,
-          admin: setup.deviceAdmin ?? prev.admin,
-          usageStats: setup.usageStats ?? prev.usageStats,
-        }));
+
+    // Deferred: SIM / posture / risk / setup — after first paint.
+    void (async () => {
+      try {
+        const [simRes, postureRes] = await Promise.allSettled([
+          bridge.getSimRecoveryStatus?.() ?? Promise.resolve(null),
+          bridge.getBreachPostureSummary?.() ?? Promise.resolve(null),
+        ]);
+        if (simRes.status === 'fulfilled' && simRes.value) {
+          const st = simRes.value as {enabled?: boolean; hasContacts?: boolean};
+          setRecoveryContactOk(!!(st.enabled && st.hasContacts));
+        }
+        if (postureRes.status === 'fulfilled' && postureRes.value) {
+          const summary = postureRes.value as {grade?: string; lastJson?: string};
+          const g = summary.grade;
+          setPostureGrade(g && g.length ? g : 'Unknown');
+          let issues = 0;
+          let wifiLabel = '—';
+          if (summary.lastJson) {
+            try {
+              const parsed = JSON.parse(summary.lastJson);
+              const checks = Array.isArray(parsed?.checks) ? parsed.checks : [];
+              issues = checks.filter((c: {ok?: boolean}) => c && c.ok === false).length;
+              const wifi = checks.find((c: {id?: string}) => c?.id === 'wifi_crypto') as
+                | {detail?: string; ok?: boolean}
+                | undefined;
+              if (wifi?.detail) {
+                if (wifi.detail.includes('·')) {
+                  wifiLabel = wifi.detail.split('·').pop()?.trim() || wifi.detail;
+                } else if (/not connected/i.test(wifi.detail)) {
+                  wifiLabel = 'Off';
+                } else {
+                  wifiLabel = wifi.ok === false ? 'Weak' : 'OK';
+                }
+              }
+            } catch {
+              issues = 0;
+            }
+          }
+          setWifiGrade(wifiLabel);
+          if (issues === 0 && (g === 'Critical' || g === 'Attention')) {
+            issues = 1;
+          }
+          setPostureIssueCount(issues);
+        }
+      } catch {
+        /* ignore deferred errors */
       }
-    } catch {
-      /* keep flags from individual checks */
-    }
-    try {
-      const cfg = await getTrackingConfig();
-      setEmergencyActive(!!cfg.emergencyTracking);
-    } catch {
-      setEmergencyActive(false);
-    }
+      void (bridge.getAppRiskReport?.() ?? Promise.resolve([]))
+        .then((riskRes: unknown) => {
+          const apps = Array.isArray(riskRes) ? riskRes : [];
+          setHighRiskCount(
+            apps.filter(
+              (a: {riskLevel?: string}) =>
+                a.riskLevel === 'HIGH' || a.riskLevel === 'CRITICAL',
+            ).length,
+          );
+        })
+        .catch(() => {});
+      try {
+        const setup = await bridge.getPermissionSetupStatus?.();
+        if (setup && typeof setup === 'object') {
+          setPermFlags(prev => ({
+            camera: setup.camera ?? prev.camera,
+            location: setup.location ?? prev.location,
+            overlay: setup.overlay ?? prev.overlay,
+            admin: setup.deviceAdmin ?? prev.admin,
+            usageStats: setup.usageStats ?? prev.usageStats,
+          }));
+        }
+      } catch {
+        /* keep flags */
+      }
+      try {
+        const cfg = await getTrackingConfig();
+        setEmergencyActive(!!cfg.emergencyTracking);
+      } catch {
+        setEmergencyActive(false);
+      }
+    })();
   }, []);
 
   // Refresh only when Home is opened / focused — no continuous polling

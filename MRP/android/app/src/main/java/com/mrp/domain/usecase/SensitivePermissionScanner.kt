@@ -1,6 +1,7 @@
 package com.mrp.domain.usecase
 
 import android.Manifest
+import android.content.Intent
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -51,11 +52,7 @@ class SensitivePermissionScanner(private val context: Context) {
     /** Sideloaded / high-risk apps with SMS+Contacts or SMS+Camera combos (for timeline rules). */
     fun dataRiskCandidates(limit: Int = 40): List<AppPerm> {
         return try {
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            apps.asSequence()
-                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-                .filter { (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
-                .filter { it.packageName != context.packageName }
+            visibleNonSystemApps()
                 .mapNotNull { ai ->
                     val perms = requested(ai.packageName)
                     val interesting = mutableListOf<String>()
@@ -88,11 +85,7 @@ class SensitivePermissionScanner(private val context: Context) {
 
     private fun scan(wanted: Set<String>): List<AppPerm> {
         return try {
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            apps.asSequence()
-                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-                .filter { (it.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0 }
-                .filter { it.packageName != context.packageName }
+            visibleNonSystemApps()
                 .mapNotNull { ai ->
                     val hit = requested(ai.packageName).intersect(wanted).distinct().sorted()
                     if (hit.isEmpty()) null
@@ -104,6 +97,53 @@ class SensitivePermissionScanner(private val context: Context) {
             Log.w(TAG, "scan failed (package visibility?)", e)
             emptyList()
         }
+    }
+
+    /**
+     * Prefer launcher-visible apps (works without QUERY_ALL_PACKAGES via manifest &lt;queries&gt;),
+     * then merge any packages PackageManager still returns.
+     */
+    private fun visibleNonSystemApps(): Sequence<ApplicationInfo> {
+        val byPkg = LinkedHashMap<String, ApplicationInfo>()
+        try {
+            val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val flags = if (Build.VERSION.SDK_INT >= 23) {
+                PackageManager.MATCH_ALL
+            } else {
+                0
+            }
+            pm.queryIntentActivities(launch, flags).forEach { ri ->
+                val pkg = ri.activityInfo?.packageName ?: return@forEach
+                if (pkg == context.packageName) return@forEach
+                try {
+                    val ai = pm.getApplicationInfo(pkg, 0)
+                    if ((ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
+                        (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+                    ) {
+                        return@forEach
+                    }
+                    byPkg[pkg] = ai
+                } catch (_: Exception) {
+                    // skip
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "launcher query failed", e)
+        }
+        try {
+            pm.getInstalledApplications(PackageManager.GET_META_DATA).forEach { ai ->
+                if (ai.packageName == context.packageName) return@forEach
+                if ((ai.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
+                    (ai.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+                ) {
+                    return@forEach
+                }
+                byPkg.putIfAbsent(ai.packageName, ai)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getInstalledApplications limited", e)
+        }
+        return byPkg.values.asSequence()
     }
 
     private fun requested(packageName: String): Set<String> {

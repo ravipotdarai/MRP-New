@@ -1,4 +1,4 @@
-package com.mrp
+﻿package com.mrp
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -30,10 +30,38 @@ import com.mrp.domain.usecase.LocationHelper
 import com.mrp.domain.usecase.SoftWipeHelper
 import com.mrp.data.local.AppUsageDao
 import java.io.File
+import java.util.concurrent.Executors
 
 class MrpNativeModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
     override fun getName(): String = "MrpNative"
+
+    /** Heavy Home/bridge work â€” never block the RN native queue / UI. */
+    private fun runAsync(promise: Promise, errorCode: String, block: () -> Unit) {
+        bgExecutor.execute {
+            try {
+                block()
+            } catch (e: Exception) {
+                Log.e(TAG, errorCode, e)
+                promise.reject(errorCode, e.message, e)
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "MrpNative"
+        private val bgExecutor = Executors.newFixedThreadPool(4) { r ->
+            Thread(r, "MrpNativeBg").apply { isDaemon = true }
+        }
+        private const val PERM_REQUEST_CODE_BASE = 7100
+        private const val UI_PREFS = "mrp_ui"
+        private const val KEY_THEME_ID = "theme_id"
+        private const val KEY_SEC_LOCALE = "security_center_locale"
+        private const val KEY_WIZARD_DISMISSED = "permission_wizard_dismissed"
+        private const val KEY_CIRCLE_LOCAL_JSON = "circle_local_json"
+        const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
+        const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
+    }
 
     @ReactMethod
     fun startMonitoring(promise: Promise) {
@@ -116,7 +144,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 map.putString("reason", "accessibility_required")
                 map.putString(
                     "message",
-                    "Enable MRP under Settings → Accessibility to use Instant Lock"
+                    "Enable MRP under Settings â†’ Accessibility to use Instant Lock"
                 )
                 promise.resolve(map)
                 return
@@ -138,7 +166,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
      */
     @ReactMethod
     fun performSoftWipe(confirmToken: String, promise: Promise) {
-        try {
+        runAsync(promise, "SOFT_WIPE_ERROR") {
             val result = SoftWipeHelper(reactContext).perform(confirmToken)
             val map = Arguments.createMap()
             map.putBoolean("ok", result.optBoolean("ok", false))
@@ -146,9 +174,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             map.putString("message", result.optString("message", ""))
             map.putString("cleared", result.optString("cleared", ""))
             promise.resolve(map)
-        } catch (e: Exception) {
-            Log.e(TAG, "performSoftWipe failed", e)
-            promise.reject("SOFT_WIPE_ERROR", e.message, e)
         }
     }
 
@@ -167,7 +192,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getPhotos(promise: Promise) {
-        try {
+        runAsync(promise, "GET_PHOTOS_ERROR") {
             val photosDir = File(reactContext.getExternalFilesDir(null), "MRP")
             if (!photosDir.exists()) {
                 photosDir.mkdirs()
@@ -188,9 +213,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             }
 
             promise.resolve(photoList)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get photos", e)
-            promise.reject("GET_PHOTOS_ERROR", "Failed to get photos", e)
         }
     }
 
@@ -212,16 +234,13 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun deleteAllPhotos(promise: Promise) {
-        try {
+        runAsync(promise, "DELETE_ALL_ERROR") {
             val storage = TimelineStorage(reactContext)
             val photosDir = storage.getPhotosDirectory()
             if (photosDir.exists() && photosDir.isDirectory) {
                 photosDir.listFiles()?.forEach { it.delete() }
             }
             promise.resolve(true)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete all photos", e)
-            promise.reject("DELETE_ALL_ERROR", "Failed to delete all photos", e)
         }
     }
 
@@ -278,7 +297,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         try {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, MrpDeviceAdminReceiver.getComponentName(reactContext))
-            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "MRP uses Device Admin only to detect failed lock-screen PIN/password attempts — not to wipe or change your password.")
+            intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "MRP uses Device Admin only to detect failed lock-screen PIN/password attempts â€” not to wipe or change your password.")
             
             val activity = currentActivity
             if (activity != null) {
@@ -459,7 +478,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getEvents(promise: Promise) {
-        try {
+        runAsync(promise, "GET_EVENTS_ERROR") {
             val rawEvents = EventStorage(reactContext).getEvents()
             val events = rawEvents.sortedByDescending { it.timestamp.time }
             val eventList = Arguments.createArray()
@@ -483,9 +502,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 eventList.pushMap(eventMap)
             }
             promise.resolve(eventList)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get events", e)
-            promise.reject("GET_EVENTS_ERROR", "Failed to get events", e)
         }
     }
 
@@ -551,11 +567,13 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getTimeline(promise: Promise) {
-        try {
+        runAsync(promise, "GET_TIMELINE_ERROR") {
             val rawTimeline = TimelineStorage(reactContext).getTimeline()
             val timeline = rawTimeline.sortedByDescending { it.timestamp }
             val list = Arguments.createArray()
-            for (entry in timeline) {
+            // Home / list UIs only need a recent window â€” cap bridge payload size.
+            val capped = if (timeline.size > 250) timeline.take(250) else timeline
+            for (entry in capped) {
                 val map = Arguments.createMap().apply {
                     // Use exact schema field names with snake_case
                     putString("id", entry.id)
@@ -594,32 +612,28 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 list.pushMap(map)
             }
             promise.resolve(list)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get timeline", e)
-            promise.reject("GET_TIMELINE_ERROR", "Failed to get timeline", e)
         }
     }
 
     @ReactMethod
     fun getGpsTrailDays(promise: Promise) {
-        try {
+        runAsync(promise, "GPS_TRAIL_DAYS") {
             val dao = com.mrp.data.local.GpsTrailDao(reactContext)
             val days = dao.allDayKeys()
             val arr = Arguments.createArray()
             days.forEach { arr.pushString(it) }
             promise.resolve(arr)
-        } catch (e: Exception) {
-            promise.reject("GPS_TRAIL_DAYS", e.message, e)
         }
     }
 
     @ReactMethod
     fun getGpsTrailForDay(dayKey: String, promise: Promise) {
-        try {
+        runAsync(promise, "GPS_TRAIL_DAY") {
             val dao = com.mrp.data.local.GpsTrailDao(reactContext)
             val points = dao.pointsForLocalDay(dayKey)
             val arr = Arguments.createArray()
-            for (p in points) {
+            val capped = if (points.size > 5000) points.take(5000) else points
+            for (p in capped) {
                 arr.pushMap(Arguments.createMap().apply {
                     putDouble("latitude", p.latitude)
                     putDouble("longitude", p.longitude)
@@ -631,33 +645,25 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 })
             }
             promise.resolve(arr)
-        } catch (e: Exception) {
-            promise.reject("GPS_TRAIL_DAY", e.message, e)
         }
     }
 
     @ReactMethod
     fun deleteTimelineEntry(entryId: String, promise: Promise) {
-        try {
+        runAsync(promise, "DELETE_TIMELINE_ERROR") {
             val storage = TimelineStorage(reactContext)
             val timeline = storage.getTimeline().filter { it.id != entryId }
             storage.clearAllTimeline()
             timeline.forEach { storage.appendTimelineEntry(it) }
             promise.resolve(true)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete timeline entry", e)
-            promise.reject("DELETE_TIMELINE_ERROR", "Failed to delete timeline entry", e)
         }
     }
 
     @ReactMethod
     fun clearTimeline(promise: Promise) {
-        try {
+        runAsync(promise, "CLEAR_TIMELINE_ERROR") {
             TimelineStorage(reactContext).clearAllTimeline()
             promise.resolve(true)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear timeline", e)
-            promise.reject("CLEAR_TIMELINE_ERROR", "Failed to clear timeline", e)
         }
     }
 
@@ -717,12 +723,12 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     }
 
     /**
-     * On-demand UsageStatsManager.queryEvents for the last [days] days (1–30).
+     * On-demand UsageStatsManager.queryEvents for the last [days] days (1â€“30).
      * Handles both ACTIVITY_RESUMED/PAUSED (API 29+) and MOVE_TO_FOREGROUND/BACKGROUND.
      */
     @ReactMethod
     fun getAppUsageForRange(days: Double, promise: Promise) {
-        try {
+        runAsync(promise, "GET_APP_USAGE_ERROR") {
             val usageStatsManager = reactContext.getSystemService(Context.USAGE_STATS_SERVICE)
                 as android.app.usage.UsageStatsManager
             val pm = reactContext.packageManager
@@ -837,9 +843,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 list.pushMap(map)
             }
             promise.resolve(list)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get app usage", e)
-            promise.reject("GET_APP_USAGE_ERROR", "Failed to get app usage stats", e)
         }
     }
 
@@ -874,10 +877,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
     @ReactMethod
     fun getMrpBatteryUsage(promise: Promise) {
         Log.d(TAG, "=== getMrpBatteryUsage CALLED ===")
-        try {
+        runAsync(promise, "GET_MRP_BATTERY_ERROR") {
             val usageStatsManager = reactContext.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
             val now = System.currentTimeMillis()
-            val oneHourAgo = now - (60 * 60 * 1000) // Last hour
             val oneDayAgo = now - (24 * 60 * 60 * 1000) // Last 24 hours
 
             val todayUsage = usageStatsManager.queryUsageStats(
@@ -903,9 +905,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
             Log.d(TAG, "MRP battery usage: ${hours}h ${minutes}m = $totalMs ms")
             promise.resolve(map)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get MRP battery usage", e)
-            promise.reject("GET_MRP_BATTERY_ERROR", "Failed to get MRP battery usage", e)
         }
     }
 
@@ -950,7 +949,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
-    /** Opens Android Settings → Apps → MRP → App battery usage (Unrestricted / Optimized / Restricted). */
+    /** Opens Android Settings â†’ Apps â†’ MRP â†’ App battery usage (Unrestricted / Optimized / Restricted). */
     @ReactMethod
     fun openAppBatteryUsageSettings(promise: Promise) {
         try {
@@ -965,7 +964,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     /**
      * Opens the Settings path that lets the user *edit* App battery usage.
-     * Returns "locked" when MRP is on the Don’t-optimize allow-list (switch greyed);
+     * Returns "locked" when MRP is on the Donâ€™t-optimize allow-list (switch greyed);
      * "open" when App Info / battery usage was opened normally.
      */
     @ReactMethod
@@ -1036,14 +1035,14 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                                         }
                                     }
                                 } catch (ignored: SecurityException) {
-                                    // READ_PHONE_STATE not granted — keep "Mobile Data"
+                                    // READ_PHONE_STATE not granted â€” keep "Mobile Data"
                                 }
                                 map.putString("connectionType", type)
                             }
                         }
                     }
                 }
-                // SIM / operator name (Idea, Jio, Airtel…) — independent of Wi‑Fi SSID
+                // SIM / operator name (Idea, Jio, Airtelâ€¦) â€” independent of Wiâ€‘Fi SSID
                 try {
                     val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
                     val carrier = tm?.networkOperatorName?.trim()
@@ -1115,7 +1114,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     /**
      * Live location + reverse geocode for Home "Current Location" via [LocationEngine].
-     * @param forceRefresh force GPS publish (Home ↻).
+     * @param forceRefresh force GPS publish (Home â†»).
      */
     @ReactMethod
     fun getCurrentLocationWithAddress(forceRefresh: Boolean, promise: Promise) {
@@ -1125,7 +1124,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                     val demand = if (forceRefresh) {
                         com.mrp.domain.usecase.LocationEngine.Demand.HomeRefresh
                     } else {
-                        com.mrp.domain.usecase.LocationEngine.Demand.Event("HOME_UI")
+                        com.mrp.domain.usecase.LocationEngine.Demand.HomePeek
                     }
                     val result = com.mrp.domain.usecase.LocationEngine.obtain(reactContext, demand)
                     val stamp = result.stamp
@@ -1251,17 +1250,17 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 iccidMasked = "XXXX-1234",
                 hasPhone = true
             )
-            promise.resolve("[SAMPLE — sent only on SIM change]\n$sample")
+            promise.resolve("[SAMPLE â€” sent only on SIM change]\n$sample")
         } catch (e: Exception) {
             promise.reject("SMS_SAMPLE", e.message, e)
         }
     }
 
-    // ─── SIM Change Recovery Alert ───────────────────────────────────────────
+    // â”€â”€â”€ SIM Change Recovery Alert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @ReactMethod
     fun getSimRecoveryStatus(promise: Promise) {
-        try {
+        runAsync(promise, "SIM_RECOVERY_STATUS") {
             val storage = com.mrp.data.local.SimRecoveryStorage(reactContext)
             val tracker = com.mrp.domain.usecase.SimIdentityTracker(reactContext)
             val current = tracker.readCurrentIdentity()
@@ -1299,9 +1298,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putBoolean("phonePermissionGranted", phonePerm)
             }
             promise.resolve(map)
-        } catch (e: Exception) {
-            Log.e(TAG, "getSimRecoveryStatus failed", e)
-            promise.reject("SIM_RECOVERY_STATUS", e.message, e)
         }
     }
 
@@ -1473,7 +1469,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
             val anyCanShowRationale = need.any {
                 ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
             }
-            // If we already asked before (none can show rationale) — skip requestPermissions to avoid hang.
+            // If we already asked before (none can show rationale) â€” skip requestPermissions to avoid hang.
             // Heuristic: check shared flag isn't available; use: if ALL need request and none show
             // rationale, still TRY once with a short timeout below.
 
@@ -1563,7 +1559,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getAppRiskReport(promise: Promise) {
-        try {
+        runAsync(promise, "APP_RISK") {
             val reports = com.mrp.domain.usecase.AppRiskScorer(reactContext).scanInstalledApps(80)
             val arr = Arguments.createArray()
             reports.forEach { r ->
@@ -1588,14 +1584,12 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 })
             }
             promise.resolve(arr)
-        } catch (e: Exception) {
-            promise.reject("APP_RISK", e.message, e)
         }
     }
 
     @ReactMethod
     fun runBreachPostureScan(promise: Promise) {
-        try {
+        runAsync(promise, "POSTURE") {
             val report = com.mrp.domain.usecase.BreachPostureScanner(reactContext).scan(emitAlerts = true)
             val map = Arguments.createMap().apply {
                 putDouble("scannedAtMs", report.scannedAtMs.toDouble())
@@ -1616,8 +1610,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putArray("newlyFailedIds", newly)
             }
             promise.resolve(map)
-        } catch (e: Exception) {
-            promise.reject("POSTURE", e.message, e)
         }
     }
 
@@ -1667,7 +1659,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun getSensitivePermissionSections(promise: Promise) {
-        try {
+        runAsync(promise, "SENSITIVE_PERMS") {
             val scanner = com.mrp.domain.usecase.SensitivePermissionScanner(reactContext)
             fun pack(list: List<com.mrp.domain.usecase.SensitivePermissionScanner.AppPerm>): WritableArray {
                 val arr = Arguments.createArray()
@@ -1690,8 +1682,6 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putArray("contacts", pack(scanner.appsWithContacts()))
             }
             promise.resolve(map)
-        } catch (e: Exception) {
-            promise.reject("SENSITIVE_PERMS", e.message, e)
         }
     }
 
@@ -1726,11 +1716,9 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
 
     @ReactMethod
     fun evaluateDataRiskRules(promise: Promise) {
-        try {
+        runAsync(promise, "DATA_RISK_EVAL") {
             com.mrp.domain.usecase.DataRiskRuleEngine(reactContext).evaluateInstalled()
             promise.resolve(true)
-        } catch (e: Exception) {
-            promise.reject("DATA_RISK_EVAL", e.message, e)
         }
     }
 
@@ -1840,7 +1828,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
-    /** Maps key from MRP/.env → resValue google_maps_api_key (Circle WebView / SDK). */
+    /** Maps key from MRP/.env â†’ resValue google_maps_api_key (Circle WebView / SDK). */
     @ReactMethod
     fun getGoogleMapsApiKey(promise: Promise) {
         try {
@@ -1860,15 +1848,4 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         }
     }
 
-    companion object {
-        private const val TAG = "MrpNative"
-        private const val PERM_REQUEST_CODE_BASE = 7100
-        private const val UI_PREFS = "mrp_ui"
-        private const val KEY_THEME_ID = "theme_id"
-        private const val KEY_SEC_LOCALE = "security_center_locale"
-        private const val KEY_WIZARD_DISMISSED = "permission_wizard_dismissed"
-        private const val KEY_CIRCLE_LOCAL_JSON = "circle_local_json"
-        const val EVENT_PHOTO_CAPTURED = "onPhotoCaptured"
-        const val EVENT_PHOTO_DELETED = "onPhotoDeleted"
-    }
 }

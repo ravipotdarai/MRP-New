@@ -32,8 +32,23 @@ object DevicePresenceTracker {
     private val emergencyWorker = Executors.newSingleThreadExecutor { r ->
         Thread(r, "EmergencyLocTick").apply { isDaemon = true }
     }
+    private val startWorker = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "PresenceStart").apply { isDaemon = true }
+    }
 
     fun start(context: Context) {
+        val app = context.applicationContext
+        // Never block RN / main — presence setup + trail tickers stay off the UI thread.
+        startWorker.execute {
+            try {
+                startBlocking(app)
+            } catch (e: Exception) {
+                Log.w(TAG, "start failed", e)
+            }
+        }
+    }
+
+    private fun startBlocking(context: Context) {
         if (!DeviceTrackingPrefs.isMovementTracking(context)) {
             stop(context)
             return
@@ -42,7 +57,7 @@ object DevicePresenceTracker {
         // No continuous GPS — seed from cache only
         LocationResolver.peekCache()?.let { loc ->
             persistLocal(
-                context.applicationContext,
+                context,
                 loc.latitude,
                 loc.longitude,
                 loc.accuracy,
@@ -50,9 +65,9 @@ object DevicePresenceTracker {
                 emitGeofenceTimeline = false
             )
         }
-        scheduleEmergency(context.applicationContext)
-        DriveLocationHeartbeat.start(context.applicationContext)
-        GpsTrailIdleTicker.start(context.applicationContext)
+        scheduleEmergency(context)
+        DriveLocationHeartbeat.start(context)
+        GpsTrailIdleTicker.start(context)
         Log.i(TAG, "presence ready (event-driven, no continuous location)")
     }
 
@@ -72,8 +87,15 @@ object DevicePresenceTracker {
     }
 
     fun restart(context: Context) {
-        stop(context)
-        start(context)
+        val app = context.applicationContext
+        startWorker.execute {
+            try {
+                stop(app)
+                startBlocking(app)
+            } catch (e: Exception) {
+                Log.w(TAG, "restart failed", e)
+            }
+        }
     }
 
     fun pingFromEvent(
@@ -322,7 +344,16 @@ object DevicePresenceTracker {
 
     private fun readBattery(context: Context): Int {
         return try {
-            val intent = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(
+                    null,
+                    IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+                    Context.RECEIVER_NOT_EXPORTED,
+                )
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            }
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
             if (level < 0 || scale <= 0) -1 else (level * 100) / scale

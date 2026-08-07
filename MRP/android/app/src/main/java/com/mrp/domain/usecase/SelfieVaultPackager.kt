@@ -24,10 +24,11 @@ object SelfieVaultPackager {
     private const val TAG = "SelfieVaultPackager"
     private const val MATCH_WINDOW_MS = 45_000L
     private const val FALLBACK_WINDOW_MS = 120_000L
-    const val MAX_SELFIES = 100
-    const val MAX_BYTES_TOTAL = 28L * 1024L * 1024L
-    /** ~5–8MP JPEG @ q96 typically 1.5–4MB. */
-    const val MAX_FILE_BYTES = 5_500_000L
+    const val MAX_SELFIES = 8
+    /** Raw JPEG budget for vault (base64 expands ~33% + JSON buffering). Keep well under heap. */
+    const val MAX_BYTES_TOTAL = 4L * 1024L * 1024L
+    /** Per-file cap for vault packing — full-res files stay on disk for local gallery. */
+    const val MAX_FILE_BYTES = 900_000L
 
     private val ISO_UTC = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
@@ -108,7 +109,9 @@ object SelfieVaultPackager {
             if (!file.exists() || file.length() <= 0 || file.length() > MAX_FILE_BYTES) return false
             return try {
                 val raw = file.readBytes()
-                if (bytes + raw.size > MAX_BYTES_TOTAL) return false
+                // Count base64 expansion so JSONObject.toString() cannot OOM the process.
+                val projected = bytes + (raw.size * 4L) / 3L + 256L
+                if (projected > MAX_BYTES_TOTAL) return false
                 arr.put(
                     JSONObject()
                         .put("eventId", eventId)
@@ -118,9 +121,12 @@ object SelfieVaultPackager {
                         .put("mime", "image/jpeg")
                         .put("dataBase64", Base64.encodeToString(raw, Base64.NO_WRAP)),
                 )
-                bytes += raw.size
+                bytes = projected
                 count++
                 true
+            } catch (ex: OutOfMemoryError) {
+                Log.e(TAG, "OOM packing selfie $path — stopping pack", ex)
+                false
             } catch (ex: Exception) {
                 Log.w(TAG, "selfie skip $path", ex)
                 false

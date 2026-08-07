@@ -147,6 +147,9 @@ export interface MrpNativeInterface {
   getBreachPostureSummary(): Promise<any>;
   getMisuseRules(): Promise<any[]>;
   setMisuseRuleEnabled(ruleId: string, enabled: boolean): Promise<boolean>;
+  getDataRiskRules(): Promise<any[]>;
+  setDataRiskRuleEnabled(ruleId: string, enabled: boolean): Promise<boolean>;
+  evaluateDataRiskRules(): Promise<boolean>;
 }
 
 const mrpmModule = MrpNative as MrpNativeInterface;

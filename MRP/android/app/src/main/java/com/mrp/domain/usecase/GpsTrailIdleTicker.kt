@@ -11,10 +11,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Once per minute: stamp last trusted location into [GpsTrailWriter] without waking GPS.
  * Keeps idle / same-place breadcrumbs so day packs are never empty when the phone is on.
+ *
+ * First tick is delayed so cold-start (DB migrate + service + RN) is not contended.
  */
 object GpsTrailIdleTicker {
 
     private const val TAG = "GpsTrailIdleTicker"
+    /** Avoid racing SQLite upgrade / service onCreate on first minute after boot. */
+    private const val FIRST_DELAY_MS = 90_000L
 
     private val running = AtomicBoolean(false)
     private var handler: Handler? = null
@@ -47,8 +51,12 @@ object GpsTrailIdleTicker {
             }
         }
         runnable = r
-        h.postDelayed(r, GpsTrailWriter.IDLE_TICK_MS)
-        Log.i(TAG, "Idle trail stamp every ${GpsTrailWriter.IDLE_TICK_MS / 1000}s")
+        h.postDelayed(r, FIRST_DELAY_MS)
+        Log.i(
+            TAG,
+            "Idle trail stamp every ${GpsTrailWriter.IDLE_TICK_MS / 1000}s " +
+                "(first after ${FIRST_DELAY_MS / 1000}s)",
+        )
     }
 
     fun stop() {

@@ -130,7 +130,7 @@ export function TimelineScreen() {
       loadTimeline();
       const poll = setInterval(() => {
         loadTimeline();
-      }, 4000);
+      }, 20000);
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') {
           loadTimeline();

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
@@ -171,10 +172,28 @@ class AppRiskScorer(private val context: Context) {
 
     fun scanInstalledApps(limit: Int = 80): List<AppRiskReport> {
         return try {
-            val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            apps.asSequence()
-                .filter { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }
-                .mapNotNull { scorePackage(it.packageName) }
+            val pkgs = LinkedHashSet<String>()
+            try {
+                val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val flags = if (Build.VERSION.SDK_INT >= 23) PackageManager.MATCH_ALL else 0
+                pm.queryIntentActivities(launch, flags).forEach { ri ->
+                    ri.activityInfo?.packageName?.let { pkgs.add(it) }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "launcher query failed", e)
+            }
+            try {
+                pm.getInstalledApplications(PackageManager.GET_META_DATA).forEach { ai ->
+                    if ((ai.flags and ApplicationInfo.FLAG_SYSTEM) == 0) {
+                        pkgs.add(ai.packageName)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "getInstalledApplications limited", e)
+            }
+            pkgs.asSequence()
+                .mapNotNull { scorePackage(it) }
+                .filter { !it.isSystemApp }
                 .sortedByDescending { it.score }
                 .take(limit)
                 .toList()

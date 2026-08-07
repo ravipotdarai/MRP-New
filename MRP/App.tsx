@@ -24,6 +24,7 @@ import {useCircleInviteDeepLink} from './src/features/circle/useCircleInviteDeep
 import {subscribeCircleInvite} from './src/features/circle/circleInvitePending';
 import {createNavigationContainerRef} from '@react-navigation/native';
 import {CIRCLE_ENABLED} from './src/config/featureFlags';
+import {AppErrorBoundary} from './src/shared/AppErrorBoundary';
 
 const navigationRef = createNavigationContainerRef();
 
@@ -253,7 +254,9 @@ function App(): React.JSX.Element {
     <ThemeProvider>
       <AuthProvider>
         <EntitlementProvider>
-          <AppContent />
+          <AppErrorBoundary>
+            <AppContent />
+          </AppErrorBoundary>
         </EntitlementProvider>
       </AuthProvider>
     </ThemeProvider>

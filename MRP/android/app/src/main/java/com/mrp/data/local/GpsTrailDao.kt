@@ -3,11 +3,15 @@ package com.mrp.data.local
 import android.content.ContentValues
 import android.content.Context
 import android.database.Cursor
+import android.os.SystemClock
 import android.util.Log
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Dense GPS trail for JPNI day packs (local only until encrypted Drive upload).
- * Retention: 90 days / 200k rows — pruned on insert.
+ * Retention: 90 days / 200k rows — pruned occasionally (never on every insert).
+ * Heavy prune locks [DatabaseHelper] shared with timeline events and can ANR the UI.
  */
 class GpsTrailDao(context: Context) {
 
@@ -47,7 +51,7 @@ class GpsTrailDao(context: Context) {
                 put(DatabaseHelper.COL_TRAIL_SYNC_STATUS, point.syncStatus)
             }
             val id = db.insert(DatabaseHelper.TABLE_GPS_TRAIL, null, values)
-            pruneOldRows(db)
+            maybePrune(db)
             id
         } catch (e: Exception) {
             Log.e(TAG, "insert failed", e)
@@ -189,6 +193,26 @@ class GpsTrailDao(context: Context) {
         )
     }
 
+    /**
+     * Age trim is cheap; row-cap delete is expensive — run at most every [PRUNE_MIN_INTERVAL_MS]
+     * or every [PRUNE_EVERY_N_INSERTS] inserts so idle stamps cannot lock the DB on cold start.
+     */
+    private fun maybePrune(db: android.database.sqlite.SQLiteDatabase) {
+        val n = insertCount.incrementAndGet()
+        val now = SystemClock.elapsedRealtime()
+        val last = lastPruneElapsed.get()
+        // Arm the clock on first insert — never prune during cold-start DB churn.
+        if (last == 0L) {
+            lastPruneElapsed.compareAndSet(0L, now)
+            return
+        }
+        val dueByTime = now - last >= PRUNE_MIN_INTERVAL_MS
+        val dueByCount = n % PRUNE_EVERY_N_INSERTS == 0
+        if (!dueByTime && !dueByCount) return
+        if (!lastPruneElapsed.compareAndSet(last, now)) return
+        pruneOldRows(db)
+    }
+
     private fun pruneOldRows(db: android.database.sqlite.SQLiteDatabase) {
         val cutoff = System.currentTimeMillis() - RETENTION_MS
         try {
@@ -197,13 +221,23 @@ class GpsTrailDao(context: Context) {
                 "${DatabaseHelper.COL_TRAIL_CAPTURED_AT} < ?",
                 arrayOf(cutoff.toString()),
             )
+            var count = 0L
+            db.rawQuery(
+                "SELECT COUNT(*) FROM ${DatabaseHelper.TABLE_GPS_TRAIL}",
+                null,
+            ).use { c ->
+                if (c.moveToFirst()) count = c.getLong(0)
+            }
+            if (count <= MAX_ROWS) return
+            val excess = (count - MAX_ROWS).toInt().coerceAtLeast(0)
+            if (excess <= 0) return
             db.execSQL(
                 """
                 DELETE FROM ${DatabaseHelper.TABLE_GPS_TRAIL}
-                WHERE ${DatabaseHelper.COL_TRAIL_ID} NOT IN (
+                WHERE ${DatabaseHelper.COL_TRAIL_ID} IN (
                     SELECT ${DatabaseHelper.COL_TRAIL_ID} FROM ${DatabaseHelper.TABLE_GPS_TRAIL}
-                    ORDER BY ${DatabaseHelper.COL_TRAIL_CAPTURED_AT} DESC
-                    LIMIT $MAX_ROWS
+                    ORDER BY ${DatabaseHelper.COL_TRAIL_CAPTURED_AT} ASC
+                    LIMIT $excess
                 )
                 """.trimIndent(),
             )
@@ -216,5 +250,9 @@ class GpsTrailDao(context: Context) {
         private const val TAG = "GpsTrailDao"
         const val MAX_ROWS = 200_000
         const val RETENTION_MS = 90L * 24 * 60 * 60 * 1000
+        private const val PRUNE_MIN_INTERVAL_MS = 15L * 60_000
+        private const val PRUNE_EVERY_N_INSERTS = 500
+        private val lastPruneElapsed = AtomicLong(0L)
+        private val insertCount = AtomicInteger(0)
     }
 }

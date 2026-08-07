@@ -41,6 +41,14 @@
     <!-- App Usage Stats (no QUERY_ALL_PACKAGES — that permission triggers bank/AV “risky app” alerts) -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
+    <!-- See launchable apps without QUERY_ALL_PACKAGES (App Safety / abuse criteria) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.front" android:required="true" />
 

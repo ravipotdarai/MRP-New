@@ -19,6 +19,7 @@ import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {PermissionSetupWizard} from '../setup/PermissionSetupWizard';
 import {MisuseRulesPanel} from './MisuseRulesPanel';
+import {DataRiskRulesPanel} from './DataRiskRulesPanel';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
@@ -755,6 +756,7 @@ export function MonitoringScreen() {
       </View>
 
       <MisuseRulesPanel />
+      <DataRiskRulesPanel />
     </ScrollView>
     <PermissionSetupWizard
       visible={showSetupWizard}

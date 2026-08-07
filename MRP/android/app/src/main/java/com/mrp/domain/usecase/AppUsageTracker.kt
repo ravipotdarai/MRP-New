@@ -67,11 +67,9 @@ class AppUsageTracker(private val context: Context) {
                     }
                 }
 
-                // Clear the openApps map - start fresh for next query cycle
-                openApps.clear()
-
                 // Update last query time to include events we just processed
                 lastQueryTime = currentTime
+                // Keep openApps entries for apps still in foreground — do not clear.
 
                 // Evaluate misuse rules against recent on-device sessions (background path)
                 try {

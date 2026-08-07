@@ -8,7 +8,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
 
     companion object {
         private const val DATABASE_NAME = "mrp_telemetry.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
 
         // Table: events
         const val TABLE_EVENTS = "events"
@@ -152,6 +152,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         db.execSQL(createApplicationsTable)
         db.execSQL(createGeoSnapshotsTable())
         db.execSQL(createGpsTrailTable())
+        db.execSQL(createGpsTrailIndexes())
     }
 
     private fun createGeoSnapshotsTable(): String = """
@@ -178,7 +179,7 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
         """.trimIndent()
 
     private fun createGpsTrailTable(): String = """
-            CREATE TABLE $TABLE_GPS_TRAIL (
+            CREATE TABLE IF NOT EXISTS $TABLE_GPS_TRAIL (
                 $COL_TRAIL_ID INTEGER PRIMARY KEY AUTOINCREMENT,
                 $COL_TRAIL_CAPTURED_AT INTEGER NOT NULL,
                 $COL_TRAIL_LATITUDE REAL NOT NULL,
@@ -195,12 +196,21 @@ class DatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME
             )
         """.trimIndent()
 
+    private fun createGpsTrailIndexes(): String = """
+            CREATE INDEX IF NOT EXISTS idx_gps_trail_captured
+            ON $TABLE_GPS_TRAIL ($COL_TRAIL_CAPTURED_AT)
+        """.trimIndent()
+
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
             db.execSQL(createGeoSnapshotsTable())
         }
         if (oldVersion < 3) {
             db.execSQL(createGpsTrailTable())
+        }
+        if (oldVersion < 4) {
+            db.execSQL(createGpsTrailTable())
+            db.execSQL(createGpsTrailIndexes())
         }
     }
 }

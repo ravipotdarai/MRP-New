@@ -49,6 +49,8 @@ object LocationEngine {
         data class Event(val eventType: String) : Demand()
         object GeofenceOs : Demand()
         object HomeRefresh : Demand()
+        /** Home soft load — never wake GPS; stamp from trusted snapshot / prefs only. */
+        object HomePeek : Demand()
         object EmergencyTick : Demand()
         object DriveHeartbeat : Demand()
     }
@@ -105,6 +107,7 @@ object LocationEngine {
             didWake = true
             val severity = when (demand) {
                 is Demand.HomeRefresh -> LocationResolver.Severity.UI
+                is Demand.HomePeek -> LocationResolver.Severity.UI
                 is Demand.EmergencyTick -> LocationResolver.Severity.SECURITY
                 is Demand.GeofenceOs -> LocationResolver.Severity.SECURITY
                 is Demand.Event -> LocationResolver.severityForEvent(demand.eventType).let {
@@ -118,6 +121,7 @@ object LocationEngine {
             }
             val timeoutNote = when (demand) {
                 is Demand.HomeRefresh -> "home_refresh"
+                is Demand.HomePeek -> "home_peek"
                 is Demand.EmergencyTick -> "emergency"
                 is Demand.DriveHeartbeat -> "drive_stale"
                 is Demand.GeofenceOs -> "geofence_os"
@@ -255,6 +259,7 @@ object LocationEngine {
 
         return when (demand) {
             is Demand.HomeRefresh -> true
+            is Demand.HomePeek -> false
             is Demand.EmergencyTick -> true
             is Demand.DriveHeartbeat -> {
                 previous == null ||
