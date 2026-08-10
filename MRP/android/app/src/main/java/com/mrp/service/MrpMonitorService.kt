@@ -222,6 +222,14 @@ class MrpMonitorService : Service() {
                     "android.net.conn.CONNECTIVITY_CHANGE" -> {
                         if (EmergencySyncCoordinator.hasValidatedInternet(this@MrpMonitorService)) {
                             EmergencySyncCoordinator.onConnectivityValidated(this@MrpMonitorService)
+                            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                            val caps = cm?.activeNetwork?.let { cm.getNetworkCapabilities(it) }
+                            val transport = when {
+                                caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true -> "wifi"
+                                caps?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) == true -> "cellular"
+                                else -> "network"
+                            }
+                            DriveVaultSync.onNetworkAvailable(this@MrpMonitorService, transport)
                         }
                     }
                     Intent.ACTION_SHUTDOWN, Intent.ACTION_REBOOT,
@@ -283,6 +291,10 @@ class MrpMonitorService : Service() {
                 if (isDataOn) StatusValues.ENABLED else StatusValues.DISABLED
             )
             requestPhoto(this, eventName)
+            if (isDataOn) {
+                // Mobile radio / data path up — flush pending Drive chunks on cellular.
+                DriveVaultSync.onNetworkAvailable(this, "cellular")
+            }
         }
     }
 

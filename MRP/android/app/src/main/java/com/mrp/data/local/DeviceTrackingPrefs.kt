@@ -50,7 +50,7 @@ object DeviceTrackingPrefs {
         p(context).getBoolean(KEY_SYNC_WIFI, true)
 
     fun syncOnMobileData(context: Context): Boolean =
-        p(context).getBoolean(KEY_SYNC_MOBILE, false)
+        p(context).getBoolean(KEY_SYNC_MOBILE, true)
 
     fun syncLocation(context: Context): Boolean =
         p(context).getBoolean(KEY_SYNC_LOCATION, true)

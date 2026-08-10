@@ -27,7 +27,7 @@ const defaults: DeviceTrackingConfig = {
   highAccuracy: false,
   eventSyncEnabled: true,
   syncOnWifi: true,
-  syncOnMobileData: false,
+  syncOnMobileData: true,
   syncLocation: true,
   syncGeofenceChanges: true,
   syncSelfiesPremium: true,

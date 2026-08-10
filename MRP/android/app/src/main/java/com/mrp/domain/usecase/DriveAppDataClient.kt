@@ -23,25 +23,41 @@ class DriveAppDataClient(private val accessToken: String) {
         } else {
             "name='$nameEquals' and trashed=false"
         }
-        val url =
-            "https://www.googleapis.com/drive/v3/files" +
-                "?spaces=appDataFolder" +
-                "&fields=files(id,name,modifiedTime,size)" +
-                "&q=${java.net.URLEncoder.encode(q, "UTF-8")}"
-        val body = httpJson("GET", url, null)
-        val files = body.optJSONArray("files") ?: JSONArray()
+        return listAppDataQuery(q)
+    }
+
+    /** List by name prefix (Drive `name contains`); never downloads file bodies. */
+    fun listAppDataFilesContaining(nameContains: String): List<RemoteFile> {
+        val safe = nameContains.replace("'", "\\'")
+        return listAppDataQuery("name contains '$safe' and trashed=false")
+    }
+
+    private fun listAppDataQuery(q: String): List<RemoteFile> {
         val out = mutableListOf<RemoteFile>()
-        for (i in 0 until files.length()) {
-            val f = files.getJSONObject(i)
-            out.add(
-                RemoteFile(
-                    id = f.getString("id"),
-                    name = f.optString("name"),
-                    modifiedTime = f.optString("modifiedTime", null),
-                    size = if (f.has("size")) f.optLong("size") else null
+        var pageToken: String? = null
+        do {
+            val url =
+                "https://www.googleapis.com/drive/v3/files" +
+                    "?spaces=appDataFolder" +
+                    "&pageSize=1000" +
+                    "&fields=nextPageToken,files(id,name,modifiedTime,size)" +
+                    "&q=${java.net.URLEncoder.encode(q, "UTF-8")}" +
+                    (if (pageToken != null) "&pageToken=${java.net.URLEncoder.encode(pageToken, "UTF-8")}" else "")
+            val body = httpJson("GET", url, null)
+            val files = body.optJSONArray("files") ?: JSONArray()
+            for (i in 0 until files.length()) {
+                val f = files.getJSONObject(i)
+                out.add(
+                    RemoteFile(
+                        id = f.getString("id"),
+                        name = f.optString("name"),
+                        modifiedTime = f.optString("modifiedTime", null),
+                        size = if (f.has("size")) f.optLong("size") else null
+                    )
                 )
-            )
-        }
+            }
+            pageToken = body.optString("nextPageToken").takeIf { it.isNotBlank() }
+        } while (pageToken != null)
         return out
     }
 

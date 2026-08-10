@@ -1,58 +1,58 @@
-# Drive Sync (P5)
+# Drive Sync (P5+)
 
-## Privacy (P5 complete for mobile)
+## Privacy
 
 - Firebase RTDB holds **sync configuration only** (`device_config`).
-- Vault ciphertext (timeline, live location, Premium+ selfies) lives in **Drive appData**.
-- See [`DEVICE_TRACKING.md`](DEVICE_TRACKING.md).
+- Ciphertext lives in **Drive appData** (PIN AES-GCM). Nest never sees event/selfie bodies.
 
-## Mobile completion
+## Primary Drive SoT = chunks (append-only creates)
 
-| ID | Item | Status |
-|---|---|---|
-| P5-1 | OAuth scopes | **Done** — only `drive.appdata` |
-| P5-2 | Backup encrypt | **Done** — AES-GCM + PBKDF2(PIN) |
-| P5-3 | Same-device backup/restore | **Done** (code) |
-| P5-4 | New device restore | **Done** |
-| P5-5 | Drive full | **Done** — `PAUSED_QUOTA` |
-| P5-6 | Delete old MRP backups | **Done** |
-| P5-7 | Denied scope | **Done** |
-| P5-8 | Wi‑Fi / mobile policy | **Done** — config `syncOnWifi` / `syncOnMobileData` + legacy wifi-only |
-| P5-9 | pending_sync drain | **Done** |
-| P5-G | Geofence + distance + address | **Done** |
-| P5-S | Event/location → Drive (not Firebase) | **Done** |
-| P5-E | Emergency Tracking (≥1 min) | **Done** |
-| P5-10 | Web cannot list other Drive files | **P6** — `MRP Web` uses `drive.appdata` + name filter only |
+Automatic sync **never** replaces the multi‑MB vault on every event.
 
-Auto Drive sync unlocks after one successful manual backup (PIN cached in EncryptedSharedPreferences).
+| Transport | Chunks (evt/selfie/live) | Full vault |
+|-----------|--------------------------|------------|
+| **Wi‑Fi** | Yes when `syncOnWifi` | Hub manual (respects Hub Wi‑Fi-only) |
+| **Cellular / mobile radio (LTE/5G)** | Yes when `syncOnMobileData` **or** event sync on (default) | Hub manual only if mobile allowed |
+| **Ethernet** | Yes | Hub manual |
 
+On `CONNECTIVITY_CHANGE` / mobile data ON → `DriveVaultSync.onNetworkAvailable` flushes pending chunks.
 
-## Layout
+| File | Write | Network |
+|------|-------|---------|
+| `mrp_evt_{YYYY-MM-DD}_{HH}_{seq}.enc` | **Create only** from local timeline | Wi‑Fi **or** cellular (when event sync / mobile prefs allow) |
+| `mrp_selfie_{eventId}.enc` | **Create once** (skip if name listed) | Same |
+| `mrp_live.enc` | **Replace only** (tiny) | Heartbeat / panic / emergency |
+| `mrp_vault_backup.v1.enc` | **Manual Hub only** (optional snapshot from local DB) | Not required for Web/restore |
+| `mrp_gps_*` | Unchanged day packs | Alongside chunk flush |
 
-| Piece | Location |
-|---|---|
-| Hub → Drive Sync | `MRP/src/features/drive/DriveSyncScreen.tsx` |
-| Native | `DriveVaultModule`, `DriveAppDataClient`, `VaultBackupCrypto` |
-| Vault file | `mrp_vault_backup.v1.enc` in appDataFolder |
-| GPS day packs (JPNI) | `mrp_gps_{YYYY-MM-DD}_index.enc` + `mrp_gps_{YYYY-MM-DD}_{HH}.enc` |
+**Rejected:** download hour/vault → append → re-upload. Writers build ciphertext from **local SQLite** only.
 
-## GPS day packs (JPNI Phase 1)
-
-Dense journey trail stays on-device in SQLite (`gps_trail`), then uploads as **PIN-encrypted** appData blobs on the same Drive sync as the vault (same `VaultBackupCrypto` / PIN). Nest/Firebase never see the trail.
-
-| Artifact | Contents |
-|---|---|
-| `mrp_gps_{date}_index.enc` | Journey summary: hours[], bbox, distanceM, speeds, stopCount, checksum |
-| `mrp_gps_{date}_{HH}.enc` | Compact point array for that local hour (`t,lat,lng,s,h,a,alt,b,n,g,m`) |
-
-Capture: `LocationEngine` TRUSTED fixes → `GpsTrailWriter` (throttled; denser in emergency). Upload: `DriveVaultSync.performBackup` → `GpsDayPackWriter.uploadDirtyDays`.
-
-Web Emergency monitoring / Journey desk lists indexes, decrypts with the vault session PIN, loads hour chunks windowed (current + prefetch next).
+**Coalesce:** `event*` + `event_selfie` wait ~45s → one evt pack + ≤1 selfie per eventId (stops double multi‑MB uploads).
 
 ## Flow
 
-1. Premium+ · Google Sign-In · recovery code acknowledged  
-2. Connect Drive (`drive.appdata`)  
-3. PIN → Back up / Restore  
-4. Wi‑Fi only (default on)  
-5. On each non-critical backup, dirty GPS day packs encrypt + upload alongside the vault
+1. Premium+ · Google Sign-In · recovery ack · Hub backup once (stores auto-PIN)
+2. Events → coalesced chunk flush (cellular-first when event sync on)
+3. Heartbeat → `mrp_live.enc` only
+4. Panic → tiny critical evt (+ live), any network
+5. Hub “Backup now” → optional full vault + chunk flush + GPS
+6. Web unlock → list/decrypt/merge chunks (+ legacy vault baseline if present)
+7. Android restore → chunk merge primary; vault = legacy fallback
+
+## Code map
+
+| Piece | Location |
+|-------|----------|
+| Sync router | `DriveVaultSync.kt` |
+| Writers | `EventMicroPackWriter`, `SelfiePackWriter`, `LivePackWriter` |
+| Retention | `DriveChunkRetention` (age purge; no vault catch-up gate) |
+| Restore | `DriveChunkRestore` / `DriveVaultModule.restoreLatest` |
+| Web merge | `MRP Web/src/lib/vault-chunks.ts` + `vault-session.tsx` |
+| GPS packs | `GpsDayPackWriter` |
+
+## Acceptance (cellular)
+
+- USB on cellular → `mrp_evt_*` + optional `mrp_selfie_*`; **no** automatic `mrp_vault_backup.v1.enc`
+- Heartbeat → live only
+- Web unlock with chunks only shows timeline
+- Restore from chunks only loses no flushed event ids

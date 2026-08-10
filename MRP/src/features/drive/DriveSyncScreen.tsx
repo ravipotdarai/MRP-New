@@ -247,8 +247,11 @@ export function DriveSyncScreen({onUpgrade}: Props) {
         <Text style={styles.cardTitle}>Settings</Text>
         <View style={styles.row}>
           <View style={styles.rowText}>
-            <Text style={styles.memberName}>Wi‑Fi only</Text>
-            <Text style={styles.meta}>Skip uploads on cellular</Text>
+            <Text style={styles.memberName}>Wi‑Fi only (full snapshot)</Text>
+            <Text style={styles.meta}>
+              Hub full vault backup only. Event/selfie/live chunks still sync on
+              cellular when “Allow chunk sync on mobile data” is on.
+            </Text>
           </View>
           <Switch
             value={!!status?.wifiOnly}
@@ -265,8 +268,10 @@ export function DriveSyncScreen({onUpgrade}: Props) {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Backup / restore</Text>
         <Text style={styles.body}>
-          PIN encrypts the backup (AES-GCM). Same Google account + same PIN restores on this phone
-          or a new device. Scope is Drive app data only — MRP never requests full Drive access.
+          PIN encrypts backups (AES-GCM). Automatic sync uploads small event/selfie/live
+          packs on Wi‑Fi or cellular — not a multi‑MB vault each time. Hub “Back up now”
+          is an optional full snapshot. Same Google account + PIN restores on this phone
+          or a new device.
         </Text>
         <Text style={styles.body}>
           New device: install MRP → Google Sign-In → set PIN → acknowledge recovery → Connect Drive

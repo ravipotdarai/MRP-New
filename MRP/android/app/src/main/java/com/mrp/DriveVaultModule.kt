@@ -21,6 +21,7 @@ import com.google.android.gms.tasks.Tasks
 import com.mrp.data.local.SimRecoveryStorage
 import com.mrp.data.local.TimelineStorage
 import com.mrp.domain.usecase.DriveAppDataClient
+import com.mrp.domain.usecase.DriveChunkRestore
 import com.mrp.domain.usecase.VaultBackupCrypto
 import org.json.JSONArray
 import org.json.JSONObject
@@ -209,7 +210,7 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
                 }
                 val pendingBefore = sim.getPendingSyncCount()
                 try {
-                    val ok = com.mrp.domain.usecase.DriveVaultSync.performBackup(
+                    val ok = com.mrp.domain.usecase.DriveVaultSync.performFullVaultBackup(
                         reactContext,
                         pin,
                         token,
@@ -238,6 +239,7 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
                             )
                             putInt("pendingSyncDrained", pendingBefore)
                             putString("privacy", "device+drive; firebase=config-only")
+                            putString("mode", "manual_full_vault_plus_chunks")
                         }
                     )
                 } catch (e: Exception) {
@@ -272,26 +274,19 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
                 val token = getAccessToken(account)
                     ?: throw IllegalStateException("Missing Google access token — reconnect Drive")
                 val client = DriveAppDataClient(token)
-                val files = client.listAppDataFiles(DriveAppDataClient.BACKUP_FILE_NAME)
-                val latest = files.maxByOrNull { it.modifiedTime ?: "" }
-                    ?: throw IllegalStateException("No MRP backup found in Drive app data")
-                val blob = client.download(latest.id)
-                val plain = try {
-                    VaultBackupCrypto.decryptUtf8(blob, pin)
-                } catch (e: Exception) {
-                    throw IllegalStateException("Wrong PIN or corrupted backup", e)
-                }
-                val json = JSONObject(plain)
-                val timelineArr = json.optJSONArray("timeline") ?: JSONArray()
-                val inserted = TimelineStorage(reactContext).importTimelineJsonArray(timelineArr)
-                prefs.edit().putString(KEY_LAST_FILE_ID, latest.id).apply()
+                val result = DriveChunkRestore.restoreAll(reactContext, pin, client)
                 promise.resolve(
                     Arguments.createMap().apply {
                         putBoolean("ok", true)
-                        putInt("restoredEvents", inserted)
-                        putInt("backupEvents", timelineArr.length())
-                        putString("fileId", latest.id)
-                        putString("modifiedTime", latest.modifiedTime)
+                        putInt("restoredEvents", result.restoredEvents)
+                        putInt("backupEvents", result.restoredEvents)
+                        putInt("fromVault", result.fromVault)
+                        putInt("fromEvtPacks", result.fromEvtPacks)
+                        putInt("packFiles", result.packFiles)
+                        putBoolean("hadVault", result.hadVault)
+                        putBoolean("hadLive", result.hadLive)
+                        putString("fileId", prefs.getString(KEY_LAST_FILE_ID, null))
+                        putString("mode", "chunks_primary")
                     }
                 )
             } catch (e: Exception) {
