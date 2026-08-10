@@ -16,14 +16,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  fetchLatestVaultBlob,
-  requestDriveAppDataToken,
-} from "@/lib/drive-appdata";
+import { requestDriveAppDataToken } from "@/lib/drive-appdata";
+import { fetchAndMergeVaultPayload } from "@/lib/vault-chunks";
 import {
   clearVaultKeyCache,
   decryptVaultUtf8,
-  parseVaultJson,
   vaultWithoutSelfieBlobs,
   type VaultPayload,
 } from "@/lib/vault-crypto";
@@ -100,10 +97,12 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     }, IDLE_MS);
   }, [lock]);
 
-  const applyParsed = useCallback((parsed: VaultPayload, file: { modifiedTime?: string; size?: string }) => {
-    const sizeBytes = file.size ? Number(file.size) : undefined;
+  const applyParsed = useCallback((parsed: VaultPayload, file: { name?: string; modifiedTime?: string; sizeBytes?: number; size?: string }) => {
+    const sizeBytes =
+      file.sizeBytes ??
+      (file.size ? Number(file.size) : undefined);
     setMeta({
-      name: "Encrypted backup",
+      name: file.name || "Encrypted backup",
       modifiedTime: file.modifiedTime,
       sizeBytes: Number.isFinite(sizeBytes) ? sizeBytes : undefined,
     });
@@ -150,24 +149,18 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
         await yieldToUi();
         const token = await requestDriveAppDataToken();
 
-        setUnlockStage("Downloading encrypted backup…");
+        setUnlockStage("Loading encrypted packs…");
         await yieldToUi();
-        const { file, blob } = await fetchLatestVaultBlob(token);
-        const sizeLabel = file.size ? formatMb(Number(file.size) || blob.byteLength) : formatMb(blob.byteLength);
-
-        setUnlockStage(`Decrypting ${sizeLabel}…`);
-        await yieldToUi();
-        const plain = await decryptVaultUtf8(blob, pin, (stage) => {
-          if (stage === "derive") setUnlockStage(`Deriving key (PBKDF2) · ${sizeLabel}…`);
-          else if (stage === "decrypt") setUnlockStage(`AES decrypt · ${sizeLabel}…`);
-          else setUnlockStage("Decoding plaintext…");
+        const merged = await fetchAndMergeVaultPayload(token, pin, (stage) => {
+          setUnlockStage(stage);
         });
 
-        setUnlockStage("Parsing backup…");
-        await yieldToUi();
-        const parsed = parseVaultJson(plain);
         pinRef.current = pin;
-        applyParsed(parsed, file);
+        applyParsed(merged.vault, {
+          name: merged.meta.name,
+          modifiedTime: merged.meta.modifiedTime,
+          sizeBytes: merged.meta.sizeBytes,
+        });
         return true;
       } catch (e) {
         pinRef.current = null;
@@ -191,20 +184,18 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       if (!quiet) {
         setBusy(true);
         setError(null);
-        setUnlockStage("Refreshing backup…");
+        setUnlockStage("Refreshing packs…");
       }
       try {
         const token = await requestDriveAppDataToken();
-        const { file, blob } = await fetchLatestVaultBlob(token);
-        if (!quiet) setUnlockStage(`Decrypting ${formatMb(blob.byteLength)}…`);
-        const plain = await decryptVaultUtf8(blob, pin, (stage) => {
-          if (quiet) return;
-          if (stage === "derive") setUnlockStage("Deriving key…");
-          else if (stage === "decrypt") setUnlockStage("Decrypting…");
+        const merged = await fetchAndMergeVaultPayload(token, pin, (stage) => {
+          if (!quiet) setUnlockStage(stage);
         });
-        if (!quiet) setUnlockStage("Parsing…");
-        const parsed = parseVaultJson(plain);
-        applyParsed(parsed, file);
+        applyParsed(merged.vault, {
+          name: merged.meta.name,
+          modifiedTime: merged.meta.modifiedTime,
+          sizeBytes: merged.meta.sizeBytes,
+        });
         if (quiet) setInfo(`Data refreshed · ${new Date().toLocaleTimeString()}`);
       } catch (e) {
         if (!quiet) {
