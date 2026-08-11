@@ -1,32 +1,44 @@
 import React from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  Image,
+  ImageSourcePropType,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
   FadeInDown,
 } from 'react-native-reanimated';
-import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {ColorPalette, spacing, radius, brandColors} from '../../shared/theme';
 
 type Props = {
   title: string;
-  subtitle: string;
-  icon: string;
+  subtitle?: string;
+  icon?: string;
+  iconSource?: ImageSourcePropType;
   badge?: string;
   index: number;
   colors: ColorPalette;
   onPress: () => void;
+  /** Grid tile (brand kit) vs list row */
+  variant?: 'row' | 'tile';
 };
 
-/** Hub menu row with press scale + staggered fade-in (P7-2). */
+/** Hub menu card — brand-kit tile or classic row. */
 export function HubMenuCard({
   title,
   subtitle,
   icon,
+  iconSource,
   badge,
   index,
   colors,
   onPress,
+  variant = 'row',
 }: Props) {
   const scale = useSharedValue(1);
   const styles = createStyles(colors);
@@ -34,6 +46,37 @@ export function HubMenuCard({
   const animStyle = useAnimatedStyle(() => ({
     transform: [{scale: scale.value}],
   }));
+
+  if (variant === 'tile') {
+    return (
+      <Animated.View
+        style={styles.tileWrap}
+        entering={FadeInDown.delay(Math.min(index, 8) * 40).springify()}>
+        <Pressable
+          onPressIn={() => {
+            scale.value = withSpring(0.96, {damping: 18, stiffness: 320});
+          }}
+          onPressOut={() => {
+            scale.value = withSpring(1, {damping: 14, stiffness: 280});
+          }}
+          onPress={onPress}
+          style={{flex: 1}}>
+          <Animated.View style={[styles.tile, animStyle]}>
+            <View style={styles.tileIconWrap}>
+              {iconSource ? (
+                <Image source={iconSource} style={styles.tileIconImg} />
+              ) : (
+                <Text style={styles.tileEmoji}>{icon}</Text>
+              )}
+            </View>
+            <Text style={styles.tileTitle} numberOfLines={2}>
+              {title}
+            </Text>
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View entering={FadeInDown.delay(Math.min(index, 8) * 40).springify()}>
@@ -47,7 +90,11 @@ export function HubMenuCard({
         onPress={onPress}>
         <Animated.View style={[styles.menuCard, animStyle]}>
           <View style={styles.menuIconWrap}>
-            <Text style={styles.menuIcon}>{icon}</Text>
+            {iconSource ? (
+              <Image source={iconSource} style={styles.rowIconImg} />
+            ) : (
+              <Text style={styles.menuIcon}>{icon}</Text>
+            )}
           </View>
           <View style={styles.menuText}>
             <View style={styles.menuTitleRow}>
@@ -58,7 +105,7 @@ export function HubMenuCard({
                 </View>
               ) : null}
             </View>
-            <Text style={styles.menuSubtitle}>{subtitle}</Text>
+            {subtitle ? <Text style={styles.menuSubtitle}>{subtitle}</Text> : null}
           </View>
           <Text style={styles.chevron}>›</Text>
         </Animated.View>
@@ -81,15 +128,17 @@ function createStyles(colors: ColorPalette) {
       marginBottom: spacing.sm,
     },
     menuIconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      backgroundColor: colors.skySoft,
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: brandColors.iconBg || colors.skySoft,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: spacing.md,
+      overflow: 'hidden',
     },
     menuIcon: {fontSize: 22},
+    rowIconImg: {width: 48, height: 48, borderRadius: 14},
     menuText: {flex: 1},
     menuTitleRow: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8},
     menuTitle: {
@@ -103,7 +152,7 @@ function createStyles(colors: ColorPalette) {
       marginTop: 2,
     },
     badge: {
-      backgroundColor: colors.violet,
+      backgroundColor: brandColors.googleBlue,
       paddingHorizontal: 8,
       paddingVertical: 2,
       borderRadius: 6,
@@ -118,6 +167,38 @@ function createStyles(colors: ColorPalette) {
       fontSize: 22,
       color: colors.textMuted,
       marginLeft: spacing.sm,
+    },
+    tileWrap: {
+      width: '25%',
+      padding: 4,
+      marginBottom: 4,
+    },
+    tile: {
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.borderSubtle,
+      minHeight: 108,
+    },
+    tileIconWrap: {
+      width: 52,
+      height: 52,
+      borderRadius: 14,
+      overflow: 'hidden',
+      marginBottom: 8,
+    },
+    tileIconImg: {width: 52, height: 52},
+    tileEmoji: {fontSize: 28, textAlign: 'center', lineHeight: 52},
+    tileTitle: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      textAlign: 'center',
+      lineHeight: 14,
+      paddingHorizontal: 2,
     },
   });
 }

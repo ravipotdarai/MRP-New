@@ -12,6 +12,7 @@ import {
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {hubScrollProps} from '../../shared/components/HubFeel';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -142,7 +143,7 @@ export function AppUsageReports({sessions}: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} {...hubScrollProps}>
       <View style={styles.filterRow}>
         {(['DAILY', 'WEEKLY', 'MONTHLY'] as Timeframe[]).map(tf => (
           <TouchableOpacity

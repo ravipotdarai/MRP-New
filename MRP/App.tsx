@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {StatusBar, View, ActivityIndicator, StyleSheet} from 'react-native';
+import {StatusBar, View, ActivityIndicator, StyleSheet, Image, Text} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {PinLockScreen} from './src/screens/PinLockScreen';
@@ -13,8 +13,9 @@ import {ForgotPinScreen} from './src/features/auth/ForgotPinScreen';
 import {AuthProvider} from './src/services/auth/AuthContext';
 import {EntitlementProvider} from './src/services/entitlements/EntitlementProvider';
 import PinLock from './src/native/PinLock.types';
-import {Text} from 'react-native';
 import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
+import {brandImages, brandCopy} from './src/assets/brand';
+import {brandColors} from './src/shared/theme';
 import {
   pullRemoteTrackingConfig,
   startDevicePresence,
@@ -191,7 +192,10 @@ function AppContent(): React.JSX.Element {
           barStyle={isLight ? 'dark-content' : 'light-content'}
           backgroundColor={colors.bg}
         />
-        <ActivityIndicator size="large" color={colors.sky} />
+        <Image source={brandImages.logoMark} style={styles.splashLogo} resizeMode="contain" />
+        <Text style={[styles.splashName, {color: colors.textPrimary}]}>{brandCopy.name}</Text>
+        <Text style={styles.splashTagline}>{brandCopy.tagline}</Text>
+        <ActivityIndicator size="large" color={brandColors.googleBlue} style={{marginTop: 24}} />
       </View>
     );
   }
@@ -267,6 +271,20 @@ const styles = StyleSheet.create({
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  splashLogo: {width: 140, height: 112, marginBottom: 8},
+  splashName: {
+    fontSize: 36,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  splashTagline: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: brandColors.googleBlue,
+    marginTop: 6,
+    textAlign: 'center',
   },
 });
 

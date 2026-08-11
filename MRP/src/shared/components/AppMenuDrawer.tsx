@@ -34,6 +34,7 @@ export type AppMenuTarget =
         | 'account'
         | 'circle'
         | 'geofence'
+        | 'emergency-monitoring'
         | 'drive-sync'
         | 'sim-recovery'
         | 'subscriptions'
@@ -41,6 +42,7 @@ export type AppMenuTarget =
         | 'affiliates'
         | 'policy'
         | 'about'
+        | 'digital-safety'
         | 'security-center';
       securityCenterTab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS';
     };
@@ -70,9 +72,13 @@ const MENU: MenuRow[] = [
   },
   {
     kind: 'section',
-    label: 'Security Center',
+    label: 'Digital Safety',
     icon: '🧭',
     children: [
+      {
+        label: 'Overview',
+        target: {screen: 'Hub', section: 'digital-safety'},
+      },
       {
         label: 'Advisor',
         target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'ADVISOR'},
@@ -86,7 +92,7 @@ const MENU: MenuRow[] = [
         target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'FRAUD'},
       },
       {
-        label: 'Tools (URL / QR / USSD)',
+        label: 'Tools (URL / OTP / USSD)',
         target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'TOOLS'},
       },
     ],
@@ -107,9 +113,9 @@ const MENU: MenuRow[] = [
     label: 'Hub',
     icon: '⚙️',
     children: [
-      {label: 'Security Center', target: {screen: 'Hub', section: 'security-center'}},
       {label: 'Account', target: {screen: 'Hub', section: 'account'}},
       {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
+      {label: 'Emergency monitoring', target: {screen: 'Hub', section: 'emergency-monitoring'}},
       ...(CIRCLE_ENABLED
         ? ([
             {label: 'Circle', target: {screen: 'Hub', section: 'circle'}},

@@ -9,9 +9,13 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  Image,
 } from 'react-native';
-import {ColorPalette} from '../shared/theme';
+import Animated from 'react-native-reanimated';
+import {ColorPalette, spacing, brandColors} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
+import {brandImages, brandCopy} from '../assets/brand';
+import {pageBounceEnter} from '../shared/animations/pageBounce';
 
 interface Props {
   isSetup: boolean;
@@ -83,10 +87,13 @@ export function PinLockScreen({
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.content}>
-        <Text style={styles.title}>
-          {isSetup ? 'Set Up PIN' : 'Enter PIN'}
-        </Text>
+      <Animated.View style={styles.content} entering={pageBounceEnter}>
+        <Image source={brandImages.logoMark} style={styles.logo} resizeMode="contain" />
+        <Text style={styles.brandName}>{brandCopy.name}</Text>
+        <Text style={styles.brandFull}>{brandCopy.fullName}</Text>
+        <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
+
+        <Text style={styles.title}>{isSetup ? 'Set Up PIN' : 'Enter PIN'}</Text>
         <Text style={styles.subtitle}>
           {isSetup
             ? 'Create a PIN to protect your MRP app'
@@ -132,11 +139,9 @@ export function PinLockScreen({
           onPress={handlePinSubmit}
           disabled={isLoading || pin.length < 4}>
           {isLoading ? (
-            <ActivityIndicator color={colors.textPrimary} />
+            <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>
-              {isSetup ? 'Set PIN' : 'Unlock'}
-            </Text>
+            <Text style={styles.buttonText}>{isSetup ? 'Set PIN' : 'Unlock'}</Text>
           )}
         </TouchableOpacity>
 
@@ -145,7 +150,10 @@ export function PinLockScreen({
             <Text style={styles.forgotText}>Forgot PIN?</Text>
           </TouchableOpacity>
         ) : null}
-      </View>
+
+        <Text style={styles.pillars}>{brandCopy.pillars}</Text>
+        <Text style={styles.driveFooter}>{brandCopy.driveFooter}</Text>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
@@ -162,16 +170,43 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center',
       padding: 24,
     },
-    title: {
-      fontSize: 28,
-      fontWeight: 'bold',
+    logo: {
+      width: 140,
+      height: 112,
+      marginBottom: spacing.sm,
+    },
+    brandName: {
+      fontSize: 36,
+      fontWeight: '900',
       color: colors.textPrimary,
-      marginBottom: 8,
+      letterSpacing: 1,
+    },
+    brandFull: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textSecondary,
+      letterSpacing: 1.4,
+      marginTop: 4,
+      textAlign: 'center',
+    },
+    brandTagline: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: brandColors.googleBlue,
+      marginTop: spacing.sm,
+      marginBottom: spacing.xl,
+      textAlign: 'center',
+    },
+    title: {
+      fontSize: 22,
+      fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 6,
     },
     subtitle: {
       fontSize: 14,
       color: colors.textSecondary,
-      marginBottom: 40,
+      marginBottom: spacing.xl,
       textAlign: 'center',
     },
     inputContainer: {
@@ -200,7 +235,7 @@ function createStyles(colors: ColorPalette) {
     button: {
       width: '80%',
       height: 56,
-      backgroundColor: colors.sky,
+      backgroundColor: brandColors.googleBlue,
       borderRadius: 12,
       justifyContent: 'center',
       alignItems: 'center',
@@ -210,11 +245,23 @@ function createStyles(colors: ColorPalette) {
       opacity: 0.6,
     },
     buttonText: {
-      color: colors.textPrimary,
+      color: '#fff',
       fontSize: 18,
-      fontWeight: '600',
+      fontWeight: '700',
     },
     forgotBtn: {marginTop: 24},
-    forgotText: {color: colors.sky, fontSize: 15, fontWeight: '700'},
+    forgotText: {color: brandColors.googleBlue, fontSize: 15, fontWeight: '700'},
+    pillars: {
+      marginTop: spacing.xxl,
+      fontSize: 13,
+      color: colors.textMuted,
+      fontWeight: '600',
+    },
+    driveFooter: {
+      marginTop: 6,
+      fontSize: 12,
+      color: colors.textMuted,
+      fontWeight: '600',
+    },
   });
 }

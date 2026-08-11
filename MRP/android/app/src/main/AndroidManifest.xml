@@ -92,6 +92,13 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="mrp" android:host="circle" android:pathPrefix="/join" />
         </intent-filter>
+        <!-- Safe Link deep link from share activity -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="mrp" android:host="safe-link" />
+        </intent-filter>
         <!-- P8-4 https App Link (verify later in Play Console / Digital Asset Links) -->
         <intent-filter android:autoVerify="true">
             <action android:name="android.intent.action.VIEW" />
@@ -103,6 +110,26 @@
                 android:pathPrefix="/circle/join" />
         </intent-filter>
       </activity>
+
+      <!-- Share / Send text → Safe Link scanner -->
+      <activity
+        android:name=".SafeLinkShareActivity"
+        android:exported="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar"
+        android:excludeFromRecents="true"
+        android:noHistory="true">
+        <intent-filter>
+          <action android:name="android.intent.action.SEND" />
+          <category android:name="android.intent.category.DEFAULT" />
+          <data android:mimeType="text/plain" />
+        </intent-filter>
+      </activity>
+
+      <activity
+        android:name=".QrScanActivity"
+        android:exported="false"
+        android:screenOrientation="portrait"
+        android:label="Scan QR" />
 
       <!-- P8-4 Circle invite FCM -->
       <service

@@ -362,6 +362,11 @@ export function PhotoGallery() {
           numColumns={2}
           contentContainerStyle={styles.gridContainer}
           columnWrapperStyle={styles.columnWrapper}
+          showsVerticalScrollIndicator={false}
+          bounces
+          alwaysBounceVertical
+          decelerationRate="normal"
+          overScrollMode="always"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

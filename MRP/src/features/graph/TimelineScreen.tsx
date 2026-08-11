@@ -640,6 +640,8 @@ export function TimelineScreen() {
           estimatedItemSize={96}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          bounces
+          overScrollMode="always"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

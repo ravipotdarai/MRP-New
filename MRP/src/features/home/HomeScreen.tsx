@@ -14,8 +14,10 @@ import {
   PermissionsAndroid,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
+import Animated from 'react-native-reanimated';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {pageBounceEnter} from '../../shared/animations/pageBounce';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {showSmsPermissionHelp} from '../../shared/utils/permissionFixGuides';
 import {useSettings} from '../../shared/hooks/useSettings';
@@ -28,6 +30,7 @@ import {loadLocalCircles} from '../circle/circleLocalStore';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
 import {getTrackingConfig} from '../../native/DeviceTracking.types';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
+import {brandImages, brandCopy} from '../../assets/brand';
 
 const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
@@ -66,6 +69,22 @@ const EVENT_ICONS: Record<string, string> = {
   DATA_RISK_APP: '⚠️',
   POSTURE_ALERT: '🛡️',
   PANIC_ALERT: '🆘',
+  SAFE_LINK_SCANNED: '🔗',
+  SAFE_LINK_ALLOWED: '✅',
+  SAFE_LINK_WARNED: '⚠️',
+  SAFE_LINK_BLOCKED: '🚫',
+  SCAM_DETECTED: '⚠️',
+  QR_SCANNED: '📷',
+  QR_BLOCKED: '🚫',
+  EMERGENCY_CARD_UPDATED: '🆘',
+  VAULT_ITEM_CREATED: '🔐',
+  VAULT_ITEM_VIEWED: '🔐',
+  VAULT_ITEM_UPDATED: '🔐',
+  VAULT_ITEM_DELETED: '🔐',
+  VAULT_BACKUP_CREATED: '☁️',
+  VAULT_BACKUP_RESTORED: '☁️',
+  VAULT_BACKUP_FAILED: '☁️',
+  VAULT_AUTH_FAILED: '🔐',
 };
 
 interface TimelineEntry {
@@ -180,6 +199,8 @@ export function HomeScreen({
   const [locRefreshing, setLocRefreshing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [bounceKey, setBounceKey] = useState(0);
+  const homeFocusOnce = useRef(false);
   const {colors} = useTheme();
   const styles = useMemo(() => createHomeStyles(colors), [colors]);
   const {isPaid} = useSubscriptionTier();
@@ -313,6 +334,11 @@ export function HomeScreen({
   // Refresh only when Home is opened / focused — no continuous polling
   useFocusEffect(
     useCallback(() => {
+      if (homeFocusOnce.current) {
+        setBounceKey(k => k + 1);
+      } else {
+        homeFocusOnce.current = true;
+      }
       loadAll();
       void (CIRCLE_ENABLED
         ? loadLocalCircles().then(circles => {
@@ -518,9 +544,9 @@ export function HomeScreen({
     }
   };
 
-  const goSecurityCenter = (tab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS') => {
+  const goDigitalSafety = (tab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS') => {
     if (tab) setSecurityCenterTab(tab);
-    navigation?.navigate?.('Hub', {openSection: 'security-center'});
+    navigation?.navigate?.('Hub', {openSection: tab ? 'security-center' : 'digital-safety'});
   };
 
   const handleAvatarPress = () => {
@@ -707,11 +733,18 @@ export function HomeScreen({
         onClose={() => setThemePickerOpen(false)}
       />
 
-      {/* Greeting + protection status */}
+      <Animated.View key={bounceKey} entering={pageBounceEnter}>
+      {/* Brand hero + greeting */}
+      <View style={styles.brandHero}>
+        <Image source={brandImages.logoMark} style={styles.brandLogo} resizeMode="contain" />
+        <Text style={styles.brandName}>{brandCopy.name}</Text>
+        <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
+      </View>
+
       <View style={styles.greetingRow}>
         <View style={{flex: 1}}>
           <Text style={styles.greeting}>
-            {getGreeting()}, {USER_NAME} 👋
+            {getGreeting()}, {USER_NAME}
           </Text>
           <Text
             style={[
@@ -776,7 +809,7 @@ export function HomeScreen({
           purpose="Network name — open Wi‑Fi tools"
           accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="🔐"
@@ -791,7 +824,7 @@ export function HomeScreen({
                 : colors.emerald
           }
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="🔒"
@@ -800,7 +833,7 @@ export function HomeScreen({
           purpose="Device posture score — open Advisor"
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
           styles={styles}
-          onPress={() => goSecurityCenter('ADVISOR')}
+          onPress={() => goDigitalSafety('ADVISOR')}
         />
         <StatCard
           icon="📡"
@@ -817,7 +850,7 @@ export function HomeScreen({
           purpose="Misconfig checks (USB debug, battery…)"
           accent={colors.sky}
           styles={styles}
-          onPress={() => goSecurityCenter('ADVISOR')}
+          onPress={() => goDigitalSafety('ADVISOR')}
         />
         <StatCard
           icon="📊"
@@ -826,7 +859,7 @@ export function HomeScreen({
           purpose="Risky / sideloaded app heuristics"
           accent={colors.amber}
           styles={styles}
-          onPress={() => goSecurityCenter('ANALYZER')}
+          onPress={() => goDigitalSafety('ANALYZER')}
         />
         <StatCard
           icon="🆘"
@@ -835,7 +868,7 @@ export function HomeScreen({
           purpose="Cybercrime portals & lost-phone links"
           accent={colors.red}
           styles={styles}
-          onPress={() => goSecurityCenter('FRAUD')}
+          onPress={() => goDigitalSafety('FRAUD')}
         />
         <StatCard
           icon="🔗"
@@ -844,7 +877,7 @@ export function HomeScreen({
           purpose="Check a link before you open it"
           accent={colors.violet}
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="📷"
@@ -853,7 +886,7 @@ export function HomeScreen({
           purpose="Check QR / WIFI: payload safely"
           accent={colors.sky}
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="📧"
@@ -862,7 +895,7 @@ export function HomeScreen({
           purpose="See if an email appeared in leaks"
           accent={colors.violet}
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="💬"
@@ -871,7 +904,7 @@ export function HomeScreen({
           purpose="Paste SMS to spot OTP scam wording"
           accent={colors.amber}
           styles={styles}
-          onPress={() => goSecurityCenter('TOOLS')}
+          onPress={() => goDigitalSafety('TOOLS')}
         />
         <StatCard
           icon="🎁"
@@ -1143,6 +1176,7 @@ export function HomeScreen({
           <Text style={styles.manageBtnText}>Open Security Setup</Text>
         </TouchableOpacity>
       </View>
+      </Animated.View>
     </ScrollView>
   );
 }
@@ -1252,6 +1286,25 @@ function createHomeStyles(colors: ColorPalette) {
     justifyContent: 'center',
   },
   avatarText: {fontSize: 18, fontWeight: '800', color: '#fff'},
+  brandHero: {
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    paddingTop: spacing.xs,
+  },
+  brandLogo: {width: 88, height: 72, marginBottom: spacing.xs},
+  brandName: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.textPrimary,
+    letterSpacing: 1,
+  },
+  brandTagline: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.sky,
+    marginTop: 4,
+    textAlign: 'center',
+  },
   greetingRow: {marginBottom: spacing.lg},
   greeting: {fontSize: 22, fontWeight: '800', color: colors.textPrimary},
   protectionStatus: {fontSize: 14, fontWeight: '700', marginTop: 4},

@@ -125,10 +125,16 @@ export function AppUsageTimeline({sessions}: Props) {
       ListEmptyComponent={
         <Text style={styles.emptyText}>No app usage recorded yet.</Text>
       }
-      initialNumToRender={20}
-      maxToRenderPerBatch={20}
-      windowSize={7}
+      showsVerticalScrollIndicator={false}
+      bounces
+      alwaysBounceVertical
+      decelerationRate="normal"
+      overScrollMode="always"
+      nestedScrollEnabled
       removeClippedSubviews
+      initialNumToRender={16}
+      maxToRenderPerBatch={20}
+      windowSize={8}
     />
   );
 }

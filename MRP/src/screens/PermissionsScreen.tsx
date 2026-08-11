@@ -14,6 +14,7 @@ import mrpmModule from '../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
 import {showSmsPermissionHelp} from '../shared/utils/permissionFixGuides';
+import {hubScrollProps} from '../shared/components/HubFeel';
 
 interface PermissionDetail {
   name: string;
@@ -715,7 +716,7 @@ export function PermissionsScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} {...hubScrollProps}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Required Permissions</Text>

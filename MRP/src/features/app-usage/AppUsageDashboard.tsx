@@ -6,6 +6,7 @@ import {aggregateAppStats, formatAppName, formatDuration, rankBatteryImpact} fro
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {hubScrollProps} from '../../shared/components/HubFeel';
 
 interface Props {
   sessions: AppUsageSession[];
@@ -141,6 +142,7 @@ export function AppUsageDashboard({sessions, events, photos, mrpBattery, onRefre
       style={styles.container}
       contentContainerStyle={styles.scrollContent}
       refreshControl={<RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={colors.sky} />}
+      {...hubScrollProps}
     >
       <View style={styles.header}>
         <Text style={styles.headerTitle}>App Usage Overview</Text>

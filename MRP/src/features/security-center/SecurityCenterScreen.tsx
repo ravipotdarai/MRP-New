@@ -21,6 +21,11 @@ import {
   type SecurityCenterTab,
 } from './securityCenterNav';
 import {getTrackingConfig, setTrackingConfig} from '../../native/DeviceTracking.types';
+import {
+  evaluateUrlRiskNative,
+  logOtpScanEvent,
+  logUrlScanEvent,
+} from '../digital-safety/digitalSafetyEvents';
 import {scanUrlOrPayload, type UrlScanResult} from './urlScan';
 import {USSD_CODES, ussdTelUri} from './ussdCodes';
 import {
@@ -255,8 +260,56 @@ export function SecurityCenterScreen({
     [checks],
   );
 
-  const runUrlScan = () => {
-    setScanResult(scanUrlOrPayload(scanInput));
+  const runUrlScan = async () => {
+    const native = await evaluateUrlRiskNative(scanInput);
+    if (native) {
+      const verdict: UrlScanResult['verdict'] =
+        native.score >= 50 ? 'risky' : native.score >= 20 ? 'caution' : 'safe';
+      if (native.band === 'INVALID') {
+        setScanResult({
+          input: native.input,
+          normalized: native.normalized,
+          verdict: 'invalid',
+          reasons: native.reasons,
+          score: native.score,
+          band: native.band,
+          reasonCodes: native.reasonCodes,
+          eventType: native.eventType,
+        });
+      } else {
+        setScanResult({
+          input: native.input,
+          normalized: native.normalized,
+          verdict,
+          reasons: native.reasons,
+          score: native.score,
+          band: native.band,
+          reasonCodes: native.reasonCodes,
+          domainHash: native.domainHash,
+          host: native.host,
+          eventType: native.eventType,
+        });
+        void logUrlScanEvent(
+          native.score,
+          native.band,
+          native.reasonCodes,
+          native.domainHash,
+          native.host,
+        );
+      }
+      return;
+    }
+    const fallback = scanUrlOrPayload(scanInput);
+    setScanResult(fallback);
+    if (fallback.band !== 'INVALID') {
+      void logUrlScanEvent(
+        fallback.score,
+        fallback.band,
+        fallback.reasonCodes,
+        fallback.domainHash,
+        fallback.host,
+      );
+    }
   };
 
   const dialUssd = (code: string) => {
@@ -290,7 +343,15 @@ export function SecurityCenterScreen({
   };
 
   const runOtpScan = () => {
-    setOtpResult(scanOtpSms(otpInput));
+    const result = scanOtpSms(otpInput);
+    setOtpResult(result);
+    if (result.verdict === 'empty') return;
+    let score = 0;
+    if (result.verdict === 'scam_likely') score = 65;
+    else if (result.verdict === 'caution') score = 35;
+    else score = 10;
+    const codes = result.reasons.map((_, i) => `OTP_${i}`);
+    void logOtpScanEvent(result.verdict, score, codes);
   };
 
   const buckets = useMemo(() => {
@@ -711,6 +772,7 @@ export function SecurityCenterScreen({
                       },
                     ]}>
                     Verdict: {scanResult.verdict.toUpperCase()}
+                    {scanResult.score >= 0 ? ` · Risk ${scanResult.score}/100 (${scanResult.band})` : ''}
                   </Text>
                   {scanResult.normalized ? (
                     <Text style={styles.muted} numberOfLines={2}>

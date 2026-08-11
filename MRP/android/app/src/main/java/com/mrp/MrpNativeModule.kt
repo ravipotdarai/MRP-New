@@ -1,4 +1,4 @@
-﻿package com.mrp
+package com.mrp
 
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -1846,6 +1846,61 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
         } catch (e: Exception) {
             promise.resolve(null)
         }
+    }
+
+    /** Evaluate URL risk on-device (0–100 score, reason codes). */
+    @ReactMethod
+    fun evaluateUrlRisk(raw: String, promise: Promise) {
+        runAsync(promise, "URL_RISK") {
+            val result = com.mrp.domain.risk.RiskPolicyEngine.evaluateUrl(raw)
+            val map = Arguments.createMap().apply {
+                putString("input", result.input)
+                if (result.normalized != null) putString("normalized", result.normalized)
+                putInt("score", result.score.coerceAtLeast(0))
+                putString("band", result.band.label)
+                putString("eventType", com.mrp.domain.risk.RiskPolicyEngine.safeLinkEventType(result))
+                val reasons = Arguments.createArray()
+                result.reasons.forEach { reasons.pushString(it) }
+                putArray("reasons", reasons)
+                val codes = Arguments.createArray()
+                result.reasonCodes.forEach { codes.pushString(it) }
+                putArray("reasonCodes", codes)
+                if (result.domainHash != null) putString("domainHash", result.domainHash)
+                if (result.host != null) putString("host", result.host)
+            }
+            promise.resolve(map)
+        }
+    }
+
+    /** Log Digital Safety event to timeline + Drive sync. Metadata must not contain secrets. */
+    @ReactMethod
+    fun logDigitalSafetyEvent(eventType: String, status: String, metadata: ReadableMap?, promise: Promise) {
+        runAsync(promise, "DS_EVENT") {
+            val meta = readableMapToMetadata(metadata)
+            com.mrp.domain.usecase.TimelineEventLogger(reactContext).logEventSync(
+                eventType.uppercase(),
+                status.ifBlank { "completed" },
+                meta,
+            )
+            promise.resolve(true)
+        }
+    }
+
+    private fun readableMapToMetadata(readable: ReadableMap?): Map<String, Any?> {
+        if (readable == null) return emptyMap()
+        val map = mutableMapOf<String, Any?>()
+        val iter = readable.keySetIterator()
+        while (iter.hasNextKey()) {
+            val key = iter.nextKey()
+            when (readable.getType(key)) {
+                ReadableType.Null -> map[key] = null
+                ReadableType.Boolean -> map[key] = readable.getBoolean(key)
+                ReadableType.Number -> map[key] = readable.getDouble(key)
+                ReadableType.String -> map[key] = readable.getString(key)
+                else -> { /* skip nested maps/arrays in v1 */ }
+            }
+        }
+        return map
     }
 
 }

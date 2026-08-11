@@ -10,11 +10,13 @@ import {
   Platform,
   ScrollView,
   Alert,
+  Image,
 } from 'react-native';
-import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {ColorPalette, spacing, radius, brandColors} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import PinLock from '../../native/PinLock.types';
 import {useAuth} from '../../services/auth/AuthContext';
+import {brandImages, brandCopy} from '../../assets/brand';
 
 type Mode = 'choose' | 'recovery' | 'google' | 'google_new_pin';
 
@@ -85,6 +87,11 @@ export function ForgotPinScreen({onBack, onPinReset}: Props) {
   if (mode === 'choose') {
     return (
       <View style={styles.container}>
+        <View style={styles.brandHeader}>
+          <Image source={brandImages.logoMark} style={styles.logo} resizeMode="contain" />
+          <Text style={styles.brandName}>{brandCopy.name}</Text>
+          <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
+        </View>
         <Text style={styles.title}>Forgot PIN?</Text>
         <Text style={styles.sub}>
           Reset using your 12-word recovery code, or sign in with Google if you linked your account.
@@ -122,6 +129,9 @@ export function ForgotPinScreen({onBack, onPinReset}: Props) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.brandHeader}>
+          <Image source={brandImages.logoMark} style={styles.logoSmall} resizeMode="contain" />
+        </View>
         <Text style={styles.title}>{isGooglePin ? 'Set new PIN' : 'Recovery code'}</Text>
         {!isGooglePin ? (
           <TextInput
@@ -178,6 +188,21 @@ function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     container: {flex: 1, backgroundColor: colors.bg, padding: spacing.lg},
     scroll: {paddingBottom: spacing.xxl},
+    brandHeader: {alignItems: 'center', marginBottom: spacing.lg, marginTop: spacing.md},
+    logo: {width: 100, height: 80, marginBottom: spacing.xs},
+    logoSmall: {width: 72, height: 58, marginBottom: spacing.sm},
+    brandName: {
+      fontSize: 28,
+      fontWeight: '900',
+      color: colors.textPrimary,
+      letterSpacing: 1,
+    },
+    brandTagline: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: brandColors.googleBlue,
+      marginTop: 4,
+    },
     title: {fontSize: 22, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.sm},
     sub: {fontSize: 14, color: colors.textMuted, marginBottom: spacing.lg, lineHeight: 20},
     optionBtn: {
@@ -203,7 +228,7 @@ function createStyles(colors: ColorPalette) {
       fontSize: 15,
     },
     primaryBtn: {
-      backgroundColor: colors.sky,
+      backgroundColor: brandColors.googleBlue,
       borderRadius: radius.md,
       paddingVertical: 14,
       alignItems: 'center',
@@ -211,6 +236,6 @@ function createStyles(colors: ColorPalette) {
     },
     primaryBtnText: {color: '#fff', fontWeight: '800', fontSize: 15},
     linkBtn: {marginTop: spacing.lg, alignItems: 'center'},
-    linkText: {color: colors.sky, fontWeight: '700', fontSize: 15},
+    linkText: {color: brandColors.googleBlue, fontWeight: '700', fontSize: 15},
   });
 }

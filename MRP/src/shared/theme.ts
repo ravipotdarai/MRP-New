@@ -162,31 +162,31 @@ export const THEMES: Record<ThemeId, ThemeMeta> = {
   light: {
     id: 'light',
     label: 'Light',
-    preview: '#0284c7',
+    preview: '#1A73E8',
     colors: {
-      bg: '#f1f5f9',
+      bg: '#F8FAFD',
       surface: '#ffffff',
-      surfaceAlt: '#e2e8f0',
-      border: '#cbd5e1',
-      borderSubtle: 'rgba(15, 23, 42, 0.06)',
-      borderSoft: 'rgba(15, 23, 42, 0.1)',
-      textPrimary: '#0f172a',
-      textSecondary: '#475569',
-      textMuted: '#64748b',
-      textBody: '#334155',
-      sky: '#0284c7',
-      skyDark: '#0369a1',
-      skySoft: 'rgba(2, 132, 199, 0.12)',
-      emerald: '#059669',
-      emeraldDark: '#047857',
-      emeraldSoft: 'rgba(5, 150, 105, 0.12)',
-      red: '#dc2626',
-      redDark: '#b91c1c',
-      redSoft: 'rgba(220, 38, 38, 0.12)',
-      amber: '#d97706',
-      amberSoft: 'rgba(217, 119, 6, 0.12)',
-      violet: '#7c3aed',
-      pink: '#db2777',
+      surfaceAlt: '#E8F0FE',
+      border: '#DADCE0',
+      borderSubtle: 'rgba(32, 33, 36, 0.06)',
+      borderSoft: 'rgba(32, 33, 36, 0.1)',
+      textPrimary: '#202124',
+      textSecondary: '#5F6368',
+      textMuted: '#80868B',
+      textBody: '#3C4043',
+      sky: '#1A73E8',
+      skyDark: '#1557B0',
+      skySoft: 'rgba(26, 115, 232, 0.12)',
+      emerald: '#34A853',
+      emeraldDark: '#188038',
+      emeraldSoft: 'rgba(52, 168, 83, 0.12)',
+      red: '#EA4335',
+      redDark: '#C5221F',
+      redSoft: 'rgba(234, 67, 53, 0.12)',
+      amber: '#FBBC04',
+      amberSoft: 'rgba(251, 188, 4, 0.18)',
+      violet: '#1A73E8',
+      pink: '#EA4335',
     },
   },
 };
@@ -247,5 +247,8 @@ export const card = {
 export function isThemeId(value: string | null | undefined): value is ThemeId {
   return !!value && value in THEMES;
 }
+
+/** Google-inspired brand tokens from Digital Safety kit */
+export {brandColors} from '../assets/brand';
 
 export default {colors, spacing, radius, typography, card, THEMES, THEME_LIST};

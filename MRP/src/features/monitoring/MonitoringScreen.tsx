@@ -18,6 +18,7 @@ import {
 import {useSettings} from '../../shared/hooks/useSettings';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {PermissionSetupWizard} from '../setup/PermissionSetupWizard';
+import {hubScrollProps} from '../../shared/components/HubFeel';
 import {MisuseRulesPanel} from './MisuseRulesPanel';
 import {DataRiskRulesPanel} from './DataRiskRulesPanel';
 import {ColorPalette} from '../../shared/theme';
@@ -302,7 +303,7 @@ export function MonitoringScreen() {
 
   return (
     <>
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} {...hubScrollProps}>
       {/* Master Security Status Header */}
       <View style={styles.masterBanner}>
         <View style={styles.bannerLeft}>

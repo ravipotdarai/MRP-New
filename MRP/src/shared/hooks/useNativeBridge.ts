@@ -119,6 +119,22 @@ export interface MrpNativeInterface {
   setUiThemeId(themeId: string): Promise<boolean>;
   getSecurityCenterLocale(): Promise<string>;
   setSecurityCenterLocale(locale: string): Promise<boolean>;
+  evaluateUrlRisk(raw: string): Promise<{
+    input: string;
+    normalized?: string;
+    score: number;
+    band: string;
+    eventType: string;
+    reasons: string[];
+    reasonCodes: string[];
+    domainHash?: string;
+    host?: string;
+  }>;
+  logDigitalSafetyEvent(
+    eventType: string,
+    status: string,
+    metadata: Record<string, string | number | boolean | null>,
+  ): Promise<boolean>;
   getPermissionSetupStatus(): Promise<{
     camera: boolean;
     location: boolean;

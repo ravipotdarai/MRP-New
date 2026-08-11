@@ -1,15 +1,23 @@
 import React, {useState, useEffect, useCallback, useMemo} from 'react';
-import {View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert} from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  SafeAreaView,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
-import Animated, {FadeIn} from 'react-native-reanimated';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useHorizontalTabSwipe} from '../../shared/hooks/useHorizontalTabSwipe';
+import {HubStyleTabBar, HubTabPage} from '../../shared/components/HubFeel';
 import {AppUsageDashboard} from './AppUsageDashboard';
 import {AppUsageTimeline} from './AppUsageTimeline';
 import {AppUsageReports} from './AppUsageReports';
 import {AppSafetyScreen} from './AppSafetyScreen';
 import {dedupeSessions} from './AppUsageUtils';
-import {ColorPalette} from '../../shared/theme';
+import {ColorPalette, brandColors} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
 export type AppUsageSession = {
@@ -39,7 +47,14 @@ export type UnifiedEvent = {
 
 type AppUsageTab = 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY';
 
-const APP_TABS: AppUsageTab[] = ['DASHBOARD', 'TIMELINE', 'REPORTS', 'SAFETY'];
+const APP_TABS: {key: AppUsageTab; label: string; icon: string}[] = [
+  {key: 'DASHBOARD', label: 'Dashboard', icon: '📊'},
+  {key: 'TIMELINE', label: 'Timeline', icon: '🕒'},
+  {key: 'REPORTS', label: 'Reports', icon: '📈'},
+  {key: 'SAFETY', label: 'Safety', icon: '🛡️'},
+];
+
+const APP_TAB_KEYS = APP_TABS.map(t => t.key);
 
 export function AppUsageScreen({route}: {route?: any}) {
   const [activeTab, setActiveTab] = useState<AppUsageTab>('DASHBOARD');
@@ -52,14 +67,14 @@ export function AppUsageScreen({route}: {route?: any}) {
   const {colors} = useTheme();
   const styles = useMemo(() => createAppUsageStyles(colors), [colors]);
 
-  const tabIndex = APP_TABS.indexOf(activeTab);
+  const tabIndex = APP_TAB_KEYS.indexOf(activeTab);
   const onSwipeIndex = useCallback((i: number) => {
-    const next = APP_TABS[i];
+    const next = APP_TAB_KEYS[i];
     if (next) setActiveTab(next);
   }, []);
   const swipeHandlers = useHorizontalTabSwipe(
     Math.max(0, tabIndex),
-    APP_TABS.length,
+    APP_TAB_KEYS.length,
     onSwipeIndex,
   );
 
@@ -180,7 +195,7 @@ export function AppUsageScreen({route}: {route?: any}) {
   if (loading) {
     return (
       <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={colors.sky} />
+        <ActivityIndicator size="large" color={brandColors.googleBlue} />
         <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
@@ -188,63 +203,61 @@ export function AppUsageScreen({route}: {route?: any}) {
 
   if (!hasPermission && activeTab !== 'SAFETY') {
     return (
-      <View style={styles.permissionContainer}>
-        <Text style={styles.permissionTitle}>Usage Access Required</Text>
-        <Text style={styles.permissionText}>
-          To provide App Usage Analytics and Reports, MRP needs Usage Access permission.
-          You can still open the Safety tab for risk and posture checks.
-        </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={handleRequestPermission}>
-          <Text style={styles.permissionButtonText}>Grant Permission in Settings</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.refreshButton} onPress={checkPermissionAndLoad}>
-          <Text style={styles.refreshButtonText}>I already granted it (Refresh)</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.refreshButton, {marginTop: 12}]}
-          onPress={() => setActiveTab('SAFETY')}>
-          <Text style={styles.refreshButtonText}>Open App Safety instead</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container}>
+        <HubStyleTabBar
+          tabs={APP_TABS}
+          activeKey={activeTab}
+          onChange={key => setActiveTab(key as AppUsageTab)}
+          colors={colors}
+        />
+        <View style={styles.permissionContainer}>
+          <Text style={styles.permissionTitle}>Usage Access Required</Text>
+          <Text style={styles.permissionText}>
+            To provide App Usage Analytics and Reports, MRP needs Usage Access permission. You can
+            still open the Safety tab for risk and posture checks.
+          </Text>
+          <TouchableOpacity style={styles.permissionButton} onPress={handleRequestPermission}>
+            <Text style={styles.permissionButtonText}>Grant Permission in Settings</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.refreshButton} onPress={checkPermissionAndLoad}>
+            <Text style={styles.refreshButtonText}>I already granted it (Refresh)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.refreshButton, {marginTop: 12}]}
+            onPress={() => setActiveTab('SAFETY')}>
+            <Text style={styles.refreshButtonText}>Open App Safety instead</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'DASHBOARD' && styles.activeTab]}
-          onPress={() => setActiveTab('DASHBOARD')}
-        >
-          <Text style={[styles.tabText, activeTab === 'DASHBOARD' && styles.activeTabText]}>Dashboard</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'TIMELINE' && styles.activeTab]}
-          onPress={() => setActiveTab('TIMELINE')}
-        >
-          <Text style={[styles.tabText, activeTab === 'TIMELINE' && styles.activeTabText]}>Timeline</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'REPORTS' && styles.activeTab]}
-          onPress={() => setActiveTab('REPORTS')}
-        >
-          <Text style={[styles.tabText, activeTab === 'REPORTS' && styles.activeTabText]}>Reports</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'SAFETY' && styles.activeTab]}
-          onPress={() => setActiveTab('SAFETY')}
-        >
-          <Text style={[styles.tabText, activeTab === 'SAFETY' && styles.activeTabText]}>Safety</Text>
-        </TouchableOpacity>
-      </View>
+      <HubStyleTabBar
+        tabs={APP_TABS}
+        activeKey={activeTab}
+        onChange={key => setActiveTab(key as AppUsageTab)}
+        colors={colors}
+      />
 
       <View style={styles.content} {...swipeHandlers}>
-        <Animated.View style={styles.content} key={activeTab} entering={FadeIn.duration(200)}>
-          {activeTab === 'DASHBOARD' && <AppUsageDashboard sessions={sessions} events={events} photos={photos} mrpBattery={mrpBattery} onRefresh={fetchData} />}
-          {activeTab === 'TIMELINE' && <AppUsageTimeline sessions={sessions} events={events} />}
+        <HubTabPage pageKey={activeTab}>
+          {activeTab === 'DASHBOARD' && (
+            <AppUsageDashboard
+              sessions={sessions}
+              events={events}
+              photos={photos}
+              mrpBattery={mrpBattery}
+              onRefresh={fetchData}
+            />
+          )}
+          {activeTab === 'TIMELINE' && (
+            <AppUsageTimeline sessions={sessions} events={events} />
+          )}
           {activeTab === 'REPORTS' && <AppUsageReports sessions={sessions} />}
           {activeTab === 'SAFETY' && <AppSafetyScreen />}
-        </Animated.View>
+        </HubTabPage>
       </View>
     </SafeAreaView>
   );
@@ -252,91 +265,66 @@ export function AppUsageScreen({route}: {route?: any}) {
 
 function createAppUsageStyles(colors: ColorPalette) {
   return StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  centerContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  loadingText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginTop: 16,
-  },
-  permissionContainer: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  permissionTitle: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  permissionText: {
-    color: colors.textSecondary,
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  permissionButton: {
-    backgroundColor: colors.sky,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 8,
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  permissionButtonText: {
-    color: colors.bg,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  refreshButton: {
-    paddingVertical: 14,
-  },
-  refreshButtonText: {
-    color: colors.sky,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    paddingTop: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderSubtle,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: colors.sky,
-  },
-  tabText: {
-    color: colors.textSecondary,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  activeTabText: {
-    color: colors.sky,
-  },
-  content: {
-    flex: 1,
-  },
-});
+    container: {
+      flex: 1,
+      backgroundColor: colors.bg,
+    },
+    centerContainer: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    loadingText: {
+      color: colors.textSecondary,
+      fontSize: 14,
+      marginTop: 16,
+    },
+    permissionContainer: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    permissionTitle: {
+      color: colors.textPrimary,
+      fontSize: 22,
+      fontWeight: 'bold',
+      marginBottom: 16,
+    },
+    permissionText: {
+      color: colors.textSecondary,
+      fontSize: 16,
+      textAlign: 'center',
+      marginBottom: 32,
+      lineHeight: 24,
+    },
+    permissionButton: {
+      backgroundColor: brandColors.googleBlue,
+      paddingHorizontal: 24,
+      paddingVertical: 14,
+      borderRadius: 12,
+      width: '100%',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    permissionButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    refreshButton: {
+      paddingVertical: 14,
+    },
+    refreshButtonText: {
+      color: brandColors.googleBlue,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    content: {
+      flex: 1,
+    },
+  });
 }

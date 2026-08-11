@@ -13,6 +13,7 @@ import {
 import {useFocusEffect} from '@react-navigation/native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {hubScrollProps} from '../../shared/components/HubFeel';
 import {useTheme} from '../../shared/ThemeContext';
 
 type RiskApp = {
@@ -227,6 +228,7 @@ export function AppSafetyScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
+      {...hubScrollProps}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

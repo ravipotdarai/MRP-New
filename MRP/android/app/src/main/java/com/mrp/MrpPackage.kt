@@ -18,6 +18,7 @@ class MrpPackage : ReactPackage {
             GeofenceModule(reactContext),
             DeviceTrackingModule(reactContext),
             MrpFcmModule(reactContext),
+            DigitalSafetyModule(reactContext),
         )
     }
 
