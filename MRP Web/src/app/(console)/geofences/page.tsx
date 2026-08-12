@@ -33,14 +33,13 @@ function toDayKey(ms: number): string {
 
 function GeofencesBody() {
   const { vault } = useVaultSession();
-  const fences = vault?.geofences || [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoneFilter, setZoneFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("");
 
   const mapFences = useMemo(
     () =>
-      fences
+      (vault?.geofences || [])
         .map((g, i) => {
           const lat = num(g.latitude);
           const lng = num(g.longitude);
@@ -60,7 +59,7 @@ function GeofencesBody() {
         lng: number;
         radiusMeters: number;
       }>,
-    [fences],
+    [vault?.geofences],
   );
 
   const selected = mapFences.find((z) => z.id === selectedId) || mapFences[0] || null;

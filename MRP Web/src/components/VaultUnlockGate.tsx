@@ -13,7 +13,8 @@ export function VaultUnlockGate({
   title?: string;
   showSessionControls?: boolean;
 }) {
-  const { unlocked, busy, unlockStage, error, info, unlock, clearError } = useVaultSession();
+  const { unlocked, busy, hydrating, unlockStage, error, info, unlock, clearError } =
+    useVaultSession();
   const [pin, setPin] = useState("");
 
   if (unlocked) {
@@ -21,6 +22,11 @@ export function VaultUnlockGate({
       <div>
         <div className="unlock-status-row">
           {info ? <p className="badge badge-safe mb-md">{info}</p> : null}
+          {hydrating ? (
+            <p className="muted unlock-stage mb-md" aria-live="polite">
+              {unlockStage || "Loading full history in the background…"}
+            </p>
+          ) : null}
           {showSessionControls ? <SessionInlineControls className="unlock-status-controls" /> : null}
         </div>
         {children}
@@ -70,8 +76,8 @@ export function VaultUnlockGate({
         </button>
       </form>
       <p className="muted unlock-hint">
-        Large backups (many Premium+ selfies) take longer: Drive download → PBKDF2 → AES → JSON. Ops
-        pages open first; selfie images finish a moment later.
+        Unlock shows the last hour on the map first, then loads the rest of your history in the
+        background. Decryption stays in this browser.
       </p>
     </div>
   );

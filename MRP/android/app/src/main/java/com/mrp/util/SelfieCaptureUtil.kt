@@ -9,6 +9,7 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.media.Image
 import android.util.Log
@@ -27,13 +28,13 @@ object SelfieCaptureUtil {
 
     private const val TAG = "SelfieCapture"
     /**
-     * Aim for ~5MP stills (clear faces on web/phone). Cap below ~8MP so vault sync stays
-     * within Drive appData budgets (see SelfieVaultPackager.MAX_FILE_BYTES).
+     * Event-triggered selfies should be fast enough to beat device movement.
+     * Target ~2MP with a lower JPEG quality to reduce camera + post-process time.
      */
-    private const val TARGET_PIXELS = 2592 * 1944 // ~5.0 MP
-    private const val MAX_PIXELS = 3264 * 2448 // ~8.0 MP
-    private const val MIN_PIXELS = 1280 * 720
-    private const val JPEG_QUALITY = 96
+    private const val TARGET_PIXELS = 1600 * 1200 // ~1.9 MP
+    private const val MAX_PIXELS = 2560 * 1440 // ~3.7 MP
+    private const val MIN_PIXELS = 960 * 720
+    private const val JPEG_QUALITY = 88
 
     fun chooseJpegSize(sizes: Array<Size>): Size {
         if (sizes.isEmpty()) return Size(1920, 1080)
@@ -55,6 +56,34 @@ object SelfieCaptureUtil {
 
     fun isFrontFacing(chars: CameraCharacteristics): Boolean =
         chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+
+    /**
+     * Prefer the widest front camera when multiple selfie cameras exist.
+     * Fallback: the first front-facing camera.
+     */
+    fun chooseFrontCameraId(cameraManager: CameraManager): String? {
+        var bestCameraId: String? = null
+        var bestScore = Float.POSITIVE_INFINITY
+
+        for (cameraId in cameraManager.cameraIdList) {
+            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+            if (!isFrontFacing(characteristics)) continue
+
+            val focalLengths = characteristics.get(
+                CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS,
+            )
+            val score = focalLengths?.minOrNull() ?: Float.POSITIVE_INFINITY
+            if (score < bestScore) {
+                bestScore = score
+                bestCameraId = cameraId
+            }
+            if (bestCameraId == null) {
+                bestCameraId = cameraId
+            }
+        }
+
+        return bestCameraId
+    }
 
     /**
      * Still-capture tuning for lock-screen / no-preview selfies:

@@ -46,8 +46,10 @@ object LocationResolver {
 
     private const val WIFI_TIMEOUT_MS = 3_500L
     private const val CELL_TIMEOUT_MS = 4_500L
+    private const val WIFI_TIMEOUT_SECURITY_MS = 1_200L
+    private const val CELL_TIMEOUT_SECURITY_MS = 1_800L
     private const val GPS_TIMEOUT_UI_MS = 10_000L
-    private const val GPS_TIMEOUT_SECURITY_MS = 12_000L
+    private const val GPS_TIMEOUT_SECURITY_MS = 4_000L
     private const val GPS_TIMEOUT_SIM_MS = 15_000L
 
     /**
@@ -241,7 +243,7 @@ object LocationResolver {
 
         // 1) Wi‑Fi tier (low power) — escalate if coarse (or force-refresh → GPS)
         if (wifi) {
-            val wifiLoc = requestFused(context, Priority.PRIORITY_LOW_POWER, WIFI_TIMEOUT_MS)
+            val wifiLoc = requestFused(context, Priority.PRIORITY_LOW_POWER, wifiTimeoutFor(severity))
                 ?.let { withNetworkAccuracyFloor(it, "wifi") }
             consider(wifiLoc, "wifi")
             if (!bypassCache && wifiLoc != null && isGoodEnough(wifiLoc, severity)) {
@@ -251,7 +253,11 @@ object LocationResolver {
 
         // 2) Cellular / balanced — escalate if still coarse
         if (cellular || (!wifi && hasAnyNetwork(context))) {
-            val cellLoc = requestFused(context, Priority.PRIORITY_BALANCED_POWER_ACCURACY, CELL_TIMEOUT_MS)
+            val cellLoc = requestFused(
+                context,
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                cellTimeoutFor(severity),
+            )
                 ?.let { withNetworkAccuracyFloor(it, "cell") }
             consider(cellLoc, "cell")
             if (!bypassCache && cellLoc != null && isGoodEnough(cellLoc, severity)) {
@@ -383,6 +389,12 @@ object LocationResolver {
 
     private fun shouldAttemptGps(severity: Severity): Boolean =
         severity == Severity.UI || severity == Severity.SECURITY || severity == Severity.SIM_RECOVERY
+
+    private fun wifiTimeoutFor(severity: Severity): Long =
+        if (severity == Severity.SECURITY) WIFI_TIMEOUT_SECURITY_MS else WIFI_TIMEOUT_MS
+
+    private fun cellTimeoutFor(severity: Severity): Long =
+        if (severity == Severity.SECURITY) CELL_TIMEOUT_SECURITY_MS else CELL_TIMEOUT_MS
 
     private fun logBattery(
         severity: Severity,

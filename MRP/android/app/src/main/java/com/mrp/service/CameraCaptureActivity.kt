@@ -128,7 +128,7 @@ class CameraCaptureActivity : Activity() {
 
         val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
-            val cameraId = getFrontCameraId(cameraManager)
+            val cameraId = SelfieCaptureUtil.chooseFrontCameraId(cameraManager)
             if (cameraId == null) {
                 Log.e(TAG, "No front camera found")
                 finish()
@@ -175,17 +175,6 @@ class CameraCaptureActivity : Activity() {
                 finish()
             }
         }
-    }
-
-    private fun getFrontCameraId(cameraManager: CameraManager): String? {
-        for (cameraId in cameraManager.cameraIdList) {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-            if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                return cameraId
-            }
-        }
-        return null
     }
 
     private fun createCaptureSession() {

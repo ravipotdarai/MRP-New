@@ -77,7 +77,7 @@ function formatClock(ms: number): string {
 }
 
 export function EmergencyMonitoringDesk() {
-  const { vault, unlocked, getSessionPin } = useVaultSession();
+  const { vault, unlocked, hydrating, getSessionPin } = useVaultSession();
   const { getIdToken } = useAuth();
   const day = useJourneyPlayback((s) => s.day);
   const index = useJourneyPlayback((s) => s.index);
@@ -264,7 +264,13 @@ export function EmergencyMonitoringDesk() {
           const dayIndex = await loadDayIndex(token, pin, dayFile);
           setDayMeta(date, dayIndex, "daypack");
           const win = new GpsChunkWindow(token, pin, date, dayIndex.hours || []);
-          const pts = await win.loadAllAvailable();
+          const pts = await win.loadRecentThenRest((early) => {
+            const mergedEarly = mergeTrailWithVaultEvents(early, vaultGps);
+            setSourceGps(mergedEarly);
+            setPoints(mergedEarly);
+            setLoading(false);
+            setBanner("Showing last hour — loading full day trail…");
+          });
           if (pts.length) {
             const merged = mergeTrailWithVaultEvents(pts, vaultGps);
             setSourceGps(merged);
@@ -327,6 +333,20 @@ export function EmergencyMonitoringDesk() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- unlock once
   }, [unlocked]);
+
+  // After full vault hydrates, fold new event coords into the trail without waiting for reload.
+  useEffect(() => {
+    if (!unlocked || hydrating || !day) return;
+    const { from, to } = dayBounds(day);
+    const vaultGps = sparsePointsFromVault(travelPoints(vault, from, to));
+    if (!vaultGps.length) return;
+    setSourceGps((prev) => {
+      const merged = mergeTrailWithVaultEvents(prev, vaultGps);
+      if (merged.length === prev.length) return prev;
+      setPoints(merged);
+      return merged;
+    });
+  }, [hydrating, unlocked, day, vault, setPoints]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

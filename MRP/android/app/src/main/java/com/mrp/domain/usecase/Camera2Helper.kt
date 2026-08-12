@@ -35,7 +35,7 @@ class Camera2Helper(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun takePicture(eventName: String, callback: (String) -> Unit) {
         val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = getFrontCameraId(cameraManager) ?: run {
+        val cameraId = SelfieCaptureUtil.chooseFrontCameraId(cameraManager) ?: run {
             Log.e(TAG, "No front camera found")
             return
         }
@@ -80,17 +80,6 @@ class Camera2Helper(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open camera", e)
         }
-    }
-
-    private fun getFrontCameraId(cameraManager: CameraManager): String? {
-        for (cameraId in cameraManager.cameraIdList) {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-            if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                return cameraId
-            }
-        }
-        return null
     }
 
     private fun createCaptureSession(eventName: String, callback: (String) -> Unit) {

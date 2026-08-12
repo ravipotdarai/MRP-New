@@ -109,10 +109,16 @@ export function useGpsDayTrail(opts?: { autoLoad?: boolean }): GpsDayTrailState 
         if (dayFile) {
           const dayIndex = await loadDayIndex(token, pin, dayFile);
           const win = new GpsChunkWindow(token, pin, day, dayIndex.hours || []);
-          const pts = await win.loadAllAvailable();
+          setIndex(dayIndex);
+          const pts = await win.loadRecentThenRest((early) => {
+            const mergedEarly = mergeTrailWithVaultEvents(early, vaultGps);
+            setSource(vaultGps.length ? "merged" : "daypack");
+            setPoints(mergedEarly);
+            setLoading(false);
+            setBanner("Showing last hour — loading full day trail…");
+          });
           if (pts.length) {
             const merged = mergeTrailWithVaultEvents(pts, vaultGps);
-            setIndex(dayIndex);
             setSource(vaultGps.length && merged.length > pts.length ? "merged" : "daypack");
             setPoints(merged);
             setBanner(

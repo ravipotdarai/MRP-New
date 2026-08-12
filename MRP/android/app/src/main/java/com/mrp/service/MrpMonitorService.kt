@@ -1337,7 +1337,7 @@ class MrpMonitorService : Service() {
 
         val cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
         try {
-            val cameraId = getFrontCameraId(cameraManager) ?: run {
+            val cameraId = SelfieCaptureUtil.chooseFrontCameraId(cameraManager) ?: run {
                 Log.e(TAG, "No front camera found")
                 pendingPhotoCapture = false
                 cameraFgsActive = false
@@ -1391,17 +1391,6 @@ class MrpMonitorService : Service() {
             closeCamera()
             pendingPhotoCapture = false
         }
-    }
-
-    private fun getFrontCameraId(cameraManager: CameraManager): String? {
-        for (cameraId in cameraManager.cameraIdList) {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            val facing = characteristics.get(CameraCharacteristics.LENS_FACING)
-            if (facing == CameraCharacteristics.LENS_FACING_FRONT) {
-                return cameraId
-            }
-        }
-        return null
     }
 
     private fun createCaptureSession() {
@@ -1642,33 +1631,36 @@ class MrpMonitorService : Service() {
                 lastPhotoRequestMs = now
                 Log.d(TAG, "requestPhoto triggered for event: $eventName")
 
-                // While MRP is open, capture in the FGS — do NOT launch the 1×1 translucent
-                // CameraCaptureActivity (that shrinks / covers MainActivity).
-                if (isMrpUiInForeground(context)) {
-                    Log.d(TAG, "requestPhoto via service (UI foreground) for $eventName")
-                    val svc = Intent(context, MrpMonitorService::class.java).apply {
-                        action = ACTION_REQUEST_PHOTO
-                        putExtra("eventName", eventName)
+                // Prefer service-only capture to avoid minimizing the app the user is on.
+                val svc = Intent(context, MrpMonitorService::class.java).apply {
+                    action = ACTION_REQUEST_PHOTO
+                    putExtra("eventName", eventName)
+                }
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(svc)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        context.startService(svc)
                     }
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            context.startForegroundService(svc)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            context.startService(svc)
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "startForegroundService for photo failed, broadcast fallback", e)
-                        context.sendBroadcast(
-                            Intent(ACTION_REQUEST_PHOTO)
-                                .setPackage(context.packageName)
-                                .putExtra("eventName", eventName)
-                        )
-                    }
+                    Log.d(TAG, "requestPhoto via foreground service for $eventName")
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "startForegroundService for photo failed", e)
+                }
+
+                // Last resort only on lock screen / OEM restrictions.
+                val keyguardLocked = try {
+                    val km = context.getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+                    km?.isKeyguardLocked == true
+                } catch (_: Exception) {
+                    false
+                }
+                if (!keyguardLocked) {
+                    Log.w(TAG, "requestPhoto skipped activity fallback to avoid stealing foreground app")
                     return
                 }
 
-                // Background / lock screen: transparent capture activity
                 val intent = Intent(context, CameraCaptureActivity::class.java).apply {
                     putExtra("eventName", eventName)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -1686,18 +1678,9 @@ class MrpMonitorService : Service() {
                 } else {
                     pendingIntent.send()
                 }
-                Log.d(TAG, "Launched CameraCaptureActivity via PendingIntent for event: $eventName")
+                Log.d(TAG, "Launched CameraCaptureActivity fallback for locked device event: $eventName")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to launch CameraCaptureActivity via PendingIntent, fallback to startActivity", e)
-                try {
-                    val intent = Intent(context, CameraCaptureActivity::class.java).apply {
-                        putExtra("eventName", eventName)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    }
-                    context.startActivity(intent)
-                } catch (e2: Exception) {
-                    Log.e(TAG, "All camera launch attempts failed", e2)
-                }
+                Log.e(TAG, "All camera launch attempts failed", e)
             }
         }
 
