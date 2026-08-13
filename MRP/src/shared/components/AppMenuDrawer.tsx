@@ -26,6 +26,7 @@ import {CIRCLE_ENABLED} from '../../config/featureFlags';
 
 export type AppMenuTarget =
   | {screen: 'Home'}
+  | {screen: 'Digital Safety'; openSection?: string}
   | {screen: 'Security'; tab: 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS'}
   | {screen: 'App Usage'; tab: 'DASHBOARD' | 'TIMELINE' | 'REPORTS' | 'SAFETY'}
   | {
@@ -77,11 +78,11 @@ const MENU: MenuRow[] = [
     children: [
       {
         label: 'Overview',
-        target: {screen: 'Hub', section: 'digital-safety'},
+        target: {screen: 'Digital Safety'},
       },
       {
         label: 'Advisor',
-        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'ADVISOR'},
+        target: {screen: 'Digital Safety', openSection: 'security-center'},
       },
       {
         label: 'Threat Analyzer',
@@ -93,7 +94,7 @@ const MENU: MenuRow[] = [
       },
       {
         label: 'Tools (URL / OTP / USSD)',
-        target: {screen: 'Hub', section: 'security-center', securityCenterTab: 'TOOLS'},
+        target: {screen: 'Digital Safety', openSection: 'security-center'},
       },
     ],
   },

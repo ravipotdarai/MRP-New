@@ -11,7 +11,7 @@ import LinearGradient from 'react-native-linear-gradient';
 import {ColorPalette, spacing, radius} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.3';
 
 const MOMENTS = [
   {
@@ -33,6 +33,11 @@ const MOMENTS = [
     when: 'Wi‑Fi / Bluetooth / geofence change',
     then: 'Timeline records radio and zone enter/exit events; optional Drive vault sync keeps a private backup.',
     accent: 'violet' as const,
+  },
+  {
+    when: 'You tap a suspicious link or QR code',
+    then: 'Safe Link and QR Protection check URLs on-device. Network Guardian (Premium+) filters DNS for ads, trackers, and malicious domains.',
+    accent: 'emerald' as const,
   },
   {
     when: 'You need help right now',
@@ -59,8 +64,13 @@ const LAYERS = [
   },
   {
     step: '04',
+    title: 'Digital Safety',
+    body: 'Safety tab: Safe Link, Scam Check, QR, Network Guardian (DNS VPN), Cellular Security, Secure Vault, and automation. Hub: Drive Sync, geofence, subscriptions, and Key features.',
+  },
+  {
+    step: '05',
     title: 'Review',
-    body: 'Home, Timeline, Photos, App Usage, and MRP Web (decrypt in your browser) help you decide what to do next.',
+    body: 'Home, Timeline, Photos, App Usage, Safety, Hub, and MRP Web (decrypt in your browser) help you decide what to do next.',
   },
 ];
 
@@ -91,24 +101,30 @@ const HOW_TO_USE = [
   },
   {
     step: '5',
+    title: 'Digital Safety',
+    where: 'Safety tab · Hub → Key features',
+    body: 'Check links (Safe Link), scan QR codes, paste scam SMS (Scam Check), and enable Network Guardian for DNS filtering. Premium+ for Guardian; Basic+ for Cellular and Secure Vault.',
+  },
+  {
+    step: '6',
     title: 'SIM recovery & Panic',
     where: 'Hub → SIM Recovery · Home → Panic',
     body: 'Add SMS recovery contacts for SIM change. Hold Panic on Home to alert those contacts. Circle live share ships later (flagged off for this release).',
   },
   {
-    step: '6',
+    step: '7',
     title: 'Find my device',
     where: 'Hub → Drive Sync · MRP Web → Monitoring',
     body: 'Turn on Emergency tracking (interval down to 1 min). Web Find-my-device writes the same policy; refresh the Drive vault to see location.',
   },
   {
-    step: '7',
+    step: '8',
     title: 'Review activity',
     where: 'Home · Security → Timeline / Photos · App Usage',
     body: 'Home status + banners; Timeline/Photos for evidence; App Usage for screen-time share and App Safety posture.',
   },
   {
-    step: '8',
+    step: '9',
     title: 'Web console',
     where: 'https://pathsync.in',
     body: 'Sign in with Google, decrypt your Drive vault with PIN, and edit sync policy remotely.',
@@ -176,9 +192,9 @@ export function AboutScreen() {
           <Text style={styles.tagline}>Mobile Resilience Platform</Text>
           <Text style={styles.version}>v{VERSION}</Text>
           <Text style={styles.heroBody}>
-            On-device security monitoring with Panic, SIM recovery, geofence, emergency locate, and
-            optional encrypted Drive backup — plus a private web console. Your vault stays on your
-            phone and Drive, not in MRP.
+            On-device security monitoring with Panic, SIM recovery, geofence, emergency locate,
+            Digital Safety (Safe Link, Network Guardian, Scam Check), and optional encrypted Drive
+            backup — plus a private web console. Your vault stays on your phone and Drive, not in MRP.
           </Text>
         </LinearGradient>
 

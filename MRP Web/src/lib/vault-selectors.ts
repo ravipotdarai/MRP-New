@@ -130,6 +130,10 @@ export function severityOf(type: string): "alert" | "safe" | "neutral" {
     t.includes("wrong") ||
     t.includes("panic") ||
     t.includes("risk") ||
+    t.includes("blocked") ||
+    t.includes("scam") ||
+    t.includes("malicious") ||
+    t.includes("breach_email_found") ||
     t.includes("security_")
   ) {
     return "alert";

@@ -6,6 +6,8 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
+import com.mrp.billing.DigitalSafetyCapabilities
+import com.mrp.billing.DigitalSafetyCapabilities.Cap
 
 /**
  * Local entitlement cache (EncryptedSharedPreferences).
@@ -60,6 +62,27 @@ class EntitlementCache(context: Context) {
             .putLong(KEY_GRACE, if (expiryEpochMs > 0) expiryEpochMs + graceMs else now + graceMs)
             .apply()
     }
+
+    fun currentTier(): String {
+        val tier = prefs.getString(KEY_TIER, "free") ?: "free"
+        val expiry = prefs.getLong(KEY_EXPIRY, 0L)
+        val grace = prefs.getLong(KEY_GRACE, 0L)
+        return effectiveTier(tier, expiry, grace)
+    }
+
+    fun isPaid(): Boolean {
+        val tier = currentTier()
+        return tier != "free"
+    }
+
+    fun isPremiumOrHigher(): Boolean {
+        val tier = currentTier()
+        return tier == "premium" || tier == "family" || tier == "enterprise"
+    }
+
+    fun hasCapability(cap: Cap): Boolean = DigitalSafetyCapabilities.has(currentTier(), cap)
+
+    fun hasFullCapability(cap: Cap): Boolean = DigitalSafetyCapabilities.hasFull(currentTier(), cap)
 
     fun clearToFree() {
         val now = System.currentTimeMillis()

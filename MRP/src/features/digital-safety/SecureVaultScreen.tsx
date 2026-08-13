@@ -12,20 +12,27 @@ import {
 } from 'react-native';
 import {ColorPalette, spacing, radius, brandColors} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
 import {DigitalSafetyNative, type SecureVaultItemMeta} from './DigitalSafety.native';
+import {SubscriptionLockState} from './components/SubscriptionLockState';
 
 const FOOTER =
-  'Documents encrypted on device and in Google Drive. MRP cannot recover your PIN.';
+  'Documents encrypted on device and optionally in your Google Drive app folder. MRP cannot recover your PIN. Web console never shows plaintext vault contents.';
 
 export function SecureVaultScreen({
   onBack,
   embedded = false,
+  onUpgrade,
 }: {
   onBack?: () => void;
   embedded?: boolean;
+  onUpgrade?: () => void;
 }) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const {canUseFeature, caps} = useEntitlements();
+  const entitled = canUseFeature('digitalsafe.secure_vault');
+  const backupAllowed = canUseFeature('digitalsafe.secure_vault_backup');
   const [items, setItems] = useState<SecureVaultItemMeta[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -36,7 +43,13 @@ export function SecureVaultScreen({
   const [body, setBody] = useState('');
   const [category, setCategory] = useState('notes');
   const [expiryDays, setExpiryDays] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [viewItem, setViewItem] = useState<SecureVaultItemMeta | null>(null);
+  const [categoryPickerOpen, setCategoryPickerOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  const categoryOptions = categories.length ? categories : ['notes'];
+  const empty = loaded && items.length === 0;
 
   const load = useCallback(async () => {
     try {
@@ -44,6 +57,8 @@ export function SecureVaultScreen({
       setCategories(await DigitalSafetyNative.getSecureVaultCategories());
     } catch (e: any) {
       Alert.alert('Vault', e?.message || String(e));
+    } finally {
+      setLoaded(true);
     }
   }, []);
 
@@ -57,12 +72,36 @@ export function SecureVaultScreen({
       return;
     }
     setUnlocked(true);
+    void DigitalSafetyNative.scheduleVaultExpiryReminders(14).catch(() => undefined);
   };
 
-  const create = async () => {
-    if (!unlocked) {
-      Alert.alert('Unlock first', 'Enter your MRP PIN to create items.');
+  const unlockBiometric = async () => {
+    setBusy(true);
+    try {
+      await DigitalSafetyNative.authenticateVaultBiometric();
+      if (pin.length < 4) {
+        Alert.alert(
+          'PIN still required for crypto',
+          'Biometric confirmed identity. Enter your MRP PIN once to decrypt vault items.',
+        );
+        return;
+      }
+      setUnlocked(true);
+      void DigitalSafetyNative.scheduleVaultExpiryReminders(14).catch(() => undefined);
+    } catch (e: any) {
+      Alert.alert('Biometric unlock', e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveItem = async () => {
+    if (pin.length < 4) {
+      Alert.alert('PIN required', 'Enter your MRP PIN (4+ digits) to encrypt this item.');
       return;
+    }
+    if (!unlocked) {
+      setUnlocked(true);
     }
     setBusy(true);
     try {
@@ -71,20 +110,32 @@ export function SecureVaultScreen({
         Number.isFinite(days) && days > 0
           ? Date.now() + days * 24 * 60 * 60 * 1000
           : 0;
-      await DigitalSafetyNative.createSecureVaultItem(
-        pin,
-        category,
-        title,
-        body,
-        expiryAtMs,
-      );
+      if (editingId) {
+        await DigitalSafetyNative.updateSecureVaultItem(
+          pin,
+          editingId,
+          category,
+          title,
+          body,
+          expiryAtMs,
+        );
+      } else {
+        await DigitalSafetyNative.createSecureVaultItem(
+          pin,
+          category,
+          title,
+          body,
+          expiryAtMs,
+        );
+      }
       setEditor(false);
+      setEditingId(null);
       setTitle('');
       setBody('');
       setExpiryDays('');
       await load();
     } catch (e: any) {
-      Alert.alert('Create failed', e?.message || String(e));
+      Alert.alert(editingId ? 'Update failed' : 'Create failed', e?.message || String(e));
     } finally {
       setBusy(false);
     }
@@ -113,12 +164,36 @@ export function SecureVaultScreen({
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await DigitalSafetyNative.deleteSecureVaultItem(id);
+          await DigitalSafetyNative.deleteSecureVaultItem(id, pin);
           setViewItem(null);
           await load();
         },
       },
     ]);
+  };
+
+  const startCreate = () => {
+    setEditingId(null);
+    setTitle('');
+    setBody('');
+    setCategory(categories[0] || 'notes');
+    setExpiryDays('');
+    setEditor(true);
+  };
+
+  const startEdit = (item: SecureVaultItemMeta) => {
+    setEditingId(item.id);
+    setTitle(item.title || '');
+    setBody(item.body || '');
+    setCategory(item.category || 'notes');
+    if (item.expiryAtMs && item.expiryAtMs > Date.now()) {
+      const days = Math.ceil((item.expiryAtMs - Date.now()) / (24 * 60 * 60 * 1000));
+      setExpiryDays(String(days));
+    } else {
+      setExpiryDays('');
+    }
+    setViewItem(null);
+    setEditor(true);
   };
 
   const backup = async () => {
@@ -167,7 +242,16 @@ export function SecureVaultScreen({
         <Text style={styles.sub}>Encrypted documents & notes</Text>
       )}
 
-      {!unlocked ? (
+      {!entitled ? (
+        <SubscriptionLockState
+          colors={colors}
+          title="Basic required"
+          message="Secure Vault encrypts notes on this device. Drive backup of the vault requires Premium or higher."
+          onUpgrade={onUpgrade}
+        />
+      ) : null}
+
+      {entitled && !unlocked && !empty && loaded ? (
         <View style={styles.gate}>
           <Text style={styles.label}>MRP PIN</Text>
           <TextInput
@@ -182,29 +266,59 @@ export function SecureVaultScreen({
           <TouchableOpacity style={styles.primary} onPress={unlock}>
             <Text style={styles.primaryText}>Unlock vault</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondary} onPress={unlockBiometric} disabled={busy}>
+            <Text style={styles.secondaryText}>Use biometric / device lock</Text>
+          </TouchableOpacity>
+          <Text style={styles.help}>
+            Biometric confirms it is you; PIN still decrypts vault contents on this device.
+          </Text>
         </View>
-      ) : (
+      ) : entitled && unlocked ? (
         <Text style={styles.unlocked}>Vault unlocked for this session</Text>
-      )}
+      ) : null}
 
       {busy ? <ActivityIndicator color={brandColors.googleBlue} /> : null}
 
-      {unlocked ? (
+      {entitled && (unlocked || empty) ? (
         <>
-          <TouchableOpacity style={styles.primary} onPress={() => setEditor(true)}>
+          <Text style={styles.help}>
+            Item limit for your plan: {caps.maxVaultItems === Number.MAX_SAFE_INTEGER ? 'unlimited' : caps.maxVaultItems}
+            {!backupAllowed ? ' · Drive backup requires Premium+' : ''}
+          </Text>
+          <TouchableOpacity style={styles.primary} onPress={startCreate}>
             <Text style={styles.primaryText}>New item</Text>
           </TouchableOpacity>
+          {unlocked ? (
           <View style={styles.rowBtns}>
-            <TouchableOpacity style={styles.secondaryFlex} onPress={backup}>
+            <TouchableOpacity
+              style={styles.secondaryFlex}
+              onPress={() => {
+                if (!backupAllowed) {
+                  onUpgrade?.();
+                  return;
+                }
+                void backup();
+              }}>
               <Text style={styles.secondaryText}>Drive backup</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryFlex} onPress={restore}>
+            <TouchableOpacity
+              style={styles.secondaryFlex}
+              onPress={() => {
+                if (!backupAllowed) {
+                  onUpgrade?.();
+                  return;
+                }
+                void restore();
+              }}>
               <Text style={styles.secondaryText}>Restore</Text>
             </TouchableOpacity>
           </View>
+          ) : null}
         </>
       ) : null}
 
+      {entitled ? (
+        <>
       <Text style={styles.section}>Items ({items.length})</Text>
       {items.length === 0 ? (
         <Text style={styles.muted}>No vault items yet.</Text>
@@ -230,18 +344,29 @@ export function SecureVaultScreen({
 
       <Modal visible={editor} animationType="slide" onRequestClose={() => setEditor(false)}>
         <ScrollView style={styles.root} contentContainerStyle={styles.pad}>
-          <Text style={styles.title}>New vault item</Text>
+          <Text style={styles.title}>{editingId ? 'Edit vault item' : 'New vault item'}</Text>
+          {!unlocked ? (
+            <>
+              <Text style={styles.label}>MRP PIN</Text>
+              <TextInput
+                style={styles.input}
+                value={pin}
+                onChangeText={setPin}
+                secureTextEntry
+                keyboardType="number-pad"
+                placeholder="PIN to encrypt this item"
+                placeholderTextColor={colors.textMuted}
+              />
+            </>
+          ) : null}
           <Text style={styles.label}>Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 8}}>
-            {(categories.length ? categories : ['notes']).map(c => (
-              <TouchableOpacity
-                key={c}
-                style={[styles.chip, category === c && styles.chipOn]}
-                onPress={() => setCategory(c)}>
-                <Text style={styles.chipText}>{c}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <TouchableOpacity
+            style={styles.dropdown}
+            onPress={() => setCategoryPickerOpen(true)}
+            activeOpacity={0.85}>
+            <Text style={styles.dropdownValue}>{category}</Text>
+            <Text style={styles.dropdownChevron}>▼</Text>
+          </TouchableOpacity>
           <Text style={styles.label}>Title</Text>
           <TextInput style={styles.input} value={title} onChangeText={setTitle} />
           <Text style={styles.label}>Secure note / details</Text>
@@ -258,13 +383,55 @@ export function SecureVaultScreen({
             onChangeText={setExpiryDays}
             keyboardType="number-pad"
           />
-          <TouchableOpacity style={styles.primary} onPress={create}>
-            <Text style={styles.primaryText}>Encrypt & save</Text>
+          <TouchableOpacity style={styles.primary} onPress={saveItem}>
+            <Text style={styles.primaryText}>{editingId ? 'Save changes' : 'Encrypt & save'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.secondary} onPress={() => setEditor(false)}>
+          <TouchableOpacity
+            style={styles.secondary}
+            onPress={() => {
+              setEditor(false);
+              setEditingId(null);
+              setCategoryPickerOpen(false);
+            }}>
             <Text style={styles.secondaryText}>Cancel</Text>
           </TouchableOpacity>
         </ScrollView>
+      </Modal>
+
+      <Modal
+        visible={categoryPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCategoryPickerOpen(false)}>
+        <View style={styles.dropdownOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setCategoryPickerOpen(false)}
+          />
+          <View style={styles.dropdownSheet}>
+            <Text style={styles.dropdownSheetTitle}>Select category</Text>
+            <ScrollView style={{maxHeight: 360}} nestedScrollEnabled>
+              {categoryOptions.map(c => (
+                <TouchableOpacity
+                  key={c}
+                  style={[styles.dropdownOption, category === c && styles.dropdownOptionOn]}
+                  onPress={() => {
+                    setCategory(c);
+                    setCategoryPickerOpen(false);
+                  }}>
+                  <Text
+                    style={[
+                      styles.dropdownOptionText,
+                      category === c && styles.dropdownOptionTextOn,
+                    ]}>
+                    {c}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
       <Modal visible={!!viewItem} animationType="fade" onRequestClose={() => setViewItem(null)}>
@@ -272,6 +439,11 @@ export function SecureVaultScreen({
           <Text style={styles.title}>{viewItem?.title}</Text>
           <Text style={styles.muted}>{viewItem?.category}</Text>
           <Text style={styles.body}>{viewItem?.body || '(empty)'}</Text>
+          <TouchableOpacity
+            style={styles.primary}
+            onPress={() => viewItem && startEdit(viewItem)}>
+            <Text style={styles.primaryText}>Edit</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={styles.dangerOutline}
             onPress={() => viewItem && remove(viewItem.id)}>
@@ -282,6 +454,8 @@ export function SecureVaultScreen({
           </TouchableOpacity>
         </ScrollView>
       </Modal>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -345,6 +519,7 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center',
       marginTop: spacing.sm,
     },
+    help: {fontSize: 12, color: colors.textMuted, lineHeight: 18, marginTop: spacing.sm},
     secondaryFlex: {
       flex: 1,
       borderWidth: 1,
@@ -367,6 +542,62 @@ function createStyles(colors: ColorPalette) {
     },
     chipOn: {borderColor: brandColors.googleBlue, backgroundColor: colors.skySoft},
     chipText: {fontSize: 12, fontWeight: '700', color: colors.textPrimary},
+    dropdown: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 12,
+      marginBottom: spacing.sm,
+    },
+    dropdownValue: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      textTransform: 'capitalize',
+      flex: 1,
+    },
+    dropdownChevron: {fontSize: 12, color: colors.textMuted, marginLeft: 8},
+    dropdownOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    dropdownSheet: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: spacing.sm,
+      maxHeight: '70%',
+    },
+    dropdownSheetTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: colors.textMuted,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      letterSpacing: 0.4,
+    },
+    dropdownOption: {
+      paddingHorizontal: spacing.lg,
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderSoft,
+    },
+    dropdownOptionOn: {backgroundColor: colors.skySoft},
+    dropdownOptionText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textPrimary,
+      textTransform: 'capitalize',
+    },
+    dropdownOptionTextOn: {fontWeight: '800', color: brandColors.googleBlue},
     dangerOutline: {
       borderWidth: 1,
       borderColor: brandColors.googleRed,

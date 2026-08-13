@@ -14,7 +14,16 @@ import {
   SubscriptionTier,
   defaultFreeSnapshot,
 } from './EntitlementTypes';
-import {canUse, getCaps, Caps, FeatureKey, isPaidTier, requireEntitlement} from './FeatureGate';
+import {
+  canUse,
+  canUseCapability,
+  getCaps,
+  Caps,
+  FeatureKey,
+  isPaidTier,
+  requireEntitlement,
+} from './FeatureGate';
+import type {DigitalSafetyCapability} from './DigitalSafetyCapabilityMatrix';
 import {
   catalogToProductOffers,
   getSubscriptionsCatalog,
@@ -35,6 +44,7 @@ type EntitlementContextValue = {
   activateEnterpriseKey: (key: string) => Promise<void>;
   openManage: () => Promise<void>;
   canUseFeature: (feature: FeatureKey) => boolean;
+  canUseDsCapability: (cap: DigitalSafetyCapability) => boolean;
   gate: (feature: FeatureKey) => ReturnType<typeof requireEntitlement>;
 };
 
@@ -138,6 +148,7 @@ export function EntitlementProvider({children}: {children: React.ReactNode}) {
       activateEnterpriseKey,
       openManage,
       canUseFeature: (feature: FeatureKey) => canUse(feature, snapshot),
+      canUseDsCapability: (cap: DigitalSafetyCapability) => canUseCapability(cap, snapshot),
       gate: (feature: FeatureKey) => requireEntitlement(feature, snapshot),
     };
   }, [

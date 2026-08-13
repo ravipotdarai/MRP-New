@@ -3,6 +3,7 @@
  * User-paste only; never reads vault or contacts.
  */
 
+import {checkBrandImpersonation} from '../digital-safety/brandImpersonation';
 import type {RiskBand} from '../digital-safety/risk/types';
 import {bandFromScore, safeLinkEventType} from '../digital-safety/risk/types';
 
@@ -204,6 +205,12 @@ export function scanUrlOrPayload(raw: string): UrlScanResult {
       reasonCodes.push('PHISH_KEYWORD');
       break;
     }
+  }
+  const brand = checkBrandImpersonation(host);
+  if (brand) {
+    score += brand.score;
+    reasons.push(brand.reason);
+    reasonCodes.push(brand.code);
   }
   if (/%[0-9a-f]{2}/i.test(parsed.href) && (parsed.href.match(/%/g) || []).length > 4) {
     score += 10;

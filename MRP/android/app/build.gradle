@@ -120,6 +120,7 @@ android {
         resValue "string", "google_maps_api_key", googleMapsApiKey
         buildConfigField "boolean", "ALLOW_HARDCODED_BILLING",
             "${project.hasProperty('mrpAllowHardcodedBilling') ? project.property('mrpAllowHardcodedBilling') : 'true'}"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {
         debug {
@@ -187,4 +188,14 @@ dependencies {
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
+
+    // WorkManager — Guardian rule-list background refresh
+    implementation "androidx.work:work-runtime-ktx:2.9.0"
+
+    // Biometric / device credential for Secure Vault unlock
+    implementation "androidx.biometric:biometric:1.1.0"
+
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test:rules:1.6.1"
 }

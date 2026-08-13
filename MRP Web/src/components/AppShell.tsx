@@ -116,6 +116,7 @@ const NAV: NavItem[] = [
   { href: "/profile", label: "Profile", group: "Home", icon: "profile" },
 
   { href: "/monitoring", label: "Locate & Timeline", group: "Security", icon: "locate" },
+  { href: "/digital-safety", label: "Digital Safety", group: "Security", icon: "safety" },
   { href: "/emergency-monitoring", label: "Emergency monitoring", group: "Security", icon: "emergency" },
   { href: "/travel", label: "Travel", group: "Security", icon: "travel" },
   { href: "/media", label: "Media", group: "Security", icon: "media" },

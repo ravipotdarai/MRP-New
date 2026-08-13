@@ -50,6 +50,7 @@ export async function logUrlScanEvent(
   domainHash?: string,
   host?: string,
   invalid = false,
+  source = 'safe_link',
 ): Promise<void> {
   const eventType = safeLinkEventType(score, invalid);
   await logDigitalSafetyEvent(eventType, 'completed', {
@@ -58,7 +59,7 @@ export async function logUrlScanEvent(
     reason_codes: reasonCodes.join(','),
     ...(domainHash ? {domain_hash: domainHash} : {}),
     ...(host ? {host: host.slice(0, 64)} : {}),
-    source: 'safe_link',
+    source,
   });
 }
 

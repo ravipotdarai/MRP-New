@@ -202,6 +202,8 @@ class SecureVaultStorage(context: Context) {
         private const val PREFS_NAME = "mrp_secure_vault"
         private const val KEY_ITEMS = "items_json"
         const val DRIVE_FILE_NAME = "mrp_secrets_vault.v1.enc"
+        /** Crypto payload version for future migration of VaultBackupCrypto formats. */
+        const val CRYPTO_VERSION = 1
 
         val CATEGORIES = listOf(
             "passport", "aadhaar", "pan", "insurance", "certificates",

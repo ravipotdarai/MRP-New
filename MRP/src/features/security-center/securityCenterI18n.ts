@@ -59,6 +59,13 @@ const en: Dict = {
     'MRP will query the public XposedOrNot API with the address you typed. Nothing is stored in your Drive vault.',
   breach_open_xon: 'Open XposedOrNot',
   breach_open_hibp: 'Open Have I Been Pwned',
+  breach_enroll: 'Enroll for daily re-check',
+  breach_enroll_title: 'Monitor this email?',
+  breach_enroll_body:
+    'MRP will re-check this address with XposedOrNot about once a day while the app is open. You can remove it in Digital Safety → Automation. MRP does not read your mailbox.',
+  breach_enrolled_title: 'Enrolled',
+  breach_enrolled_body: 'Daily re-check is on for this email while MRP is open. Remove it anytime from Automation.',
+  breach_enroll_failed: 'Could not enroll this email.',
   otp_section: 'OTP / SMS scam check',
   otp_blurb:
     'Paste an SMS (MRP does not read your inbox). Local keyword heuristics only — never share real OTPs here for storage.',
@@ -136,6 +143,13 @@ const hi: Dict = {
     'MRP आपके टाइप किए पते से सार्वजनिक XposedOrNot API पूछेगा। Drive वॉल्ट में कुछ नहीं सहेजा जाता।',
   breach_open_xon: 'XposedOrNot खोलें',
   breach_open_hibp: 'Have I Been Pwned खोलें',
+  breach_enroll: 'रोज़ाना जाँच के लिए नामांकन',
+  breach_enroll_title: 'इस ईमेल की निगरानी करें?',
+  breach_enroll_body:
+    'MRP ऐप खुला होने पर इस पते को XposedOrNot से लगभग रोज़ जाँचेगा। Automation से हटा सकते हैं। MRP मेलबॉक्स नहीं पढ़ता।',
+  breach_enrolled_title: 'नामांकित',
+  breach_enrolled_body: 'यह ईमेल ऐप खुला होने पर रोज़ जाँचा जाएगा। Automation से कभी भी हटाएँ।',
+  breach_enroll_failed: 'ईमेल नामांकित नहीं हो सका।',
   otp_section: 'OTP / SMS घोटाला जाँच',
   otp_blurb:
     'SMS पेस्ट करें (MRP इनबॉक्स नहीं पढ़ता)। केवल स्थानीय संकेत — यहाँ OTP संग्रहीत नहीं होता।',

@@ -1,6 +1,6 @@
 /** Entitlement types — see SUBSCRIPTION_PLAN.md §4 */
 
-export type SubscriptionTier = 'free' | 'premium' | 'family' | 'enterprise';
+export type SubscriptionTier = 'free' | 'basic' | 'premium' | 'family' | 'enterprise';
 
 export type EntitlementSource =
   | 'none'
@@ -37,6 +37,7 @@ export type PurchaseResult = {
 };
 
 export const PRODUCT_IDS = {
+  basic: 'mrp_basic',
   premium: 'mrp_premium',
   family: 'mrp_premium_family',
   enterprise: 'mrp_enterprise',

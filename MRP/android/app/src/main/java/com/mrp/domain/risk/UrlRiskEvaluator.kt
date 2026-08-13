@@ -1,10 +1,9 @@
 package com.mrp.domain.risk
 
-import android.net.Uri
 import java.util.Locale
 
 /**
- * On-device URL heuristics — mirrors TS urlScan.ts with 0–100 scoring.
+ * On-device URL heuristics — uses UrlNormalizer pipeline with allowlist precedence.
  */
 object UrlRiskEvaluator {
 
@@ -17,18 +16,25 @@ object UrlRiskEvaluator {
         "free-recharge", "otp-verify", "bank-secure", "upi-refund", "digital-arrest",
     )
 
-    fun evaluate(raw: String): UrlRiskResult {
-        val input = raw.trim()
+    fun evaluate(
+        raw: String,
+        allowlist: List<String> = emptyList(),
+        brandStore: BrandListStore? = null,
+        blocklist: List<String> = emptyList(),
+    ): UrlRiskResult {
+        val norm = UrlNormalizer.normalize(raw)
+        val input = norm.input
         if (input.isEmpty()) {
             return invalid(input, listOf("Empty input"), listOf("EMPTY_INPUT"))
         }
 
-        if (input.uppercase(Locale.US).startsWith("WIFI:")) {
+        if (norm.scheme == "wifi") {
             return evaluateWifiQr(input)
         }
 
-        val url = extractUrl(input)
-        if (url == null) {
+        val url = norm.url
+        val host = norm.hostAscii ?: norm.host
+        if (url == null || host.isNullOrEmpty()) {
             return invalid(
                 input,
                 listOf("No http(s) URL found. Paste a full link or domain."),
@@ -36,27 +42,43 @@ object UrlRiskEvaluator {
             )
         }
 
-        val uri = try {
-            Uri.parse(url)
-        } catch (_: Exception) {
-            return invalid(input, listOf("Malformed URL"), listOf("MALFORMED_URL"))
+        if (DomainListMatcher.isAllowlisted(host, allowlist)) {
+            return UrlRiskResult(
+                input = input,
+                normalized = url,
+                score = 5,
+                band = RiskBand.SAFE,
+                reasons = listOf("Domain is on your Safe Link allowlist"),
+                reasonCodes = listOf("ALLOWLISTED"),
+                domainHash = DomainHashUtil.hashHost(host),
+                host = host,
+            )
         }
 
-        val host = uri.host?.lowercase(Locale.US) ?: ""
-        if (host.isEmpty()) {
-            return invalid(input, listOf("Malformed URL"), listOf("MALFORMED_URL"))
+        if (DomainListMatcher.isAllowlisted(host, blocklist)) {
+            return UrlRiskResult(
+                input = input,
+                normalized = url,
+                score = 90,
+                band = RiskBand.CRITICAL,
+                reasons = listOf("Domain is on your blocklist"),
+                reasonCodes = listOf("USER_BLOCKLIST"),
+                domainHash = DomainHashUtil.hashHost(host),
+                host = host,
+            )
         }
 
-        val path = "${uri.path ?: ""}${uri.query?.let { "?$it" } ?: ""}".lowercase(Locale.US)
+        val path = norm.path
         val reasons = mutableListOf<String>()
         val codes = mutableListOf<String>()
         var score = 0
 
-        if (uri.scheme.equals("http", ignoreCase = true)) {
+        if (norm.scheme == "http") {
             score += 25
             reasons += "Uses HTTP (not HTTPS)"
             codes += "HTTP_INSECURE"
         }
+        val uri = android.net.Uri.parse(url)
         if (!uri.userInfo.isNullOrEmpty()) {
             score += 40
             reasons += "URL embeds credentials"
@@ -67,10 +89,14 @@ object UrlRiskEvaluator {
             reasons += "IP address host (common in phishing)"
             codes += "IP_HOST"
         }
-        if (host.contains("xn--")) {
+        if (host.contains("xn--") || norm.isIdn) {
             score += 25
             reasons += "Punycode / IDN host — verify carefully"
             codes += "PUNYCODE_HOST"
+            norm.hostUnicode?.takeIf { it != host }?.let {
+                reasons += "Decoded host: $it"
+                codes += "IDN_DECODED"
+            }
         }
         if (host.count { it == '.' } >= 4) {
             score += 15
@@ -94,6 +120,11 @@ object UrlRiskEvaluator {
                 codes += "PHISH_KEYWORD"
                 break
             }
+        }
+        BrandImpersonationChecker.check(host, brandStore)?.let { hit ->
+            score += hit.score
+            reasons += hit.reason
+            codes += hit.code
         }
         val encodedCount = url.count { it == '%' }
         if (encodedCount > 4 && ENCODED_PATTERN.containsMatchIn(url)) {
@@ -166,23 +197,6 @@ object UrlRiskEvaluator {
         host = null,
     )
 
-    private fun extractUrl(raw: String): String? {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return null
-        val urlInText = Regex("https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE).find(trimmed)?.value
-        if (urlInText != null) {
-            return urlInText.trimEnd('.', ',', ';', ')', ']')
-        }
-        if (DOMAIN_LIKE.matches(trimmed) && !trimmed.contains(' ')) {
-            return "https://$trimmed"
-        }
-        if (trimmed.lowercase(Locale.US).startsWith("www.")) {
-            return "https://$trimmed"
-        }
-        return null
-    }
-
     private val IP_HOST = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
-    private val DOMAIN_LIKE = Regex("^[a-z0-9.-]+\\.[a-z]{2,}(/.*)?$", RegexOption.IGNORE_CASE)
     private val ENCODED_PATTERN = Regex("%[0-9a-fA-F]{2}")
 }

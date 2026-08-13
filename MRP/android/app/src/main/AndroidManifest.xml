@@ -131,6 +131,16 @@
         android:screenOrientation="portrait"
         android:label="Scan QR" />
 
+      <service
+        android:name=".NetworkGuardianVpnService"
+        android:permission="android.permission.BIND_VPN_SERVICE"
+        android:exported="false"
+        android:foregroundServiceType="connectedDevice|dataSync">
+        <intent-filter>
+          <action android:name="android.net.VpnService" />
+        </intent-filter>
+      </service>
+
       <!-- P8-4 Circle invite FCM -->
       <service
         android:name=".MrpFirebaseMessagingService"
@@ -246,6 +256,9 @@
             <action android:name="android.intent.action.ACTION_BOOT_COMPLETED" />
         </intent-filter>
       </receiver>
+
+      <!-- SMS auto-scan receiver is omitted until SMS_AUTO_SCAN_ENABLED policy sign-off.
+           Enabling it requires RECEIVE_SMS + SmsScamReceiver registration. -->
 
     </application>
 </manifest>

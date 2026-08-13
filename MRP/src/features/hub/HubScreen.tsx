@@ -17,6 +17,7 @@ import {AboutScreen} from '../../screens/AboutScreen';
 import {SimRecoveryPanel} from '../sim-recovery/SimRecoveryPanel';
 import {AccountScreen} from './AccountScreen';
 import {SubscriptionScreen} from '../subscription/SubscriptionScreen';
+import {PaywallModal} from '../subscription/PaywallModal';
 import {CircleScreen} from '../circle/CircleScreen';
 import {
   peekPendingCircleInvite,
@@ -37,13 +38,18 @@ import {
 } from '../digital-safety/DigitalSafetyHubScreen';
 import {SafeLinkResultScreen} from '../digital-safety/SafeLinkResultScreen';
 import {QrScannerScreen} from '../digital-safety/QrScannerScreen';
+import {ScamCheckScreen} from '../digital-safety/ScamCheckScreen';
 import {EmergencyCardScreen} from '../digital-safety/EmergencyCardScreen';
 import {SecureVaultScreen} from '../digital-safety/SecureVaultScreen';
-import {useSafeLinkShareDeepLink} from '../digital-safety/useSafeLinkShareDeepLink';
+import {CellularSecurityScreen} from '../digital-safety/CellularSecurityScreen';
+import {NetworkGuardianScreen} from '../digital-safety/NetworkGuardianScreen';
+import {AutomationSettingsScreen} from '../digital-safety/AutomationSettingsScreen';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
+import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
+import type {FeatureKey} from '../../services/entitlements/FeatureGate';
 import {brandImages, brandCopy} from '../../assets/brand';
 
-export type HubSection =
+type HubSection =
   | 'menu'
   | 'account'
   | 'circle'
@@ -58,7 +64,11 @@ export type HubSection =
   | 'about'
   | 'digital-safety'
   | 'safe-link'
+  | 'scam-check'
   | 'qr-scan'
+  | 'network-guardian-screen'
+  | 'cellular-security'
+  | 'automation-settings'
   | 'emergency-card'
   | 'secure-vault'
   | 'security-center';
@@ -66,12 +76,16 @@ export type HubSection =
 /** Screens that always return to Digital Safety hub on back. */
 const DS_FEATURE_SECTIONS: ReadonlySet<HubSection> = new Set([
   'safe-link',
+  'scam-check',
   'qr-scan',
+  'network-guardian-screen',
+  'cellular-security',
+  'automation-settings',
   'emergency-card',
   'secure-vault',
 ]);
 
-type HubRouteParams = {openSection?: HubSection};
+type HubRouteParams = {openSection?: HubSection; safeLinkText?: string};
 
 type MenuItem = {
   id: HubSection;
@@ -90,14 +104,8 @@ type FeatureTile = {
   action: () => void;
 };
 
-/** More services — exclude features already in the Key features grid. */
+/** More services — exclude Safety (own tab) and Key features grid items. */
 const MENU_ITEMS: MenuItem[] = [
-  {
-    id: 'digital-safety',
-    title: 'Digital Safety',
-    subtitle: 'Protect · Monitor · Recover · Secure',
-    iconSource: brandImages.features.deviceProtection,
-  },
   {
     id: 'account',
     title: 'Account',
@@ -221,26 +229,22 @@ export function HubScreen({
   route?: {params?: HubRouteParams};
 }) {
   const {colors} = useTheme();
+  const {canUseFeature} = useEntitlements();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [section, setSection] = useState<HubSection>('menu');
   const [safeLinkText, setSafeLinkText] = useState('');
+  const [paywall, setPaywall] = useState<{title: string; message: string} | null>(null);
   /** When true, back from security-center / sim-recovery / drive-sync returns to Digital Safety. */
   const [fromDigitalSafety, setFromDigitalSafety] = useState(false);
   /** Last route param we applied — stops focus/effect from fighting local menu taps. */
   const appliedOpenSection = useRef<HubSection | undefined | null>(null);
-
-  useSafeLinkShareDeepLink(true, text => {
-    setSafeLinkText(text);
-    setFromDigitalSafety(true);
-    setSection('safe-link');
-  });
 
   const goMenu = useCallback(() => {
     setSection('menu');
     setSafeLinkText('');
     setFromDigitalSafety(false);
     appliedOpenSection.current = undefined;
-    navigation?.setParams?.({openSection: undefined});
+    navigation?.setParams?.({openSection: undefined, safeLinkText: undefined});
   }, [navigation]);
 
   const openSection = useCallback(
@@ -252,6 +256,21 @@ export function HubScreen({
       navigation?.setParams?.({openSection: id === 'menu' ? undefined : id});
     },
     [navigation],
+  );
+
+  const openLockedFeature = useCallback((title: string, message: string) => {
+    setPaywall({title, message});
+  }, []);
+
+  const guardFeature = useCallback(
+    (feature: FeatureKey, onAllowed: () => void, title: string, message: string) => {
+      if (!canUseFeature(feature)) {
+        openLockedFeature(title, message);
+        return;
+      }
+      onAllowed();
+    },
+    [canUseFeature, openLockedFeature],
   );
 
   /** Correct back: feature → Digital Safety → Hub menu. */
@@ -282,6 +301,12 @@ export function HubScreen({
   // Apply deep-link / drawer openSection only when the param itself changes.
   useEffect(() => {
     const target = route?.params?.openSection;
+    if (target === 'digital-safety') {
+      navigation?.navigate?.('Digital Safety');
+      navigation?.setParams?.({openSection: undefined});
+      appliedOpenSection.current = undefined;
+      return;
+    }
     if (target === appliedOpenSection.current) {
       return;
     }
@@ -290,7 +315,17 @@ export function HubScreen({
       setFromDigitalSafety(false);
       setSection(target);
     }
-  }, [route?.params?.openSection]);
+  }, [route?.params?.openSection, navigation]);
+
+  useEffect(() => {
+    const text = route?.params?.safeLinkText?.trim();
+    if (!text) return;
+    setSafeLinkText(text);
+    setFromDigitalSafety(true);
+    setSection('safe-link');
+    appliedOpenSection.current = 'safe-link';
+    navigation?.setParams?.({safeLinkText: undefined});
+  }, [navigation, route?.params?.safeLinkText]);
 
   useFocusEffect(
     useCallback(() => {
@@ -333,8 +368,7 @@ export function HubScreen({
           openSection('qr-scan', {fromDigitalSafety: true});
           break;
         case 'scam':
-          setSecurityCenterTab('TOOLS');
-          openSection('security-center', {fromDigitalSafety: true});
+          openSection('scam-check', {fromDigitalSafety: true});
           break;
         case 'security-center':
           setSecurityCenterTab('ADVISOR');
@@ -354,27 +388,46 @@ export function HubScreen({
           openSection('emergency-card', {fromDigitalSafety: true});
           break;
         case 'secure-vault':
-          openSection('secure-vault', {fromDigitalSafety: true});
+          guardFeature(
+            'digitalsafe.secure_vault',
+            () => openSection('secure-vault', {fromDigitalSafety: true}),
+            'Premium required',
+            'Secure Vault is available on Premium, Family, and Enterprise plans.',
+          );
           break;
         case 'timeline':
           navigation?.navigate?.('Security', {initialTab: 'TIMELINE'});
           break;
         case 'network-guardian':
+          guardFeature(
+            'digitalsafe.network_guardian',
+            () => openSection('network-guardian-screen', {fromDigitalSafety: true}),
+            'Premium required',
+            'Network Guardian is available on Premium, Family, and Enterprise plans.',
+          );
+          break;
         case 'cellular':
+          guardFeature(
+            'digitalsafe.cellular_monitor',
+            () => openSection('cellular-security', {fromDigitalSafety: true}),
+            'Basic required',
+            'Cellular monitoring is available on Basic and higher plans.',
+          );
+          break;
+        case 'automation':
+          openSection('automation-settings', {fromDigitalSafety: true});
           break;
         default:
           break;
       }
     },
-    [navigation, openSection],
+    [guardFeature, navigation, openLockedFeature, openSection],
   );
 
   if (section === 'digital-safety') {
-    return (
-      <HubSectionShell title="Digital Safety" styles={styles} onBack={goBack}>
-        <DigitalSafetyHubScreen onNavigate={handleDigitalSafetyNav} />
-      </HubSectionShell>
-    );
+    navigation?.navigate?.('Digital Safety');
+    goMenu();
+    return null;
   }
 
   if (section === 'safe-link') {
@@ -389,10 +442,42 @@ export function HubScreen({
     );
   }
 
+  if (section === 'network-guardian-screen') {
+    return (
+      <HubSectionShell title="Network Guardian" styles={styles} onBack={goBack}>
+        <NetworkGuardianScreen embedded onBack={goBack} />
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'scam-check') {
+    return (
+      <HubSectionShell title="Scam Check" styles={styles} onBack={goBack}>
+        <ScamCheckScreen embedded onBack={goBack} />
+      </HubSectionShell>
+    );
+  }
+
   if (section === 'qr-scan') {
     return (
       <HubSectionShell title="QR Protection" styles={styles} onBack={goBack}>
         <QrScannerScreen embedded onBack={goBack} />
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'cellular-security') {
+    return (
+      <HubSectionShell title="Cellular Security" styles={styles} onBack={goBack}>
+        <CellularSecurityScreen embedded onBack={goBack} />
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'automation-settings') {
+    return (
+      <HubSectionShell title="Automation" styles={styles} onBack={goBack}>
+        <AutomationSettingsScreen embedded onBack={goBack} />
       </HubSectionShell>
     );
   }
@@ -551,7 +636,7 @@ export function HubScreen({
                 id: 'f-protect',
                 title: 'Device Protection',
                 iconSource: brandImages.features.deviceProtection,
-                action: () => openSection('digital-safety'),
+                action: () => navigation?.navigate?.('Digital Safety'),
               },
               {
                 id: 'f-live',
@@ -567,7 +652,7 @@ export function HubScreen({
               },
               {
                 id: 'f-sim',
-                title: 'SIM Change Alert',
+                title: 'SIM Recovery',
                 iconSource: brandImages.features.simAlert,
                 action: () => openSection('sim-recovery'),
               },
@@ -623,11 +708,23 @@ export function HubScreen({
             iconSource={item.iconSource}
             badge={item.badge}
             colors={colors}
-            onPress={() => openSection(item.id)}
+            onPress={() => {
+              openSection(item.id);
+            }}
           />
         ))}
         <Text style={styles.driveFooter}>{brandCopy.driveFooter}</Text>
       </ScrollView>
+      <PaywallModal
+        visible={!!paywall}
+        title={paywall?.title}
+        message={paywall?.message || ''}
+        onClose={() => setPaywall(null)}
+        onUpgrade={() => {
+          setPaywall(null);
+          openSection('subscriptions');
+        }}
+      />
     </SafeAreaView>
   );
 }

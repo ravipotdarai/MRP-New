@@ -14,6 +14,19 @@ import {ColorPalette, spacing, radius, brandColors} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {DigitalSafetyNative, type EmergencyCard} from './DigitalSafety.native';
 
+const EMPTY_CARD: EmergencyCard = {
+  name: '',
+  bloodGroup: '',
+  allergies: '',
+  contacts: [],
+  insurance: '',
+  medicalNotes: '',
+  instructions: '',
+  visibleFields: ['name', 'bloodGroup'],
+  lockScreenEnabled: false,
+  updatedAtMs: 0,
+};
+
 const VIS_OPTIONS = [
   {key: 'name', label: 'Name'},
   {key: 'bloodGroup', label: 'Blood group'},
@@ -31,7 +44,7 @@ export function EmergencyCardScreen({
 }) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [card, setCard] = useState<EmergencyCard>({});
+  const [card, setCard] = useState<EmergencyCard>(EMPTY_CARD);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [busy, setBusy] = useState(false);
@@ -170,8 +183,25 @@ export function EmergencyCardScreen({
       </TouchableOpacity>
 
       <Text style={styles.section}>Lock-screen visibility</Text>
+      <View style={styles.setupCard}>
+        <Text style={styles.setupTitle}>Android Emergency Info checklist</Text>
+        <Text style={styles.help}>
+          MRP cannot write the system lock-screen Emergency Info database. Use this checklist so your
+          ICE details appear where Android supports them.
+        </Text>
+        <Text style={styles.step}>1. Save your MRP Emergency Card below (on-device summary).</Text>
+        <Text style={styles.step}>
+          2. Tap “Open Android Emergency Info” and copy the fields you chose to show.
+        </Text>
+        <Text style={styles.step}>
+          3. On the lock screen, use Emergency / Medical info (wording varies by OEM).
+        </Text>
+        <Text style={styles.step}>
+          4. Confirm Secure Vault contents are never listed on the lock screen.
+        </Text>
+      </View>
       <View style={styles.row}>
-        <Text style={styles.label}>Allow lock-screen summary</Text>
+        <Text style={styles.label}>Allow lock-screen summary (MRP preview)</Text>
         <Switch
           value={!!card.lockScreenEnabled}
           onValueChange={v => setCard({...card, lockScreenEnabled: v})}
@@ -187,6 +217,20 @@ export function EmergencyCardScreen({
       <TouchableOpacity style={styles.primary} onPress={save} disabled={busy}>
         <Text style={styles.primaryText}>Save</Text>
       </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.secondary}
+        onPress={() =>
+          void DigitalSafetyNative.openSystemEmergencyInfo().catch((e: any) =>
+            Alert.alert('System Emergency Info', e?.message || String(e)),
+          )
+        }>
+        <Text style={styles.secondaryText}>Open Android Emergency Info</Text>
+      </TouchableOpacity>
+      <Text style={styles.help}>
+        MRP stores per-field visibility on-device and can open Android Emergency Info settings. It does
+        not inject data into the lock screen. Use Android Emergency Info to show details on the lock
+        screen where the OS supports it.
+      </Text>
       <TouchableOpacity style={styles.secondary} onPress={() => setPreview(true)}>
         <Text style={styles.secondaryText}>Preview emergency view</Text>
       </TouchableOpacity>
@@ -200,7 +244,10 @@ export function EmergencyCardScreen({
               style: 'destructive',
               onPress: async () => {
                 await DigitalSafetyNative.clearEmergencyCard();
-                setCard({});
+                setCard(EMPTY_CARD);
+                setContactName('');
+                setContactPhone('');
+                Alert.alert('Cleared', 'Emergency Card data removed from this device.');
               },
             },
           ])
@@ -296,6 +343,17 @@ function createStyles(colors: ColorPalette) {
       marginTop: spacing.sm,
     },
     secondaryText: {color: colors.textPrimary, fontWeight: '700'},
+    help: {fontSize: 12, color: colors.textMuted, lineHeight: 18, marginTop: spacing.sm},
+    setupCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      padding: spacing.lg,
+      marginBottom: spacing.md,
+    },
+    setupTitle: {fontSize: 15, fontWeight: '800', color: colors.textPrimary, marginBottom: 6},
+    step: {fontSize: 13, color: colors.textBody, lineHeight: 20, marginTop: 4},
     dangerOutline: {
       borderWidth: 1,
       borderColor: brandColors.googleRed,

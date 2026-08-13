@@ -23,12 +23,22 @@ const SECTIONS: {title: string; body: string[]}[] = [
     ],
   },
   {
+    title: 'Digital Safety & Network Guardian',
+    body: [
+      'Safety tab (Digital Safety): Safe Link URL checks, Scam Check (paste SMS/UPI text), QR Protection, Network Guardian, Cellular Security, automation settings, and Security Advisor tools — on-device by default.',
+      'Network Guardian (Premium+): uses a local VPN to filter DNS lookups only. No HTTPS inspection, no browsing history stored. Android shows a VPN key icon while active. Blocklists cover ads, trackers, malware, and phishing domains where apps use standard DNS.',
+      'Network Guardian does not block in-app ads served from the app’s own servers (e.g. native ad slots in marketplace apps). Turn off Android Private DNS (or set to Automatic) if Guardian cannot filter.',
+      'Secure Vault and Emergency Card live under Safety. Drive Sync lives under Hub. Capability tiers: Basic (Cellular, Vault), Premium+ (Network Guardian, custom Guardian rules, breach monitor).',
+    ],
+  },
+  {
     title: 'Permissions & why we ask',
     body: [
       'Location (foreground): show current place, timeline addresses, geofence distance, Panic / SIM recovery SMS location, and Maps links.',
       'Location (background / “all the time”): only after in-app disclosure, for geofence enter/exit and emergency / find-my-device while the screen is off. You can revoke this in Android Settings or turn features off in Hub.',
-      'Camera: optional intruder selfies on events you enable (e.g. wrong unlock).',
-      'Notifications: monitoring alerts and service status.',
+      'VPN (Network Guardian): Android system permission to run a local DNS-filter VPN. Only DNS lookups are processed; other traffic is not routed through MRP.',
+      'Camera: optional intruder selfies on events you enable (e.g. wrong unlock); QR scan for Safe Link.',
+      'Notifications: monitoring alerts, Guardian status, and service status.',
       'SMS (send): Panic and SIM change recovery messages to contacts you choose — not for reading your inbox.',
       'Nearby devices / Bluetooth: detect Bluetooth on/off and related security timeline events.',
       'Usage access (optional): App Usage insights and risk hints.',
@@ -73,7 +83,7 @@ const SECTIONS: {title: string; body: string[]}[] = [
     body: [
       'This in-app policy matches the Play Data Safety and privacy claims used for MRP’s store listing (Drive-only locate, Circle live share off in v1).',
       'For privacy questions or deletion requests, use the contact email published on the Google Play store listing for MRP.',
-      'Policy version aligns with app version 1.0.0 (Play v1). We will update this screen when collection or sharing practices change.',
+      'Policy version aligns with app version 1.0.3. We will update this screen when collection or sharing practices change.',
     ],
   },
 ];
@@ -101,7 +111,7 @@ export function PolicyScreen() {
           ))}
         </View>
       ))}
-      <Text style={styles.footer}>Last updated: July 2026</Text>
+      <Text style={styles.footer}>Last updated: August 2026 · App v1.0.3</Text>
     </ScrollView>
   );
 }

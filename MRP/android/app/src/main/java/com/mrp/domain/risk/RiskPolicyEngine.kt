@@ -4,7 +4,27 @@ import com.mrp.domain.model.EventTypes
 
 object RiskPolicyEngine {
 
-    fun evaluateUrl(raw: String): UrlRiskResult = UrlRiskEvaluator.evaluate(raw)
+    fun evaluateUrl(
+        raw: String,
+        allowlist: List<String> = emptyList(),
+        brandStore: BrandListStore? = null,
+        blocklist: List<String> = emptyList(),
+    ): UrlRiskResult =
+        UrlRiskEvaluator.evaluate(raw, allowlist, brandStore, blocklist)
+
+    fun enrich(result: UrlRiskResult, extraScore: Int, reason: String, code: String): UrlRiskResult {
+        if (result.band == RiskBand.INVALID || extraScore <= 0) return result
+        if (result.reasonCodes.contains(code)) return result
+        val nextScore = (result.score.coerceAtLeast(0) + extraScore).coerceIn(0, 100)
+        val reasons = result.reasons.filterNot { it.startsWith("No local red flags") } + reason
+        val codes = result.reasonCodes.filterNot { it == "NO_LOCAL_FLAGS" } + code
+        return result.copy(
+            score = nextScore,
+            band = RiskBand.fromScore(nextScore),
+            reasons = reasons,
+            reasonCodes = codes,
+        )
+    }
 
     /** Map URL risk band to timeline event type (no full URL in metadata). */
     fun safeLinkEventType(result: UrlRiskResult): String = when (result.band) {

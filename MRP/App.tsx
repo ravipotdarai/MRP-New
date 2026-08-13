@@ -8,6 +8,7 @@ import {HomeScreen} from './src/features/home/HomeScreen';
 import {SecurityScreen} from './src/features/security/SecurityScreen';
 import {AppUsageScreen} from './src/features/app-usage/AppUsageScreen';
 import {HubScreen} from './src/features/hub/HubScreen';
+import {DigitalSafetyTabScreen} from './src/features/digital-safety/DigitalSafetyTabScreen';
 import {RecoveryCodeSetupModal} from './src/features/auth/RecoveryCodeSetupModal';
 import {ForgotPinScreen} from './src/features/auth/ForgotPinScreen';
 import {AuthProvider} from './src/services/auth/AuthContext';
@@ -22,6 +23,10 @@ import {
 } from './src/native/DeviceTracking.types';
 import {registerFcmForCircleInvites} from './src/native/MrpFcm.types';
 import {useCircleInviteDeepLink} from './src/features/circle/useCircleInviteDeepLink';
+import {useSafeLinkShareDeepLink} from './src/features/digital-safety/useSafeLinkShareDeepLink';
+import {useClipboardUrlScan} from './src/features/digital-safety/useClipboardUrlScan';
+import {useBreachEmailMonitor} from './src/features/digital-safety/useBreachEmailMonitor';
+import {useEntitlements} from './src/services/entitlements/EntitlementProvider';
 import {subscribeCircleInvite} from './src/features/circle/circleInvitePending';
 import {createNavigationContainerRef} from '@react-navigation/native';
 import {CIRCLE_ENABLED} from './src/config/featureFlags';
@@ -34,6 +39,12 @@ function navigateToCircleJoin() {
   if (!navigationRef.isReady()) return;
   // @ts-expect-error tab + params
   navigationRef.navigate('Hub', {openSection: 'circle'});
+}
+
+function navigateToSafeLink(text: string) {
+  if (!navigationRef.isReady()) return;
+  // @ts-expect-error tab + params
+  navigationRef.navigate('Digital Safety', {openSection: 'safe-link', safeLinkText: text});
 }
 
 const Tab = createBottomTabNavigator();
@@ -67,22 +78,33 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
         name="Security"
         component={SecurityScreen}
         options={{
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>🛡️</Text>,
+          tabBarIcon: () => <Text style={{fontSize: 20}}>🛡️</Text>,
         }}
       />
       <Tab.Screen
         name="Hub"
         options={{
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>⚙️</Text>,
+          tabBarIcon: () => <Text style={{fontSize: 20}}>⚙️</Text>,
           tabBarLabel: 'Hub',
         }}>
         {({navigation, route}) => <HubScreen navigation={navigation} route={route} />}
       </Tab.Screen>
       <Tab.Screen
+        name="Digital Safety"
+        options={{
+          tabBarIcon: () => <Text style={{fontSize: 20}}>🔗</Text>,
+          tabBarLabel: 'Safety',
+        }}>
+        {({navigation, route}) => (
+          <DigitalSafetyTabScreen navigation={navigation} route={route} />
+        )}
+      </Tab.Screen>
+      <Tab.Screen
         name="App Usage"
         component={AppUsageScreen}
         options={{
-          tabBarIcon: ({color}) => <Text style={{fontSize: 20}}>📊</Text>,
+          tabBarIcon: () => <Text style={{fontSize: 20}}>📊</Text>,
+          tabBarLabel: 'Usage',
         }}
       />
     </Tab.Navigator>
@@ -91,12 +113,20 @@ function TabNavigator({onLogout}: {onLogout: () => void}) {
 
 function AppContent(): React.JSX.Element {
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [navReady, setNavReady] = useState(false);
+  const [pendingSafeLinkText, setPendingSafeLinkText] = useState('');
   const [showForgotPin, setShowForgotPin] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const {isPinSet, isVerifying, error, setPin, verifyPin, recheckPin} = usePinLock();
   const {colors, themeId} = useTheme();
+  const {canUseFeature} = useEntitlements();
   const isLight = themeId === 'light';
+  const sessionReady = !!(isUnlocked && isPinSet);
+  const clipboardAutomationAllowed =
+    sessionReady && canUseFeature('digitalsafe.clipboard_scan');
+  const breachAutomationAllowed =
+    sessionReady && canUseFeature('digitalsafe.breach_monitor');
 
   // Auto permission wizard on launch disabled — users grant from Security → Monitoring.
   // To restore: set AUTO_SHOW_PERMISSION_WIZARD_ON_LAUNCH=true in permissionUxFlags.ts
@@ -175,6 +205,25 @@ function AppContent(): React.JSX.Element {
 
   useCircleInviteDeepLink(!!(isUnlocked && isPinSet && CIRCLE_ENABLED));
 
+  // Share-to-MRP Safe Link: free tier, always on when unlocked (capability: safeLinkShare).
+  useSafeLinkShareDeepLink(sessionReady, text => {
+    setPendingSafeLinkText(text);
+  });
+
+  // Clipboard URL scan: Basic+, explicit opt-in stored natively, foreground only.
+  useClipboardUrlScan(clipboardAutomationAllowed, url => {
+    setPendingSafeLinkText(url);
+  });
+
+  // Breach email re-check: Basic+, enrolled emails only, while app foreground.
+  useBreachEmailMonitor(breachAutomationAllowed);
+
+  useEffect(() => {
+    if (!pendingSafeLinkText || !navReady || !sessionReady) return;
+    navigateToSafeLink(pendingSafeLinkText);
+    setPendingSafeLinkText('');
+  }, [pendingSafeLinkText, navReady, sessionReady]);
+
   useEffect(() => {
     if (!isUnlocked || !isPinSet || !CIRCLE_ENABLED) return;
     return subscribeCircleInvite(() => {
@@ -208,7 +257,11 @@ function AppContent(): React.JSX.Element {
           barStyle={isLight ? 'dark-content' : 'light-content'}
           backgroundColor={colors.bg}
         />
-        <NavigationContainer ref={navigationRef}>
+        <NavigationContainer
+          ref={navigationRef}
+          onReady={() => {
+            setNavReady(true);
+          }}>
           <TabNavigator onLogout={handleLogout} />
         </NavigationContainer>
       </View>

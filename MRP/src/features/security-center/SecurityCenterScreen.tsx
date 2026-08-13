@@ -37,6 +37,7 @@ import {
 import {scanOtpSms, type OtpScanResult} from './otpHeuristics';
 import {fraudLinksFor, t, type SecLang} from './securityCenterI18n';
 import {useHorizontalTabSwipe} from '../../shared/hooks/useHorizontalTabSwipe';
+import {DigitalSafetyNative} from '../digital-safety/DigitalSafety.native';
 
 const SEC_CENTER_TABS: SecurityCenterTab[] = ['ADVISOR', 'ANALYZER', 'FRAUD', 'TOOLS'];
 
@@ -334,6 +335,17 @@ export function SecurityCenterScreen({
           try {
             const result = await checkEmailBreaches(breachEmail);
             setBreachResult(result);
+            if (result.status === 'found' || result.status === 'clean') {
+              try {
+                await DigitalSafetyNative.recordBreachCheck(
+                  result.email,
+                  result.status,
+                  result.breaches.length,
+                );
+              } catch {
+                // Enrollment store is optional on this screen.
+              }
+            }
           } finally {
             setBreachBusy(false);
           }
@@ -693,6 +705,35 @@ export function SecurityCenterScreen({
               <TouchableOpacity style={styles.secondaryBtn} onPress={() => openUrl(HIBP_URL)}>
                 <Text style={styles.secondaryBtnText}>{t(lang, 'breach_open_hibp')}</Text>
               </TouchableOpacity>
+              {breachResult &&
+              (breachResult.status === 'found' || breachResult.status === 'clean') ? (
+                <TouchableOpacity
+                  style={styles.secondaryBtn}
+                  onPress={() => {
+                    Alert.alert(t(lang, 'breach_enroll_title'), t(lang, 'breach_enroll_body'), [
+                      {text: 'Cancel', style: 'cancel'},
+                      {
+                        text: 'Enroll',
+                        onPress: async () => {
+                          try {
+                            await DigitalSafetyNative.enrollBreachEmail(breachResult.email);
+                            Alert.alert(
+                              t(lang, 'breach_enrolled_title'),
+                              t(lang, 'breach_enrolled_body'),
+                            );
+                          } catch (e: any) {
+                            Alert.alert(
+                              t(lang, 'breach_enroll_title'),
+                              e?.message || t(lang, 'breach_enroll_failed'),
+                            );
+                          }
+                        },
+                      },
+                    ]);
+                  }}>
+                  <Text style={styles.secondaryBtnText}>{t(lang, 'breach_enroll')}</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             <Text style={styles.section}>{t(lang, 'otp_section')}</Text>

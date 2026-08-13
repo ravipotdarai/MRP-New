@@ -119,7 +119,7 @@ export interface MrpNativeInterface {
   setUiThemeId(themeId: string): Promise<boolean>;
   getSecurityCenterLocale(): Promise<string>;
   setSecurityCenterLocale(locale: string): Promise<boolean>;
-  evaluateUrlRisk(raw: string): Promise<{
+  evaluateUrlRisk(raw: string, resolveRedirects?: boolean): Promise<{
     input: string;
     normalized?: string;
     score: number;
@@ -129,6 +129,8 @@ export interface MrpNativeInterface {
     reasonCodes: string[];
     domainHash?: string;
     host?: string;
+    redirectHops?: string[];
+    redirectError?: string;
   }>;
   logDigitalSafetyEvent(
     eventType: string,

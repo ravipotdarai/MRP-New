@@ -19,6 +19,26 @@
       ]
     },
     {
+      "productId": "mrp_basic",
+      "tier": "basic",
+      "title": "Basic",
+      "description": "30-day history, clipboard scan, breach watch, limited vault",
+      "basePlans": [
+        {
+          "basePlanId": "monthly",
+          "label": "Monthly",
+          "formattedPrice": "₹199",
+          "billingPeriod": "P1M"
+        },
+        {
+          "basePlanId": "yearly",
+          "label": "Yearly",
+          "formattedPrice": "₹1,499",
+          "billingPeriod": "P1Y"
+        }
+      ]
+    },
+    {
       "productId": "mrp_premium",
       "tier": "premium",
       "title": "Premium",

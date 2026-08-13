@@ -3,6 +3,13 @@ import {
   SubscriptionTier,
   defaultFreeSnapshot,
 } from './EntitlementTypes';
+import {
+  capabilityForFeature,
+  hasCapability,
+  hasFullCapability,
+  TIMELINE_RETENTION_DAYS,
+  type DigitalSafetyCapability,
+} from './DigitalSafetyCapabilityMatrix';
 
 export type FeatureKey =
   | 'timeline.retention.extended'
@@ -24,7 +31,16 @@ export type FeatureKey =
   | 'circle.family'
   | 'circle.peer'
   | 'circle.live.web'
-  | 'enterprise.fleet';
+  | 'enterprise.fleet'
+  | 'digitalsafe.secure_vault'
+  | 'digitalsafe.secure_vault_backup'
+  | 'digitalsafe.network_guardian'
+  | 'digitalsafe.cellular_monitor'
+  | 'digitalsafe.sms_auto'
+  | 'digitalsafe.clipboard_scan'
+  | 'digitalsafe.breach_monitor'
+  | 'digitalsafe.sim_recovery'
+  | 'digitalsafe.lost_mobile';
 
 export type Caps = {
   timelineDays: number;
@@ -35,9 +51,10 @@ export type Caps = {
   reportsExport: boolean;
   circleLive: boolean;
   cloudSync: boolean;
+  maxVaultItems: number;
 };
 
-const PREMIUM_FEATURES = new Set<FeatureKey>([
+const PREMIUM_PLUS_FEATURES = new Set<FeatureKey>([
   'timeline.retention.extended',
   'photos.storage.full',
   'photos.retention.custom',
@@ -51,6 +68,18 @@ const PREMIUM_FEATURES = new Set<FeatureKey>([
   'journey.playback',
   'push.alerts',
   'cloud.sync',
+  'digitalsafe.secure_vault_backup',
+  'digitalsafe.network_guardian',
+  'digitalsafe.sms_auto',
+]);
+
+const BASIC_PLUS_FEATURES = new Set<FeatureKey>([
+  'digitalsafe.clipboard_scan',
+  'digitalsafe.breach_monitor',
+  'digitalsafe.cellular_monitor',
+  'digitalsafe.secure_vault',
+  'digitalsafe.sim_recovery',
+  'digitalsafe.lost_mobile',
 ]);
 
 const ENTERPRISE_ONLY = new Set<FeatureKey>([
@@ -76,11 +105,27 @@ function effectiveTier(snapshot: EntitlementSnapshot, now = Date.now()): Subscri
   return 'free';
 }
 
+function tierRank(tier: SubscriptionTier): number {
+  switch (tier) {
+    case 'enterprise':
+      return 5;
+    case 'family':
+      return 4;
+    case 'premium':
+      return 3;
+    case 'basic':
+      return 2;
+    default:
+      return 0;
+  }
+}
+
 export function getCaps(tier: SubscriptionTier): Caps {
+  const timelineDays = TIMELINE_RETENTION_DAYS[tier];
   switch (tier) {
     case 'enterprise':
       return {
-        timelineDays: 365,
+        timelineDays,
         maxSelfies: Number.MAX_SAFE_INTEGER,
         photoRetentionDays: 365,
         simContacts: 20,
@@ -88,11 +133,12 @@ export function getCaps(tier: SubscriptionTier): Caps {
         reportsExport: true,
         circleLive: true,
         cloudSync: true,
+        maxVaultItems: Number.MAX_SAFE_INTEGER,
       };
-    case 'premium':
     case 'family':
+    case 'premium':
       return {
-        timelineDays: 90,
+        timelineDays,
         maxSelfies: 500,
         photoRetentionDays: 90,
         simContacts: 5,
@@ -100,10 +146,23 @@ export function getCaps(tier: SubscriptionTier): Caps {
         reportsExport: true,
         circleLive: false,
         cloudSync: true,
+        maxVaultItems: Number.MAX_SAFE_INTEGER,
+      };
+    case 'basic':
+      return {
+        timelineDays,
+        maxSelfies: 50,
+        photoRetentionDays: 30,
+        simContacts: 2,
+        appUsageDays: 30,
+        reportsExport: false,
+        circleLive: false,
+        cloudSync: true,
+        maxVaultItems: 5,
       };
     default:
       return {
-        timelineDays: 7,
+        timelineDays,
         maxSelfies: 20,
         photoRetentionDays: 7,
         simContacts: 1,
@@ -111,8 +170,17 @@ export function getCaps(tier: SubscriptionTier): Caps {
         reportsExport: false,
         circleLive: false,
         cloudSync: false,
+        maxVaultItems: 0,
       };
   }
+}
+
+export function canUseCapability(
+  cap: DigitalSafetyCapability,
+  snapshot: EntitlementSnapshot = defaultFreeSnapshot(),
+  now = Date.now(),
+): boolean {
+  return hasCapability(effectiveTier(snapshot, now), cap);
 }
 
 export function canUse(
@@ -121,11 +189,18 @@ export function canUse(
   now = Date.now(),
 ): boolean {
   const tier = effectiveTier(snapshot, now);
+  const dsCap = capabilityForFeature(feature);
+  if (dsCap) {
+    return hasCapability(tier, dsCap);
+  }
   if (ENTERPRISE_ONLY.has(feature)) {
     return tier === 'enterprise';
   }
-  if (PREMIUM_FEATURES.has(feature)) {
-    return tier === 'premium' || tier === 'family' || tier === 'enterprise';
+  if (PREMIUM_PLUS_FEATURES.has(feature)) {
+    return tierRank(tier) >= tierRank('premium');
+  }
+  if (BASIC_PLUS_FEATURES.has(feature)) {
+    return tierRank(tier) >= tierRank('basic');
   }
   return true;
 }
@@ -146,6 +221,13 @@ export function requireEntitlement(
       reason: 'Enterprise subscription required for Circle live share',
     };
   }
+  if (BASIC_PLUS_FEATURES.has(feature)) {
+    return {
+      ok: false,
+      tier,
+      reason: 'Basic or higher subscription required',
+    };
+  }
   return {
     ok: false,
     tier,
@@ -154,7 +236,11 @@ export function requireEntitlement(
 }
 
 export function isPaidTier(tier: SubscriptionTier): boolean {
-  return tier === 'premium' || tier === 'family' || tier === 'enterprise';
+  return tier !== 'free';
 }
 
-export {effectiveTier};
+export function isPremiumTier(tier: SubscriptionTier): boolean {
+  return tierRank(tier) >= tierRank('premium');
+}
+
+export {effectiveTier, hasFullCapability};

@@ -24,6 +24,7 @@ import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {formatDigitalSafetyEventType} from '../digital-safety/formatDigitalSafetyEvent';
 
 const EVENT_ICONS: Record<string, string> = {
   SCREEN_LOCK: '🔒',
@@ -153,7 +154,7 @@ export function TimelineScreen() {
 
   const formatEventType = (type: string | undefined): string => {
     if (!type) return 'Unknown Event';
-    return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    return formatDigitalSafetyEventType(type);
   };
 
   const formatTimestamp = (timestamp: string | undefined): string => {

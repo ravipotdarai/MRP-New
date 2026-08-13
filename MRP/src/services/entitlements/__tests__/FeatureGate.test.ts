@@ -55,12 +55,21 @@ describe('FeatureGate', () => {
     expect(canUse('cloud.sync', premiumActive)).toBe(true);
     expect(canUse('reports.export', premiumActive)).toBe(true);
     expect(canUse('journey.playback', premiumActive)).toBe(true);
+    expect(canUse('digitalsafe.secure_vault', premiumActive)).toBe(true);
+    expect(canUse('digitalsafe.network_guardian', premiumActive)).toBe(true);
+    expect(canUse('digitalsafe.clipboard_scan', premiumActive)).toBe(true);
+    expect(canUse('digitalsafe.breach_monitor', premiumActive)).toBe(true);
     expect(canUse('circle.family', premiumActive)).toBe(false);
   });
 
   it('gates journey playback on free', () => {
     expect(canUse('journey.playback', free)).toBe(false);
     expect(requireEntitlement('journey.playback', free).ok).toBe(false);
+    expect(canUse('digitalsafe.secure_vault', free)).toBe(false);
+    expect(canUse('digitalsafe.cellular_monitor', free)).toBe(false);
+    expect(canUse('digitalsafe.clipboard_scan', free)).toBe(false);
+    expect(canUse('digitalsafe.breach_monitor', free)).toBe(false);
+    expect(canUse('digitalsafe.sms_auto', free)).toBe(false);
   });
 
   it('unlocks Circle only for enterprise', () => {

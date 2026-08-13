@@ -1,11 +1,14 @@
 import {useEffect} from 'react';
 import {Linking} from 'react-native';
 
-function parseSafeLinkText(url: string | null): string | null {
+export function parseSafeLinkText(url: string | null): string | null {
   if (!url) return null;
   try {
-    if (!url.includes('mrp://safe-link') && !url.includes('safe-link')) return null;
-    const q = url.includes('?') ? url.split('?')[1] : '';
+    // Only explicit share-to-MRP scheme — do not match arbitrary URLs that contain "safe-link".
+    const trimmed = url.trim();
+    const lower = trimmed.toLowerCase();
+    if (!lower.startsWith('mrp://safe-link')) return null;
+    const q = trimmed.includes('?') ? trimmed.slice(trimmed.indexOf('?') + 1) : '';
     const params = new URLSearchParams(q);
     const text = params.get('text');
     return text ? decodeURIComponent(text) : null;

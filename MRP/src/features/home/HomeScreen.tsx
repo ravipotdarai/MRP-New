@@ -28,6 +28,7 @@ import {useSubscriptionTier} from '../../shared/hooks/useSubscriptionTier';
 import {ActivityStatusBanner} from './ActivityStatusBanner';
 import {loadLocalCircles} from '../circle/circleLocalStore';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import {formatDigitalSafetyEventType} from '../digital-safety/formatDigitalSafetyEvent';
 import {getTrackingConfig} from '../../native/DeviceTracking.types';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
 import {brandImages, brandCopy} from '../../assets/brand';
@@ -73,9 +74,17 @@ const EVENT_ICONS: Record<string, string> = {
   SAFE_LINK_ALLOWED: '✅',
   SAFE_LINK_WARNED: '⚠️',
   SAFE_LINK_BLOCKED: '🚫',
+  NETWORK_GUARDIAN_ENABLED: '🛡️',
+  NETWORK_GUARDIAN_DISABLED: '🛡️',
+  AD_BLOCKED: '🚫',
+  TRACKER_BLOCKED: '👁️',
+  MALICIOUS_DOMAIN_BLOCKED: '☣️',
   SCAM_DETECTED: '⚠️',
   QR_SCANNED: '📷',
   QR_BLOCKED: '🚫',
+  CELLULAR_ANOMALY_DETECTED: '📶',
+  BREACH_EMAIL_FOUND: '📧',
+  BREACH_EMAIL_CLEAN: '📧',
   EMERGENCY_CARD_UPDATED: '🆘',
   VAULT_ITEM_CREATED: '🔐',
   VAULT_ITEM_VIEWED: '🔐',
@@ -130,7 +139,7 @@ const WEB_CONSOLE_URL = 'https://mobileresilienceplatform.web.app';
 
 const formatEventType = (type: string | undefined): string => {
   if (!type) return 'Unknown Event';
-  return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return formatDigitalSafetyEventType(type);
 };
 
 const getGreeting = (): string => {
@@ -535,6 +544,13 @@ export function HomeScreen({
       );
       return;
     }
+    if (target.screen === 'Digital Safety') {
+      navigation.navigate(
+        'Digital Safety',
+        target.openSection ? {openSection: target.openSection} : undefined,
+      );
+      return;
+    }
     if (target.screen === 'Security') {
       navigation.navigate('Security', {initialTab: target.tab});
       return;
@@ -546,7 +562,7 @@ export function HomeScreen({
 
   const goDigitalSafety = (tab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS') => {
     if (tab) setSecurityCenterTab(tab);
-    navigation?.navigate?.('Hub', {openSection: tab ? 'security-center' : 'digital-safety'});
+    navigation?.navigate?.('Digital Safety', tab ? {openSection: 'security-center'} : undefined);
   };
 
   const handleAvatarPress = () => {

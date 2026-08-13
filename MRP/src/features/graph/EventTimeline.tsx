@@ -4,6 +4,8 @@ import {useFocusEffect} from '@react-navigation/native';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {MonitoringEvent} from '../../shared/hooks/useNativeBridge';
 
+import {formatDigitalSafetyEventType} from '../digital-safety/formatDigitalSafetyEvent';
+
 const EVENT_ICONS: Record<string, string> = {
   WRONG_PASSWORD: '🔐',
   WRONG_BIOMETRIC: '👆',
@@ -109,7 +111,7 @@ export function EventTimeline() {
 }
 
 function formatEventType(type: string): string {
-  return type.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  return formatDigitalSafetyEventType(type);
 }
 
 function getSeverityColor(severity: string): string {
