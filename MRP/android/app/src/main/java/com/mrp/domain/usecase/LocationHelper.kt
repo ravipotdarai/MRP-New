@@ -264,9 +264,9 @@ class LocationHelper(private val context: Context) {
      * - If inside one or more zones (d ≤ radius): pick the **nearest center**
      *   among those overlaps (tie-break: smaller radius). Stamp that zone
      *   (geofence path).
-     * - If outside all zones: no geofence path ([fenceId]/[zoneName] null —
-     *   callers label "Away"). [awayMeters] = smallest distToEdge
-     *   (`d - radius`) across zones (closest boundary).
+     * - If outside all zones: callers label "Away". [fenceId]/[zoneName] are
+     *   the **nearest** zone (smallest distToEdge). [awayMeters] = that
+     *   distToEdge (`d - radius`).
      */
     fun evaluateGeofence(latitude: Double, longitude: Double): GeofenceResult {
         reloadGeofencesFromStorage()
@@ -281,6 +281,7 @@ class LocationHelper(private val context: Context) {
         }
         var bestInside: GeofenceZone? = null
         var bestInsideDist = Float.MAX_VALUE
+        var bestAway: GeofenceZone? = null
         var bestAwayDistToEdge = Float.MAX_VALUE
         var bestAwayCenterDist = Float.NaN
         for (zone in geofenceZones) {
@@ -305,6 +306,7 @@ class LocationHelper(private val context: Context) {
             } else if (distToEdge < bestAwayDistToEdge) {
                 bestAwayDistToEdge = distToEdge
                 bestAwayCenterDist = distance
+                bestAway = zone
             }
         }
         val inside = bestInside
@@ -317,12 +319,12 @@ class LocationHelper(private val context: Context) {
                 awayMeters = Float.NaN
             )
         }
-        // Outside every radius — Away only (no zone path); awayM = closest edge.
+        // Outside every radius — Away; stamp nearest zone so UI can show its name.
         return GeofenceResult(
             insideFence = false,
-            fenceId = null,
+            fenceId = bestAway?.id,
             distanceToCenter = bestAwayCenterDist,
-            zoneName = null,
+            zoneName = bestAway?.name,
             awayMeters = if (bestAwayDistToEdge < Float.MAX_VALUE) bestAwayDistToEdge else Float.NaN
         )
     }

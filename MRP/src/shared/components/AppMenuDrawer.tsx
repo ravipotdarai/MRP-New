@@ -66,7 +66,7 @@ const MENU: MenuRow[] = [
     icon: '🛡️',
     children: [
       {label: 'Setup', target: {screen: 'Security', tab: 'MONITORING'}},
-      {label: 'Timeline', target: {screen: 'Security', tab: 'TIMELINE'}},
+      {label: 'Activity', target: {screen: 'Security', tab: 'TIMELINE'}},
       {label: 'Photos', target: {screen: 'Security', tab: 'PHOTOS'}},
       {label: 'Permissions', target: {screen: 'Security', tab: 'PERMISSIONS'}},
     ],

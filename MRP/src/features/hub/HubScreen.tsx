@@ -679,7 +679,7 @@ export function HubScreen({
               },
               {
                 id: 'f-timeline',
-                title: 'Activity Timeline',
+                title: 'Activity',
                 iconSource: brandImages.features.activityTimeline,
                 action: () => navigation?.navigate?.('Security', {initialTab: 'TIMELINE'}),
               },

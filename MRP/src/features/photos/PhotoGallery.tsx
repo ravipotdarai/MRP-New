@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   Image,
   TouchableOpacity,
   Alert,
@@ -45,6 +44,96 @@ interface TimelineEntry {
 }
 
 type SortOption = 'NEWEST' | 'OLDEST' | 'MONTH' | 'WEEK' | 'DAY';
+type PhotoTypeFilter =
+  | 'ALL'
+  | 'WRONG_UNLOCK'
+  | 'WRONG_PASSWORD'
+  | 'WRONG_BIOMETRIC'
+  | 'WIFI'
+  | 'SIM'
+  | 'SCREEN'
+  | 'TEST'
+  | 'OTHER';
+type GroupBy = 'NONE' | 'WEEK' | 'MONTH';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function classifyPhotoType(filename: string): Exclude<PhotoTypeFilter, 'ALL'> {
+  const upper = (filename || '').toUpperCase();
+  if (
+    upper.includes('TEST_PHOTO') ||
+    upper.includes('TEST_CAPTURE') ||
+    upper.includes('TEST_SELFIE') ||
+    upper.includes('TEST_BULLETPROOF')
+  ) {
+    return 'TEST';
+  }
+  if (upper.includes('WRONG_UNLOCK')) return 'WRONG_UNLOCK';
+  if (upper.includes('WRONG_PASSWORD')) return 'WRONG_PASSWORD';
+  if (upper.includes('WRONG_BIOMETRIC') || upper.includes('BIOMETRIC')) {
+    return 'WRONG_BIOMETRIC';
+  }
+  if (upper.includes('WIFI')) return 'WIFI';
+  if (upper.includes('SIM')) return 'SIM';
+  if (
+    upper.includes('SCREEN_LOCK') ||
+    upper.includes('SCREEN_UNLOCK') ||
+    upper.includes('UNLOCK_FAILED')
+  ) {
+    return 'SCREEN';
+  }
+  return 'OTHER';
+}
+
+function startOfLocalDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function startOfWeekMonday(ts: number): number {
+  const d = new Date(startOfLocalDay(ts));
+  const day = d.getDay();
+  d.setDate(d.getDate() - ((day + 6) % 7));
+  return d.getTime();
+}
+
+function startOfMonth(ts: number): number {
+  const d = new Date(ts);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function formatWeekLabel(weekStart: number): string {
+  const start = new Date(weekStart);
+  const end = new Date(weekStart);
+  end.setDate(end.getDate() + 6);
+  const opts: Intl.DateTimeFormatOptions = {month: 'short', day: 'numeric'};
+  return `Week of ${start.toLocaleDateString(undefined, opts)} – ${end.toLocaleDateString(
+    undefined,
+    opts,
+  )}`;
+}
+
+function formatMonthLabel(monthStart: number): string {
+  return new Date(monthStart).toLocaleDateString(undefined, {
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+const TYPE_FILTER_DEFS: {key: PhotoTypeFilter; label: string}[] = [
+  {key: 'ALL', label: 'All'},
+  {key: 'WRONG_UNLOCK', label: 'Unlock Attempts'},
+  {key: 'WRONG_PASSWORD', label: 'Wrong Password'},
+  {key: 'WRONG_BIOMETRIC', label: 'Biometric'},
+  {key: 'WIFI', label: 'Wi-Fi'},
+  {key: 'SIM', label: 'SIM'},
+  {key: 'SCREEN', label: 'Screen'},
+  {key: 'TEST', label: 'Test'},
+  {key: 'OTHER', label: 'Other'},
+];
 
 export function PhotoGallery() {
   const {colors} = useTheme();
@@ -54,10 +143,13 @@ export function PhotoGallery() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'WRONG_UNLOCK' | 'WRONG_PASSWORD' | 'TEST'>('ALL');
+  const [activeTab, setActiveTab] = useState<PhotoTypeFilter>('ALL');
   const [sortBy, setSortBy] = useState<SortOption>('NEWEST');
   const [capturingTest, setCapturingTest] = useState(false);
   const [controlsExpanded, setControlsExpanded] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [groupBy, setGroupBy] = useState<GroupBy>('NONE');
 
   const formatPhotoEventName = (filename: string) => {
     const upper = (filename || '').toUpperCase();
@@ -151,6 +243,7 @@ export function PhotoGallery() {
             try {
               await mrpmModule.deletePhoto(photo.path);
               setPhotos(prev => prev.filter(p => p.path !== photo.path));
+              setSelectedPaths(prev => prev.filter(p => p !== photo.path));
               if (selectedPhoto?.path === photo.path) {
                 setSelectedPhoto(null);
               }
@@ -179,6 +272,8 @@ export function PhotoGallery() {
               if (selectedPhoto) {
                 setSelectedPhoto(null);
               }
+              setSelectedPaths([]);
+              setSelectMode(false);
             } catch (e) {
               console.error('Failed to delete all photos:', e);
             }
@@ -188,24 +283,31 @@ export function PhotoGallery() {
     );
   };
 
+  const toggleSelectMode = (on?: boolean) => {
+    const next = on ?? !selectMode;
+    setSelectMode(next);
+    if (next) {
+      setGroupBy(prev => (prev === 'NONE' ? 'WEEK' : prev));
+      setControlsExpanded(true);
+    } else {
+      setSelectedPaths([]);
+    }
+  };
+
+  const togglePhotoSelected = (path: string) => {
+    setSelectedPaths(prev =>
+      prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path],
+    );
+  };
+
   // Apply type filter + time-range filter + sort order
-  const displayedPhotos = (() => {
+  const displayedPhotos = useMemo(() => {
     let result = photos.filter(p => {
-      const upper = p.name.toUpperCase();
-      if (activeTab === 'WRONG_UNLOCK') {
-        return upper.includes('WRONG_UNLOCK_ATTEMPT');
-      }
-      if (activeTab === 'WRONG_PASSWORD') {
-        return upper.includes('WRONG_PASSWORD');
-      }
-      if (activeTab === 'TEST') {
-        return upper.includes('TEST') || upper.includes('WIFI');
-      }
-      return true;
+      if (activeTab === 'ALL') return true;
+      return classifyPhotoType(p.name) === activeTab;
     });
 
     const now = Date.now();
-    const DAY_MS = 24 * 60 * 60 * 1000;
     if (sortBy === 'DAY') {
       result = result.filter(p => now - p.timestamp < DAY_MS);
     } else if (sortBy === 'WEEK') {
@@ -218,32 +320,125 @@ export function PhotoGallery() {
       if (sortBy === 'OLDEST') return a.timestamp - b.timestamp;
       return b.timestamp - a.timestamp;
     });
-  })();
+  }, [photos, activeTab, sortBy]);
 
-  const renderPhotoItem = ({item}: {item: Photo}) => {
+  const typeCounts = useMemo(() => {
+    const counts: Partial<Record<PhotoTypeFilter, number>> = {ALL: photos.length};
+    for (const p of photos) {
+      const key = classifyPhotoType(p.name);
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return counts;
+  }, [photos]);
+
+  const photoGroups = useMemo(() => {
+    if (groupBy === 'NONE') {
+      return [{key: 'all', label: '', photos: displayedPhotos}];
+    }
+    const buckets = new Map<number, Photo[]>();
+    for (const photo of displayedPhotos) {
+      const key =
+        groupBy === 'WEEK' ? startOfWeekMonday(photo.timestamp) : startOfMonth(photo.timestamp);
+      const list = buckets.get(key) || [];
+      list.push(photo);
+      buckets.set(key, list);
+    }
+    return [...buckets.entries()]
+      .sort((a, b) => b[0] - a[0])
+      .map(([key, groupPhotos]) => ({
+        key: String(key),
+        label: groupBy === 'WEEK' ? formatWeekLabel(key) : formatMonthLabel(key),
+        photos: groupPhotos,
+      }));
+  }, [displayedPhotos, groupBy]);
+
+  const selectPaths = (paths: string[]) => {
+    setSelectedPaths(prev => Array.from(new Set([...prev, ...paths])));
+  };
+
+  const selectGroup = (groupPhotos: Photo[]) => {
+    const paths = groupPhotos.map(p => p.path);
+    const allSelected = paths.every(p => selectedPaths.includes(p));
+    if (allSelected) {
+      setSelectedPaths(prev => prev.filter(p => !paths.includes(p)));
+    } else {
+      selectPaths(paths);
+    }
+  };
+
+  const deleteSelectedPhotos = () => {
+    const count = selectedPaths.length;
+    if (count === 0) return;
+    Alert.alert(
+      'Delete Selected Photos',
+      `Permanently delete ${count} selected photo${count === 1 ? '' : 's'}?`,
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Delete Selected',
+          style: 'destructive',
+          onPress: async () => {
+            const paths = [...selectedPaths];
+            try {
+              await Promise.all(paths.map(path => mrpmModule.deletePhoto(path).catch(() => false)));
+              const removed = new Set(paths);
+              setPhotos(prev => prev.filter(p => !removed.has(p.path)));
+              if (selectedPhoto && removed.has(selectedPhoto.path)) {
+                setSelectedPhoto(null);
+              }
+              setSelectedPaths([]);
+              setSelectMode(false);
+            } catch (e) {
+              console.error('Failed to delete selected photos:', e);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const renderPhotoItem = (item: Photo) => {
     const eventTitle = formatPhotoEventName(item.name);
-
     const imageUri = `file://${item.path}`;
+    const isSelected = selectedPaths.includes(item.path);
 
     return (
       <TouchableOpacity
-        style={styles.photoContainer}
+        key={item.path}
+        style={[styles.photoContainer, isSelected && styles.photoContainerSelected]}
         activeOpacity={0.8}
-        onPress={() => setSelectedPhoto(item)}
-        onLongPress={() => deletePhoto(item)}>
+        onPress={() =>
+          selectMode ? togglePhotoSelected(item.path) : setSelectedPhoto(item)
+        }
+        onLongPress={() => {
+          if (!selectMode) {
+            toggleSelectMode(true);
+            setSelectedPaths([item.path]);
+          } else {
+            togglePhotoSelected(item.path);
+          }
+        }}>
         <Image
           source={{uri: imageUri}}
           style={styles.photo}
           resizeMode="contain"
-          onError={(e) => console.warn('Image load failed:', imageUri, e.nativeEvent.error)}
+          onError={e => console.warn('Image load failed:', imageUri, e.nativeEvent.error)}
         />
+        {selectMode ? (
+          <View style={[styles.selectCheck, isSelected && styles.selectCheckOn]}>
+            <Text style={styles.selectCheckText}>{isSelected ? '✓' : ''}</Text>
+          </View>
+        ) : null}
         <View style={styles.photoOverlay}>
           <Text style={styles.photoTitle} numberOfLines={1}>
             {eventTitle}
           </Text>
           <Text style={styles.photoTime}>
             {new Date(item.timestamp).toLocaleDateString()}{' '}
-            {new Date(item.timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}
+            {new Date(item.timestamp).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </Text>
         </View>
       </TouchableOpacity>
@@ -254,12 +449,15 @@ export function PhotoGallery() {
     ? findMatchingEventForPhoto(selectedPhoto, timelineEvents)
     : null;
 
-  const FILTER_CHIPS: {key: typeof activeTab; label: string}[] = [
-    {key: 'ALL', label: `All (${photos.length})`},
-    {key: 'WRONG_UNLOCK', label: 'Unlock Attempts'},
-    {key: 'WRONG_PASSWORD', label: 'Wrong Password'},
-    {key: 'TEST', label: 'Test / Network'},
-  ];
+  const FILTER_CHIPS = TYPE_FILTER_DEFS.filter(
+    chip => chip.key === 'ALL' || (typeCounts[chip.key] || 0) > 0,
+  ).map(chip => ({
+    ...chip,
+    label:
+      chip.key === 'ALL'
+        ? `All (${photos.length})`
+        : `${chip.label} (${typeCounts[chip.key] || 0})`,
+  }));
 
   const SORT_CHIPS: {key: SortOption; label: string}[] = [
     {key: 'NEWEST', label: 'Newest'},
@@ -267,6 +465,12 @@ export function PhotoGallery() {
     {key: 'DAY', label: 'Today'},
     {key: 'WEEK', label: 'This Week'},
     {key: 'MONTH', label: 'This Month'},
+  ];
+
+  const GROUP_CHIPS: {key: GroupBy; label: string}[] = [
+    {key: 'NONE', label: 'None'},
+    {key: 'WEEK', label: 'Weeks'},
+    {key: 'MONTH', label: 'Months'},
   ];
 
   return (
@@ -306,6 +510,72 @@ export function PhotoGallery() {
               )}
             </View>
 
+            {photos.length > 0 && (
+              <View style={styles.buttonRow}>
+                <TouchableOpacity
+                  style={[styles.controlButton, selectMode && styles.controlButtonActive]}
+                  onPress={() => toggleSelectMode()}>
+                  <Text style={styles.controlButtonText}>
+                    {selectMode ? 'Cancel Select' : '☑️ Select Photos'}
+                  </Text>
+                </TouchableOpacity>
+                {selectMode ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.controlButton,
+                      styles.deleteSelectedButton,
+                      selectedPaths.length === 0 && styles.controlButtonDisabled,
+                    ]}
+                    disabled={selectedPaths.length === 0}
+                    onPress={deleteSelectedPhotos}>
+                    <Text style={styles.controlButtonText}>
+                      🗑️ Delete Selected ({selectedPaths.length})
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            )}
+
+            {selectMode ? (
+              <View style={styles.controlSection}>
+                <Text style={styles.controlLabel}>Select</Text>
+                <View style={styles.chipRow}>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => selectPaths(displayedPhotos.map(p => p.path))}>
+                    <Text style={styles.chipText}>All visible</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => {
+                      const now = Date.now();
+                      selectPaths(
+                        displayedPhotos
+                          .filter(p => now - p.timestamp < 7 * DAY_MS)
+                          .map(p => p.path),
+                      );
+                    }}>
+                    <Text style={styles.chipText}>This week</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.chip}
+                    onPress={() => {
+                      const now = Date.now();
+                      selectPaths(
+                        displayedPhotos
+                          .filter(p => now - p.timestamp < 30 * DAY_MS)
+                          .map(p => p.path),
+                      );
+                    }}>
+                    <Text style={styles.chipText}>This month</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.chip} onPress={() => setSelectedPaths([])}>
+                    <Text style={styles.chipText}>Clear</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.controlSection}>
               <Text style={styles.controlLabel}>Filter by Type</Text>
               <View style={styles.chipRow}>
@@ -337,6 +607,22 @@ export function PhotoGallery() {
                 ))}
               </View>
             </View>
+
+            <View style={styles.controlSection}>
+              <Text style={styles.controlLabel}>Group by</Text>
+              <View style={styles.chipRow}>
+                {GROUP_CHIPS.map(chip => (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={[styles.chip, groupBy === chip.key && styles.chipActive]}
+                    onPress={() => setGroupBy(chip.key)}>
+                    <Text style={[styles.chipText, groupBy === chip.key && styles.chipTextActive]}>
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </>
         )}
       </Card>
@@ -355,13 +641,8 @@ export function PhotoGallery() {
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          data={displayedPhotos}
-          keyExtractor={item => item.path}
-          renderItem={renderPhotoItem}
-          numColumns={2}
+        <ScrollView
           contentContainerStyle={styles.gridContainer}
-          columnWrapperStyle={styles.columnWrapper}
           showsVerticalScrollIndicator={false}
           bounces
           alwaysBounceVertical
@@ -374,8 +655,33 @@ export function PhotoGallery() {
               tintColor={colors.sky}
               colors={[colors.sky]}
             />
-          }
-        />
+          }>
+          {photoGroups.map(group => (
+            <View key={group.key} style={styles.photoGroup}>
+              {group.label ? (
+                <View style={styles.groupHeader}>
+                  <Text style={styles.groupHeaderText}>
+                    {group.label} · {group.photos.length}
+                  </Text>
+                  {selectMode ? (
+                    <TouchableOpacity
+                      onPress={() => selectGroup(group.photos)}
+                      style={styles.groupSelectBtn}>
+                      <Text style={styles.groupSelectBtnText}>
+                        {group.photos.every(p => selectedPaths.includes(p.path))
+                          ? 'Deselect'
+                          : 'Select'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ) : null}
+              <View style={styles.photoGrid}>
+                {group.photos.map(photo => renderPhotoItem(photo))}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
       )}
 
       <Modal
@@ -659,9 +965,46 @@ function createStyles(colors: ColorPalette) {
       paddingTop: 12,
       paddingBottom: 24,
     },
-    columnWrapper: {
+    controlButtonActive: {
+      backgroundColor: colors.sky,
+    },
+    deleteSelectedButton: {
+      backgroundColor: colors.red,
+    },
+    photoGroup: {
+      marginBottom: 8,
+    },
+    groupHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 14,
+      marginBottom: 8,
+      marginTop: 4,
+    },
+    groupHeaderText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: colors.textPrimary,
+      flex: 1,
+      paddingRight: 8,
+    },
+    groupSelectBtn: {
+      backgroundColor: colors.skySoft,
+      borderWidth: 1,
+      borderColor: colors.sky,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 8,
+    },
+    groupSelectBtnText: {
+      color: colors.sky,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    photoGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
     },
     photoContainer: {
       width: PHOTO_SIZE,
@@ -672,6 +1015,34 @@ function createStyles(colors: ColorPalette) {
       borderWidth: 1,
       borderColor: colors.border,
       elevation: 4,
+      marginBottom: 14,
+    },
+    photoContainerSelected: {
+      borderColor: colors.sky,
+      borderWidth: 2,
+    },
+    selectCheck: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: '#ffffff',
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    selectCheckOn: {
+      backgroundColor: colors.sky,
+      borderColor: colors.sky,
+    },
+    selectCheckText: {
+      color: '#ffffff',
+      fontSize: 13,
+      fontWeight: '800',
+      lineHeight: 16,
     },
     photo: {
       width: '100%',

@@ -720,7 +720,9 @@ export function PermissionsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Required Permissions</Text>
-        <Text style={styles.headerSubtitle}>MRP Stay Sync - Stay Connected</Text>
+        <Text style={styles.headerSubtitle}>
+          Grant the access MRP needs to protect this device
+        </Text>
       </View>
 
       {/* Permissions List */}
@@ -853,10 +855,7 @@ export function PermissionsScreen() {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>MRP Stay Sync.. Stay Connected</Text>
-        <Text style={styles.footerSubtext}>
-          Your phone, your security, your peace of mind
-        </Text>
+        <Text style={styles.footerText}>Your phone, your security, your peace of mind</Text>
       </View>
     </ScrollView>
   );

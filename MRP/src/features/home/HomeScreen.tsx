@@ -730,7 +730,11 @@ export function HomeScreen({
             accessibilityLabel="Color theme">
             <Text style={styles.headerIcon}>🎨</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconBtn} accessibilityLabel="Notifications">
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={() => goToSecurity('Timeline')}
+            accessibilityLabel="Activity alerts"
+            accessibilityHint="Opens security activity">
             <Text style={styles.headerIcon}>🔔</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarBtn} onPress={handleAvatarPress}>
@@ -1106,9 +1110,9 @@ export function HomeScreen({
       {/* Today's Timeline */}
       <View style={styles.card}>
         <View style={styles.cardHeaderRow}>
-          <Text style={styles.sectionTitle}>TODAY'S TIMELINE</Text>
+          <Text style={styles.sectionTitle}>TODAY'S ACTIVITY</Text>
           <TouchableOpacity onPress={() => goToSecurity('Timeline')}>
-            <Text style={styles.viewAllText}>View Full Timeline →</Text>
+            <Text style={styles.viewAllText}>View Full Activity →</Text>
           </TouchableOpacity>
         </View>
         {todayEvents.length > 0 ? (

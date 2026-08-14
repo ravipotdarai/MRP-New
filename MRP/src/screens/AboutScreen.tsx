@@ -120,8 +120,8 @@ const HOW_TO_USE = [
   {
     step: '8',
     title: 'Review activity',
-    where: 'Home · Security → Timeline / Photos · App Usage',
-    body: 'Home status + banners; Timeline/Photos for evidence; App Usage for screen-time share and App Safety posture.',
+    where: 'Home · Security → Activity / Photos · App Usage',
+    body: 'Home status + banners; Activity/Photos for evidence; App Usage for screen-time share and App Safety posture.',
   },
   {
     step: '9',

@@ -25,6 +25,8 @@ import {findMatchingSelfie} from '../../shared/utils/selfieMatcher';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {formatDigitalSafetyEventType} from '../digital-safety/formatDigitalSafetyEvent';
+import {listGeofenceZones, type GeofenceZone} from '../../native/Geofence.types';
+import {nearestGeofenceName} from '../../shared/utils/nearestGeofence';
 
 const EVENT_ICONS: Record<string, string> = {
   SCREEN_LOCK: '🔒',
@@ -100,6 +102,7 @@ export function TimelineScreen() {
   const sheetHeight = Math.round(windowHeight * 0.9);
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [geofenceZones, setGeofenceZones] = useState<GeofenceZone[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<TimelineEntry | null>(null);
@@ -110,12 +113,14 @@ export function TimelineScreen() {
 
   const loadTimeline = useCallback(async () => {
     try {
-      const [result, photoList] = await Promise.all([
+      const [result, photoList, zones] = await Promise.all([
         mrpmModule.getTimeline().catch(() => []),
         mrpmModule.getPhotos().catch(() => []),
+        listGeofenceZones().catch(() => []),
       ]);
       setEntries(Array.isArray(result) ? result : []);
       setPhotos(Array.isArray(photoList) ? photoList : []);
+      setGeofenceZones(Array.isArray(zones) ? zones : []);
     } catch (e) {
       console.error('Failed to load timeline:', e);
       setEntries([]);
@@ -197,9 +202,21 @@ export function TimelineScreen() {
     );
   };
 
+  const resolveNearestGeofenceName = (entry: TimelineEntry): string | null => {
+    const metaName = String(entry.metadata?.geofence_name || '').trim();
+    if (metaName) return metaName;
+    const loc = entry.location;
+    if (!loc) return null;
+    return nearestGeofenceName(
+      Number(loc.latitude),
+      Number(loc.longitude),
+      geofenceZones,
+    );
+  };
+
   const clearAllTimeline = () => {
     Alert.alert(
-      'Clear All Timeline',
+      'Clear All Activity',
       'This will delete ALL events. Are you sure?',
       [
         {text: 'Cancel', style: 'cancel'},
@@ -305,6 +322,7 @@ export function TimelineScreen() {
 
   const renderDetailModal = () => {
     const matchedPhoto = selectedEntry ? findMatchingPhoto(selectedEntry) : null;
+    const nearestName = selectedEntry ? resolveNearestGeofenceName(selectedEntry) : null;
     return (
       <>
       <Modal
@@ -482,6 +500,11 @@ export function TimelineScreen() {
                           ? `📍 Away · ${Math.round(Number(selectedEntry.metadata.geofence_distance_m))}m`
                           : '📍 Away'}
                     </Text>
+                    {!selectedEntry.geofence_status?.inside_fence && nearestName ? (
+                      <Text style={styles.detailSubvalue}>
+                        Nearest geofence: {nearestName}
+                      </Text>
+                    ) : null}
                     {selectedEntry.geofence_status?.inside_fence &&
                     selectedEntry.metadata?.geofence_distance_m != null &&
                     Number.isFinite(Number(selectedEntry.metadata.geofence_distance_m)) ? (
@@ -623,7 +646,7 @@ export function TimelineScreen() {
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.sky} />
-          <Text style={styles.loadingText}>Loading timeline...</Text>
+          <Text style={styles.loadingText}>Loading activity...</Text>
         </View>
       ) : entries.length === 0 ? (
         <View style={styles.emptyContainer}>

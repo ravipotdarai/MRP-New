@@ -98,7 +98,7 @@ const ITEMS: HubItem[] = [
   },
   {
     id: 'timeline',
-    title: 'Security Timeline',
+    title: 'Activity',
     subtitle: 'Protection and monitoring events',
     iconSource: brandImages.features.activityTimeline,
     section: 'MONITOR',

@@ -32,6 +32,23 @@ class CreateTimelineEntryUseCase(private val context: Context) {
                         locationData.latitude,
                         locationData.longitude
                     )
+                    val geoMeta = buildMap<String, Any?> {
+                        put("location_provider", locationData.provider)
+                        if (!geofenceResult.zoneName.isNullOrBlank()) {
+                            put("geofence_name", geofenceResult.zoneName)
+                        }
+                        if (geofenceResult.fenceId != null) {
+                            put("geofence_id", geofenceResult.fenceId)
+                        }
+                        val distM = when {
+                            geofenceResult.insideFence && geofenceResult.distanceToCenter.isFinite() ->
+                                geofenceResult.distanceToCenter
+                            !geofenceResult.insideFence && geofenceResult.awayMeters.isFinite() ->
+                                geofenceResult.awayMeters
+                            else -> null
+                        }
+                        if (distM != null) put("geofence_distance_m", distM)
+                    }
 
                     val entry = TimelineEntry(
                         id = id,
@@ -48,7 +65,7 @@ class CreateTimelineEntryUseCase(private val context: Context) {
                             insideFence = geofenceResult.insideFence,
                             fenceId = geofenceResult.fenceId
                         ),
-                        metadata = metadata + mapOf("location_provider" to locationData.provider)
+                        metadata = metadata + geoMeta
                     )
 
                     timelineStorage.appendTimelineEntry(entry)
