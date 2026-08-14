@@ -5,6 +5,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.mrp.data.local.DeviceConfigMirror
 import com.mrp.data.local.DeviceTrackingPrefs
+import com.mrp.domain.usecase.DevicePowerMode
 import com.mrp.domain.usecase.DevicePresenceTracker
 
 /**
@@ -35,6 +36,7 @@ class DeviceTrackingModule(private val reactContext: ReactApplicationContext) :
             normalized["emergencyIntervalMinutes"] = emergMin
             normalized["syncFrequencyMinutes"] = freq
             DeviceTrackingPrefs.applyRemote(reactContext, normalized)
+            DevicePowerMode.applyLoops(reactContext)
             mirrorConfigToFirebase()
             DevicePresenceTracker.restart(reactContext)
             promise.resolve(true)
@@ -69,6 +71,7 @@ class DeviceTrackingModule(private val reactContext: ReactApplicationContext) :
                     map.remove("lng")
                     map.remove("address")
                     DeviceTrackingPrefs.applyRemote(reactContext, map)
+                    DevicePowerMode.applyLoops(reactContext)
                     DevicePresenceTracker.restart(reactContext)
                     promise.resolve(true)
                 }

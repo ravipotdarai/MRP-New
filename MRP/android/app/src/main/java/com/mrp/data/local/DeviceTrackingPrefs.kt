@@ -27,6 +27,14 @@ object DeviceTrackingPrefs {
     private const val KEY_LAST_GEOFENCE_INSIDE = "last_geofence_inside"
     private const val KEY_LAST_GEOFENCE_ID = "last_geofence_id"
     private const val KEY_LAST_SYNC_MS = "last_drive_sync_ms"
+    private const val KEY_LAST_ACTIVITY = "last_activity_type"
+    private const val KEY_LAST_ACTIVITY_ELAPSED = "last_activity_elapsed_ms"
+    private const val KEY_SCREEN_INTERACTIVE = "screen_interactive"
+    private const val KEY_SCREEN_SET = "screen_interactive_set"
+    private const val KEY_LAST_APPLIED_IDLE = "last_applied_idle"
+    private const val KEY_HB_FENCE = "heartbeat_last_fence"
+    private const val KEY_HB_LAT = "heartbeat_last_lat"
+    private const val KEY_HB_LNG = "heartbeat_last_lng"
 
     /** Non-emergency Drive cadence floor (minutes). Emergency interval stays ≥1. */
     const val MIN_SYNC_FREQUENCY_MINUTES = 10
@@ -149,6 +157,61 @@ object DeviceTrackingPrefs {
 
     fun lastGeofenceId(context: Context): String? =
         p(context).getString(KEY_LAST_GEOFENCE_ID, null)
+
+    fun lastActivityType(context: Context): String =
+        p(context).getString(KEY_LAST_ACTIVITY, "UNKNOWN") ?: "UNKNOWN"
+
+    fun lastActivityElapsedMs(context: Context): Long =
+        p(context).getLong(KEY_LAST_ACTIVITY_ELAPSED, 0L)
+
+    fun setLastActivity(context: Context, type: String) {
+        p(context).edit()
+            .putString(KEY_LAST_ACTIVITY, type)
+            .putLong(KEY_LAST_ACTIVITY_ELAPSED, android.os.SystemClock.elapsedRealtime())
+            .apply()
+    }
+
+    fun screenInteractive(context: Context): Boolean? {
+        val prefs = p(context)
+        if (!prefs.contains(KEY_SCREEN_SET)) return null
+        return prefs.getBoolean(KEY_SCREEN_INTERACTIVE, true)
+    }
+
+    fun setScreenInteractive(context: Context, on: Boolean) {
+        p(context).edit()
+            .putBoolean(KEY_SCREEN_SET, true)
+            .putBoolean(KEY_SCREEN_INTERACTIVE, on)
+            .apply()
+    }
+
+    fun lastAppliedIdle(context: Context): Boolean? {
+        val prefs = p(context)
+        if (!prefs.contains(KEY_LAST_APPLIED_IDLE)) return null
+        return prefs.getBoolean(KEY_LAST_APPLIED_IDLE, false)
+    }
+
+    fun setLastAppliedIdle(context: Context, idle: Boolean) {
+        p(context).edit().putBoolean(KEY_LAST_APPLIED_IDLE, idle).apply()
+    }
+
+    fun heartbeatUnchanged(context: Context, fenceId: String?, lat: Double, lng: Double): Boolean {
+        val prefs = p(context)
+        if (!prefs.contains(KEY_HB_LAT)) return false
+        val prevFence = prefs.getString(KEY_HB_FENCE, null)
+        val dLat = prefs.getFloat(KEY_HB_LAT, 0f).toDouble()
+        val dLng = prefs.getFloat(KEY_HB_LNG, 0f).toDouble()
+        val sameFence = (prevFence ?: "") == (fenceId ?: "")
+        val samePoint = kotlin.math.abs(dLat - lat) < 1e-4 && kotlin.math.abs(dLng - lng) < 1e-4
+        return sameFence && samePoint
+    }
+
+    fun markHeartbeatLocation(context: Context, fenceId: String?, lat: Double, lng: Double) {
+        p(context).edit()
+            .putString(KEY_HB_FENCE, fenceId)
+            .putFloat(KEY_HB_LAT, lat.toFloat())
+            .putFloat(KEY_HB_LNG, lng.toFloat())
+            .apply()
+    }
 
     fun rememberGeofence(context: Context, inside: Boolean, fenceId: String?) {
         p(context).edit()

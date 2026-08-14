@@ -109,7 +109,9 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
             geoStrategy = stamp.strategy
         )
 
-        if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
+        if (DeviceTrackingPrefs.syncGeofenceChanges(context) &&
+            !DeviceTrackingPrefs.isEventSyncEnabled(context)
+        ) {
             EventSyncPublisher.onGeofenceChanged(
                 context,
                 stamp.insideFence,

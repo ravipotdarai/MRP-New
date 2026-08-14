@@ -66,8 +66,6 @@ object DevicePresenceTracker {
             )
         }
         scheduleEmergency(context)
-        DriveLocationHeartbeat.start(context)
-        GpsTrailIdleTicker.start(context)
         Log.i(TAG, "presence ready (event-driven, no continuous location)")
     }
 
@@ -82,8 +80,6 @@ object DevicePresenceTracker {
     fun stop(context: Context) {
         running.set(false)
         cancelEmergency()
-        DriveLocationHeartbeat.stop()
-        GpsTrailIdleTicker.stop()
     }
 
     fun restart(context: Context) {
@@ -301,7 +297,9 @@ object DevicePresenceTracker {
             badgeFenceId = badgeFenceId,
             badgeZoneName = badgeZoneName
         )
-        if (DeviceTrackingPrefs.syncGeofenceChanges(context)) {
+        if (DeviceTrackingPrefs.syncGeofenceChanges(context) &&
+            !DeviceTrackingPrefs.isEventSyncEnabled(context)
+        ) {
             EventSyncPublisher.onGeofenceChanged(context, badgeInside, badgeFenceId)
         }
     }

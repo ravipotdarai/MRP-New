@@ -9,26 +9,27 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Once per minute: stamp last trusted location into [GpsTrailWriter] without waking GPS.
- * Keeps idle / same-place breadcrumbs so day packs are never empty when the phone is on.
- *
- * First tick is delayed so cold-start (DB migrate + service + RN) is not contended.
+ * Idle-only trail breadcrumb (no GPS). Active stamps come from events/heartbeat.
  */
 object GpsTrailIdleTicker {
 
     private const val TAG = "GpsTrailIdleTicker"
-    /** Avoid racing SQLite upgrade / service onCreate on first minute after boot. */
     private const val FIRST_DELAY_MS = 90_000L
 
     private val running = AtomicBoolean(false)
     private var handler: Handler? = null
     private var runnable: Runnable? = null
+    private var intervalMs = DevicePowerMode.TRAIL_IDLE_MS
     private val worker = Executors.newSingleThreadExecutor { r ->
         Thread(r, "GpsTrailIdleTicker").apply { isDaemon = true }
     }
 
-    fun start(context: Context) {
+    fun start(context: Context, interval: Long = DevicePowerMode.TRAIL_IDLE_MS) {
         val app = context.applicationContext
+        if (running.get()) {
+            stop()
+        }
+        intervalMs = interval
         if (!running.compareAndSet(false, true)) return
         val h = Handler(Looper.getMainLooper())
         handler = h
@@ -37,9 +38,10 @@ object GpsTrailIdleTicker {
                 if (!running.get()) return
                 worker.execute {
                     try {
-                        if (DeviceTrackingPrefs.isEventSyncEnabled(app) ||
-                            DeviceTrackingPrefs.isEmergencyTracking(app) ||
-                            DeviceTrackingPrefs.isBackgroundTracking(app)
+                        if (DevicePowerMode.isIdle(app) &&
+                            (DeviceTrackingPrefs.isEventSyncEnabled(app) ||
+                                DeviceTrackingPrefs.isEmergencyTracking(app) ||
+                                DeviceTrackingPrefs.isBackgroundTracking(app))
                         ) {
                             GpsTrailWriter.enqueueStamp(app, GpsTrailWriter.StampReason.IDLE_TICK)
                         }
@@ -47,16 +49,12 @@ object GpsTrailIdleTicker {
                         Log.w(TAG, "tick", e)
                     }
                 }
-                h.postDelayed(this, GpsTrailWriter.IDLE_TICK_MS)
+                h.postDelayed(this, intervalMs)
             }
         }
         runnable = r
         h.postDelayed(r, FIRST_DELAY_MS)
-        Log.i(
-            TAG,
-            "Idle trail stamp every ${GpsTrailWriter.IDLE_TICK_MS / 1000}s " +
-                "(first after ${FIRST_DELAY_MS / 1000}s)",
-        )
+        Log.i(TAG, "Idle trail stamp every ${intervalMs / 1000}s")
     }
 
     fun stop() {

@@ -1199,6 +1199,7 @@ class MrpNativeModule(private val reactContext: ReactApplicationContext) : React
                 putBoolean("batteryExempt", status.batteryExempt)
                 putBoolean("accessibility", status.accessibility)
                 putBoolean("usageStats", status.usageStats)
+                putBoolean("activityRecognition", status.activityRecognition)
                 putBoolean("coreComplete", status.coreComplete)
                 putString("manufacturer", status.manufacturer)
                 val missing = Arguments.createArray()

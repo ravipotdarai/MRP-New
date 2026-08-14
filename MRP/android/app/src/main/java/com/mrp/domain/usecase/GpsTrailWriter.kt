@@ -33,7 +33,7 @@ object GpsTrailWriter {
     /** Soft gap between event/heartbeat/idle stamps (same-place OK). */
     private const val STAMP_MIN_INTERVAL_MS = 45_000L
     /** Idle ticker can stamp once per minute. */
-    const val IDLE_TICK_MS = 60_000L
+    const val IDLE_TICK_MS = DevicePowerMode.TRAIL_IDLE_MS
 
     enum class StampReason {
         EVENT,

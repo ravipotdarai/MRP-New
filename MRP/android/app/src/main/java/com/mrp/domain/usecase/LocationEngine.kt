@@ -128,9 +128,19 @@ object LocationEngine {
                 is Demand.Event -> "event:${demand.eventType}"
             }
             Log.i(TAG_BATTERY, "LocationEngine wake GPS demand=$timeoutNote")
-            resolved = LocationResolver.resolveSync(app, severity, bypassCache = true)
+            val idle = DevicePowerMode.isIdle(app)
+            val highAcc = DeviceTrackingPrefs.isHighAccuracy(app)
+            val highSev = demand is Demand.Event &&
+                LocationWakePolicy.isHighSeverity(demand.eventType)
+            val bypassCache = !idle && (highAcc || highSev)
+            resolved = LocationResolver.resolveSync(
+                app,
+                severity,
+                bypassCache = bypassCache,
+                highAccuracy = highAcc || highSev,
+            )
             lastAnyGpsElapsed.set(SystemClock.elapsedRealtime())
-            if (demand is Demand.Event && isLockUnlock(demand.eventType)) {
+            if (demand is Demand.Event && LocationWakePolicy.isLockUnlock(demand.eventType)) {
                 lastLockGpsElapsed.set(SystemClock.elapsedRealtime())
             }
             strategy = "gps:$timeoutNote"
@@ -253,34 +263,28 @@ object LocationEngine {
         demand: Demand,
         previous: TrustedSnapshotStore.Snapshot?
     ): Boolean {
-        val trustedFresh = previous != null &&
-            previous.quality == FixQuality.TRUSTED.name &&
-            previous.ageWallMs() <= T_REUSE_MS
-
-        return when (demand) {
-            is Demand.HomeRefresh -> true
-            is Demand.HomePeek -> false
-            is Demand.EmergencyTick -> true
-            is Demand.DriveHeartbeat -> {
-                previous == null ||
-                    previous.quality != FixQuality.TRUSTED.name ||
-                    previous.ageWallMs() > T_DRIVE_STALE_MS
-            }
-            is Demand.GeofenceOs -> !trustedFresh
-            is Demand.Event -> {
-                val t = demand.eventType.uppercase()
-                when {
-                    isHighSeverity(t) -> true
-                    isLockUnlock(t) -> {
-                        if (trustedFresh) return false
-                        val now = SystemClock.elapsedRealtime()
-                        val last = lastLockGpsElapsed.get()
-                        last <= 0L || (now - last) >= LOCK_GPS_COALESCE_MS
-                    }
-                    else -> !trustedFresh
-                }
-            }
+        val hasTrusted = previous != null && previous.quality == FixQuality.TRUSTED.name
+        val age = previous?.ageWallMs() ?: Long.MAX_VALUE
+        val now = SystemClock.elapsedRealtime()
+        val last = lastLockGpsElapsed.get()
+        val lockOk = last <= 0L || (now - last) >= LOCK_GPS_COALESCE_MS
+        val kind = when (demand) {
+            is Demand.HomeRefresh -> LocationWakePolicy.KIND_HOME_REFRESH
+            is Demand.HomePeek -> LocationWakePolicy.KIND_HOME_PEEK
+            is Demand.EmergencyTick -> LocationWakePolicy.KIND_EMERGENCY
+            is Demand.DriveHeartbeat -> LocationWakePolicy.KIND_DRIVE
+            is Demand.GeofenceOs -> LocationWakePolicy.KIND_GEOFENCE
+            is Demand.Event -> LocationWakePolicy.KIND_EVENT
         }
+        val eventType = (demand as? Demand.Event)?.eventType
+        return LocationWakePolicy.shouldWakeGps(
+            idle = DevicePowerMode.isIdle(context),
+            demandKind = kind,
+            eventType = eventType,
+            hasTrusted = hasTrusted,
+            snapshotAgeMs = age,
+            lockGpsCoalesceOk = lockOk,
+        )
     }
 
     private fun classify(loc: Location?, tier: String?): FixQuality {
@@ -293,11 +297,7 @@ object LocationEngine {
             return FixQuality.PROVISIONAL
         }
         val t = (tier ?: loc.provider ?: "").lowercase()
-        // After bypassCache resolve, wifi/cell that somehow report ≤50m still provisional
-        // unless tier is gps (fused high-accuracy path finishes as gps).
-        if (t.contains("wifi") || t.contains("cell") || t.contains("network") ||
-            t == "last_known" || t == "cache"
-        ) {
+        if (t == "last_known" || t == "cache") {
             return FixQuality.PROVISIONAL
         }
         return FixQuality.TRUSTED
@@ -405,19 +405,5 @@ object LocationEngine {
             .put("quality", snap.quality)
             .put("tier", snap.tier)
         LiveLocationStore.save(context, payload)
-    }
-
-    private fun isLockUnlock(eventType: String): Boolean {
-        val t = eventType.uppercase()
-        return t == "SCREEN_LOCK" || t == "SCREEN_UNLOCK"
-    }
-
-    private fun isHighSeverity(eventType: String): Boolean {
-        return when (eventType.uppercase()) {
-            "WRONG_PASSWORD", "WRONG_BIOMETRIC", "WRONG_UNLOCK_ATTEMPT", "UNLOCK_FAILED",
-            "USB_CONNECTED", "USB_DISCONNECTED", "FACTORY_RESET",
-            "SIM_REMOVED", "SIM_INSERTED", "SIM_CHANGE" -> true
-            else -> false
-        }
     }
 }

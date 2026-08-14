@@ -172,7 +172,8 @@ object LocationResolver {
     fun resolveSync(
         context: Context,
         severity: Severity,
-        bypassCache: Boolean = false
+        bypassCache: Boolean = false,
+        highAccuracy: Boolean = true
     ): ResolvedLocation? {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.e(
@@ -288,8 +289,17 @@ object LocationResolver {
                 Severity.INFORMATIONAL -> 0L
             }
             if (gpsTimeout > 0) {
-                val gpsLoc = requestFused(context, Priority.PRIORITY_HIGH_ACCURACY, gpsTimeout)
-                    ?: requestGpsProvider(context, gpsTimeout.coerceAtMost(8_000L))
+                val gpsPriority = if (highAccuracy) {
+                    Priority.PRIORITY_HIGH_ACCURACY
+                } else {
+                    Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                }
+                val gpsLoc = requestFused(context, gpsPriority, gpsTimeout)
+                    ?: if (highAccuracy) {
+                        requestGpsProvider(context, gpsTimeout.coerceAtMost(8_000L))
+                    } else {
+                        null
+                    }
                 if (gpsLoc != null) {
                     return finish(context, gpsLoc, "gps", start, severity)
                 }

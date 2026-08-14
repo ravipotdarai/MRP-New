@@ -45,7 +45,7 @@ const STEPS: {id: StepId; label: string; why: string}[] = [
   {
     id: 'runtime',
     label: 'Camera, Location, Notifications & Nearby devices',
-    why: 'Capture intruder selfies, log GPS, keep monitoring alive, and detect Bluetooth connect/disconnect.',
+    why: 'Capture intruder selfies, log GPS, detect still vs walking, keep monitoring alive, and detect Bluetooth connect/disconnect.',
   },
   {
     id: 'overlay',
@@ -154,6 +154,12 @@ export function PermissionSetupWizard({
             PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
             PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
           ];
+          if (Platform.Version >= 29) {
+            const rec =
+              PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION ??
+              'android.permission.ACTIVITY_RECOGNITION';
+            perms.push(rec);
+          }
           if (Platform.Version >= 33) {
             perms.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
           }

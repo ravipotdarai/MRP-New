@@ -44,6 +44,8 @@ export function PermissionsScreen() {
   const [bluetoothPermission, setBluetoothPermission] = useState<boolean | null>(null);
   const [backgroundLocationPermission, setBackgroundLocationPermission] =
     useState<boolean | null>(null);
+  const [activityRecognitionPermission, setActivityRecognitionPermission] =
+    useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -138,10 +140,23 @@ export function PermissionsScreen() {
         }
       }
 
+      let activityOk = Platform.OS !== 'android' || Platform.Version < 29;
+      if (Platform.OS === 'android' && Platform.Version >= 29) {
+        try {
+          const rec =
+            PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION ??
+            'android.permission.ACTIVITY_RECOGNITION';
+          activityOk = await PermissionsAndroid.check(rec as any);
+        } catch {
+          activityOk = false;
+        }
+      }
+
       console.log('[PermissionsScreen] Permission results:', {
         camera: cam,
         location: loc,
         backgroundLocation: bgLoc,
+        activityRecognition: activityOk,
         overlay: overlay,
         admin: admin,
         usageStats: usageStats,
@@ -155,6 +170,7 @@ export function PermissionsScreen() {
       setCameraPermission(cam);
       setLocationPermission(loc);
       setBackgroundLocationPermission(bgLoc);
+      setActivityRecognitionPermission(activityOk);
       setOverlayPermission(overlay);
       setDeviceAdminPermission(admin);
       setUsageStatsPermission(usageStats);
@@ -438,6 +454,32 @@ export function PermissionsScreen() {
     }
   };
 
+  const requestActivityRecognition = async () => {
+    if (Platform.OS !== 'android') return;
+    if (Platform.Version < 29) {
+      setActivityRecognitionPermission(true);
+      return;
+    }
+    try {
+      const rec =
+        PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION ??
+        'android.permission.ACTIVITY_RECOGNITION';
+      const granted = await PermissionsAndroid.request(rec as any, {
+        title: 'Physical activity',
+        message:
+          'Used to detect when the phone is still so location can idle and save battery.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      });
+      const ok = granted === PermissionsAndroid.RESULTS.GRANTED;
+      setActivityRecognitionPermission(ok);
+      await checkPermissions();
+    } catch (e) {
+      console.error('[PermissionsScreen] Activity recognition error:', e);
+      await openAppDetails();
+    }
+  };
+
   const openAppBatteryUsage = async () => {
     try {
       if (!mrpmModule) {
@@ -587,6 +629,22 @@ export function PermissionsScreen() {
       ],
       onOpen: requestBackgroundLocation,
       buttonLabel: 'Allow all the time',
+    },
+    {
+      name: 'Physical activity',
+      icon: '🚶',
+      description:
+        'Detects still vs walking so MRP can idle GPS when the phone is locked and not moving. If denied, location stays on the current (active) path.',
+      granted:
+        Platform.OS !== 'android' ||
+        Platform.Version < 29 ||
+        activityRecognitionPermission === true,
+      grantSteps: [
+        'Tap Allow physical activity below',
+        'Path: Settings → Apps → MRP → Permissions → Physical activity → Allow',
+      ],
+      onOpen: requestActivityRecognition,
+      buttonLabel: 'Allow physical activity',
     },
     {
       name: 'Notifications',

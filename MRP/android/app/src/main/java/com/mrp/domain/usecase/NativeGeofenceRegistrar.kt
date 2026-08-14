@@ -46,7 +46,7 @@ object NativeGeofenceRegistrar {
                     .setTransitionTypes(
                         Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT
                     )
-                    .setNotificationResponsiveness(5_000)
+                    .setNotificationResponsiveness(DevicePowerMode.geofenceResponsivenessMs(app))
                     .build()
             }
             val request = GeofencingRequest.Builder()
@@ -63,7 +63,13 @@ object NativeGeofenceRegistrar {
                     return@addOnCompleteListener
                 }
                 client.addGeofences(request, pi)
-                    .addOnSuccessListener { Log.i(TAG, "registered ${geofences.size} geofences") }
+                    .addOnSuccessListener {
+                        Log.i(
+                            TAG,
+                            "registered ${geofences.size} geofences delayMs=" +
+                                DevicePowerMode.geofenceResponsivenessMs(app)
+                        )
+                    }
                     .addOnFailureListener { e -> Log.e(TAG, "addGeofences failed", e) }
             } catch (e: SecurityException) {
                 Log.e(TAG, "addGeofences security", e)

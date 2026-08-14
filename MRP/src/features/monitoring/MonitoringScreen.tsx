@@ -98,10 +98,17 @@ async function requestRuntimePermissions(
 }
 
 function locationPermissions(): Permission[] {
-  return [
+  const perms: Permission[] = [
     PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
     PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
   ];
+  if (Platform.Version >= 29) {
+    const rec =
+      PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION ??
+      ('android.permission.ACTIVITY_RECOGNITION' as Permission);
+    perms.push(rec as Permission);
+  }
+  return perms;
 }
 
 function bluetoothConnectPermissions(): Permission[] {

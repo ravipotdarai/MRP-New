@@ -26,6 +26,7 @@ object PermissionSetupStatus {
         val batteryExempt: Boolean,
         val accessibility: Boolean,
         val usageStats: Boolean,
+        val activityRecognition: Boolean,
         val manufacturer: String
     ) {
         val coreComplete: Boolean
@@ -62,6 +63,12 @@ object PermissionSetupStatus {
         val battery = OemBatteryMitigation.isIgnoringBatteryOptimizations(context)
         val accessibility = isAccessibilityEnabled(context)
         val usageStats = hasUsageStats(context)
+        val activityRecognition = if (Build.VERSION.SDK_INT < 29) {
+            true
+        } else {
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
+                PackageManager.PERMISSION_GRANTED
+        }
         return Status(
             camera = camera,
             location = location,
@@ -72,6 +79,7 @@ object PermissionSetupStatus {
             batteryExempt = battery,
             accessibility = accessibility,
             usageStats = usageStats,
+            activityRecognition = activityRecognition,
             manufacturer = Build.MANUFACTURER ?: "unknown"
         )
     }

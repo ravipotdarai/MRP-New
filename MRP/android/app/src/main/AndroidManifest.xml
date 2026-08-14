@@ -28,6 +28,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Battery Optimization Bypass -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -242,6 +243,14 @@
         android:exported="false">
         <intent-filter>
           <action android:name="com.mrp.GEOFENCE_TRANSITION" />
+        </intent-filter>
+      </receiver>
+
+      <receiver
+        android:name=".presentation.receiver.ActivityTransitionReceiver"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.mrp.ACTIVITY_TRANSITION" />
         </intent-filter>
       </receiver>
 

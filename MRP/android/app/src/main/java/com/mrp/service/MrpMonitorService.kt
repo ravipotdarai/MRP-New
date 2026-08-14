@@ -36,7 +36,10 @@ import com.mrp.domain.usecase.TimelineEventLogger
 import com.mrp.domain.usecase.AppUsageTracker
 import com.mrp.domain.usecase.PackageChangeHandler
 import com.mrp.domain.usecase.BreachPostureScanner
+import com.mrp.domain.usecase.DevicePowerMode
+import com.mrp.domain.usecase.DevicePresenceTracker
 import com.mrp.domain.usecase.DriveVaultSync
+import com.mrp.domain.usecase.NativeGeofenceRegistrar
 import com.mrp.domain.usecase.EmergencySyncCoordinator
 import com.mrp.domain.usecase.SelfieVaultPackager
 import java.util.Calendar
@@ -359,22 +362,17 @@ class MrpMonitorService : Service() {
             checkBatteryOptimization()
             // Battery-safe live presence for web (only when movement tracking is on)
             try {
-                com.mrp.domain.usecase.DevicePresenceTracker.startIfBackgroundAllowed(this@MrpMonitorService)
+                DevicePresenceTracker.startIfBackgroundAllowed(this@MrpMonitorService)
             } catch (e: Exception) {
                 Log.w(TAG, "DevicePresenceTracker start skipped", e)
             }
             try {
-                com.mrp.domain.usecase.DriveLocationHeartbeat.start(this@MrpMonitorService)
+                DevicePowerMode.start(this@MrpMonitorService)
             } catch (e: Exception) {
-                Log.w(TAG, "DriveLocationHeartbeat start skipped", e)
+                Log.w(TAG, "DevicePowerMode start skipped", e)
             }
             try {
-                com.mrp.domain.usecase.GpsTrailIdleTicker.start(this@MrpMonitorService)
-            } catch (e: Exception) {
-                Log.w(TAG, "GpsTrailIdleTicker start skipped", e)
-            }
-            try {
-                com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(this@MrpMonitorService)
+                NativeGeofenceRegistrar.sync(this@MrpMonitorService)
             } catch (e: Exception) {
                 Log.w(TAG, "NativeGeofenceRegistrar sync skipped", e)
             }
@@ -387,6 +385,11 @@ class MrpMonitorService : Service() {
         val notification = createNotification()
         startForegroundSafe(notification)
         isRunning = true
+        try {
+            DevicePowerMode.start(this)
+        } catch (e: Exception) {
+            Log.w(TAG, "DevicePowerMode start skipped", e)
+        }
 
         if (intent != null) {
             when (intent.action) {
@@ -654,11 +657,13 @@ class MrpMonitorService : Service() {
     // Connectivity events via their respective receivers
 
     private fun handleScreenOff() {
+        DevicePowerMode.onScreenChanged(this, false)
         if (!isMonitoringEnabled()) return
         eventLogger.logEvent(EventTypes.SCREEN_LOCK, StatusValues.LOCKED)
     }
 
     private fun handleUserUnlocked() {
+        DevicePowerMode.onScreenChanged(this, true)
         if (!isMonitoringEnabled()) return
         eventLogger.logEvent(EventTypes.SCREEN_UNLOCK, StatusValues.UNLOCKED)
     }
