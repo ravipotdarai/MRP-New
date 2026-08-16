@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import MrpAuth, {AuthState, DeviceInfo} from '../../native/MrpAuth.types';
+import {isAdminEmail} from '../../config/adminEmails';
 
 type AuthContextValue = {
   auth: AuthState;
@@ -18,6 +19,7 @@ type AuthContextValue = {
   ensureFirebaseAuth: () => Promise<string>;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  isAdmin: boolean;
 };
 
 const defaultAuth: AuthState = {signedIn: false};
@@ -87,6 +89,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
   }, [refresh]);
 
   const firebaseReady = !!auth.firebaseUid;
+  const isAdmin = isAdminEmail(auth.email);
 
   const value = useMemo(
     () => ({
@@ -95,6 +98,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       loading,
       googleConfigured,
       firebaseReady,
+      isAdmin,
       refresh,
       ensureFirebaseAuth,
       signInWithGoogle,
@@ -106,6 +110,7 @@ export function AuthProvider({children}: {children: React.ReactNode}) {
       loading,
       googleConfigured,
       firebaseReady,
+      isAdmin,
       refresh,
       ensureFirebaseAuth,
       signInWithGoogle,

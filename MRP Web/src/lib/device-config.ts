@@ -17,6 +17,9 @@ export type DeviceConfig = {
   emergencyIntervalMinutes?: number;
   /** Optional identity hint for admin search (email only — never vault). */
   accountEmail?: string;
+  displayName?: string;
+  phoneNumber?: string;
+  deviceMac?: string;
   updatedAtMs?: number;
   source?: string;
 };

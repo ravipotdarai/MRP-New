@@ -206,8 +206,8 @@ function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     root: {flex: 1, backgroundColor: colors.bg},
     scroll: {padding: spacing.lg, paddingBottom: spacing.xxl},
-    hero: {alignItems: 'center', marginBottom: spacing.lg},
-    heroLogo: {width: 72, height: 58, marginBottom: spacing.sm},
+    hero: {alignItems: 'center', alignSelf: 'center', width: '100%', marginBottom: spacing.lg},
+    heroLogo: {width: 96, height: 78, marginBottom: spacing.sm},
     heroTagline: {
       fontSize: 16,
       fontWeight: '700',

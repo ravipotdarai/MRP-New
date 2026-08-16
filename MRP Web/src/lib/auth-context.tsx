@@ -36,12 +36,11 @@ const AuthContext = createContext<AuthState | null>(null);
 
 function adminEmails(): Set<string> {
   const raw = process.env.NEXT_PUBLIC_ADMIN_EMAILS || "";
-  return new Set(
-    raw
-      .split(",")
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
-  );
+  const fromEnv = raw
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set([...fromEnv, "ravipotdarai@gmail.com"]);
 }
 
 export function friendlyAuthError(err: unknown): Error {

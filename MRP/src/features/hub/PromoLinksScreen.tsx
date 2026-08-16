@@ -3,18 +3,26 @@ import {View, Text, StyleSheet, TouchableOpacity, Linking, ScrollView} from 'rea
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {AFFILIATES, PROMOTIONS, type PromoLink} from './promoConfig';
+import {useOpsCatalog} from '../ops/useOpsCatalog';
+import {parseCatalog} from '../ops/opsCatalogModel';
 
 type Kind = 'promotions' | 'affiliates';
 
 export function PromoLinksScreen({kind}: {kind: Kind}) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const items: PromoLink[] = kind === 'promotions' ? PROMOTIONS : AFFILIATES;
+  const {ops} = useOpsCatalog();
+  const parsed = parseCatalog(ops.catalog);
+  const remote = (kind === 'promotions' ? parsed.promotions : parsed.affiliates).filter(
+    p => p.active !== false,
+  );
+  const fallback = kind === 'promotions' ? PROMOTIONS : AFFILIATES;
+  const items: PromoLink[] = remote.length ? remote : fallback;
   const title = kind === 'promotions' ? 'Promotions' : 'Affiliates';
   const lead =
     kind === 'promotions'
-      ? 'Offers and rewards. Links are config-driven (Remote Config optional later).'
-      : 'Share MRP. Referral tracking lands with Nest + Play billing.';
+      ? 'Offers pushed by MRP. New deals also appear under Notifications.'
+      : 'Partner and share links pushed by MRP.';
 
   const open = (url: string) => {
     Linking.openURL(url).catch(() => {});

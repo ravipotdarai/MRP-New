@@ -2,6 +2,7 @@ package com.mrp.data.local
 
 import android.content.Context
 import com.mrp.billing.EntitlementCache
+import com.mrp.ops.DeviceIdentity
 
 /**
  * Sync / tracking policy — mirrored to Firebase RTDB device_config/{uid} only.
@@ -265,7 +266,7 @@ object DeviceTrackingPrefs {
 
     /** Config-only map for Firebase RTDB (no location/event payloads). */
     fun toFirebaseConfigMap(context: Context): Map<String, Any> =
-        snapshot(context) + mapOf(
+        snapshot(context) + DeviceIdentity.hints(context) + mapOf(
             "updatedAtMs" to System.currentTimeMillis(),
             "source" to "device"
         )

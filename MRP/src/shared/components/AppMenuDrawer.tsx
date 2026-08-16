@@ -23,6 +23,7 @@ import Animated, {
 import {ColorPalette, spacing, radius} from '../theme';
 import {useTheme} from '../ThemeContext';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import {useAuth} from '../../services/auth/AuthContext';
 
 export type AppMenuTarget =
   | {screen: 'Home'}
@@ -43,6 +44,8 @@ export type AppMenuTarget =
         | 'affiliates'
         | 'policy'
         | 'about'
+        | 'admin'
+        | 'inbox'
         | 'digital-safety'
         | 'security-center';
       securityCenterTab?: 'ADVISOR' | 'ANALYZER' | 'FRAUD' | 'TOOLS';
@@ -125,6 +128,7 @@ const MENU: MenuRow[] = [
       {label: 'Drive Sync', target: {screen: 'Hub', section: 'drive-sync'}},
       {label: 'SIM Recovery', target: {screen: 'Hub', section: 'sim-recovery'}},
       {label: 'Subscriptions', target: {screen: 'Hub', section: 'subscriptions'}},
+      {label: 'Notifications', target: {screen: 'Hub', section: 'inbox'}},
       {label: 'Promotions', target: {screen: 'Hub', section: 'promotions'}},
       {label: 'Affiliates', target: {screen: 'Hub', section: 'affiliates'}},
       {label: 'Policy', target: {screen: 'Hub', section: 'policy'}},
@@ -237,8 +241,19 @@ function CollapsibleSection({
  */
 export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
   const {colors, themeId} = useTheme();
+  const {isAdmin} = useAuth();
   const isLight = themeId === 'light';
   const styles = useMemo(() => createStyles(colors, isLight), [colors, isLight]);
+  const menu = useMemo(() => {
+    return MENU.map(row => {
+      if (row.kind !== 'section' || row.label !== 'Hub') return row;
+      const children = [...row.children];
+      if (isAdmin) {
+        children.unshift({label: 'Admin', target: {screen: 'Hub', section: 'admin'}});
+      }
+      return {...row, children};
+    });
+  }, [isAdmin]);
   const backdrop = useSharedValue(0);
 
   useEffect(() => {
@@ -296,7 +311,7 @@ export function AppMenuDrawer({visible, onClose, onNavigate}: Props) {
               <ScrollView
                 contentContainerStyle={styles.list}
                 showsVerticalScrollIndicator={false}>
-                {MENU.map(row => {
+                {menu.map(row => {
                   if (row.kind === 'item') {
                     const delay = Math.min(stagger++, 8) * 40;
                     return (

@@ -57,6 +57,23 @@
         ".validate": "newData.hasChildren(['atMs', 'actorEmail', 'actorUid', 'action', 'targetUid']) && newData.child('atMs').isNumber() && !newData.hasChild('lat') && !newData.hasChild('lng') && !newData.hasChild('timeline') && !newData.hasChild('selfie') && !newData.hasChild('selfies')"
       }
     },
+    "mrp_ops": {
+      "catalog": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email == 'ravipotdarai@gmail.com'"
+      },
+      "broadcasts": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email == 'ravipotdarai@gmail.com'"
+      },
+      "grants": {
+        ".read": "auth != null && auth.token.email == 'ravipotdarai@gmail.com'",
+        "$uid": {
+          ".read": "auth != null && (auth.uid == $uid || auth.token.email == 'ravipotdarai@gmail.com')",
+          ".write": "auth != null && auth.token.email == 'ravipotdarai@gmail.com'"
+        }
+      }
+    },
     "device_live": {
       ".read": false,
       ".write": false

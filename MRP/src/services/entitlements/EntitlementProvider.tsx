@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react';
 import MrpBilling from '../../native/Billing.types';
+import MrpOps from '../../native/MrpOps.types';
 import {
   EntitlementSnapshot,
   ProductOffer,
@@ -82,6 +83,15 @@ export function EntitlementProvider({children}: {children: React.ReactNode}) {
       if (isHardcodedBillingMode()) {
         setOffers(catalogToProductOffers());
       }
+    }
+    try {
+      await MrpOps?.fetchOps?.();
+      if (MrpBilling) {
+        const snap = await MrpBilling.getEntitlementSnapshot();
+        setSnapshot(snap);
+      }
+    } catch {
+      // ops optional when signed out
     }
   }, []);
 

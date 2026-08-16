@@ -32,6 +32,7 @@ import {formatDigitalSafetyEventType} from '../digital-safety/formatDigitalSafet
 import {getTrackingConfig} from '../../native/DeviceTracking.types';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
 import {brandImages, brandCopy} from '../../assets/brand';
+import {useOpsCatalog} from '../ops/useOpsCatalog';
 
 const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
@@ -183,6 +184,8 @@ export function HomeScreen({
   onLogout?: () => void;
 }) {
   const {settings} = useSettings();
+  const {ops} = useOpsCatalog();
+  const inboxUnread = ops.unread > 0;
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [liveLocation, setLiveLocation] = useState<{
@@ -731,10 +734,10 @@ export function HomeScreen({
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerIconBtn}
-            onPress={() => goToSecurity('Timeline')}
-            accessibilityLabel="Activity alerts"
-            accessibilityHint="Opens security activity">
+            onPress={() => navigation?.navigate?.('Hub', {openSection: 'inbox'})}
+            accessibilityLabel="Notifications">
             <Text style={styles.headerIcon}>🔔</Text>
+            {inboxUnread ? <View style={styles.badgeDot} /> : null}
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarBtn} onPress={handleAvatarPress}>
             <Text style={styles.avatarText}>{USER_NAME[0]}</Text>
@@ -755,7 +758,18 @@ export function HomeScreen({
       <Animated.View key={bounceKey} entering={pageBounceEnter}>
       {/* Brand hero + greeting */}
       <View style={styles.brandHero}>
-        <Image source={brandImages.logoMark} style={styles.brandLogo} resizeMode="contain" />
+        <TouchableOpacity
+          onPress={() =>
+            inboxUnread
+              ? navigation?.navigate?.('Hub', {openSection: 'inbox'})
+              : undefined
+          }
+          activeOpacity={inboxUnread ? 0.7 : 1}>
+          <View>
+            <Image source={brandImages.logoMark} style={styles.brandLogo} resizeMode="contain" />
+            {inboxUnread ? <View style={styles.logoBadge} /> : null}
+          </View>
+        </TouchableOpacity>
         <Text style={styles.brandName}>{brandCopy.name}</Text>
         <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
       </View>
@@ -1284,6 +1298,26 @@ function createHomeStyles(colors: ColorPalette) {
     borderWidth: 1.5,
     borderColor: colors.sky,
   },
+  badgeDot: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.red,
+  },
+  logoBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 8,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.red,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
   headerMenuIcon: {
     fontSize: 22,
     fontWeight: '800',
@@ -1306,15 +1340,18 @@ function createHomeStyles(colors: ColorPalette) {
   avatarText: {fontSize: 18, fontWeight: '800', color: '#fff'},
   brandHero: {
     alignItems: 'center',
+    alignSelf: 'center',
+    width: '100%',
     marginBottom: spacing.lg,
-    paddingTop: spacing.xs,
+    paddingTop: spacing.sm,
   },
-  brandLogo: {width: 88, height: 72, marginBottom: spacing.xs},
+  brandLogo: {width: 128, height: 104, marginBottom: spacing.xs},
   brandName: {
     fontSize: 28,
     fontWeight: '900',
     color: colors.textPrimary,
     letterSpacing: 1,
+    textAlign: 'center',
   },
   brandTagline: {
     fontSize: 14,

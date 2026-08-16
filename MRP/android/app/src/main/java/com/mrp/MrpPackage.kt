@@ -13,6 +13,7 @@ class MrpPackage : ReactPackage {
             PinLockModule(reactContext),
             MrpAuthModule(reactContext),
             BillingModule(reactContext),
+            MrpOpsModule(reactContext),
             CircleLiveModule(reactContext),
             DriveVaultModule(reactContext),
             GeofenceModule(reactContext),

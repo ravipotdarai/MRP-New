@@ -188,9 +188,9 @@ function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     container: {flex: 1, backgroundColor: colors.bg, padding: spacing.lg},
     scroll: {paddingBottom: spacing.xxl},
-    brandHeader: {alignItems: 'center', marginBottom: spacing.lg, marginTop: spacing.md},
-    logo: {width: 100, height: 80, marginBottom: spacing.xs},
-    logoSmall: {width: 72, height: 58, marginBottom: spacing.sm},
+    brandHeader: {alignItems: 'center', alignSelf: 'center', width: '100%', marginBottom: spacing.lg, marginTop: spacing.md},
+    logo: {width: 140, height: 112, marginBottom: spacing.xs},
+    logoSmall: {width: 96, height: 78, marginBottom: spacing.sm},
     brandName: {
       fontSize: 28,
       fontWeight: '900',

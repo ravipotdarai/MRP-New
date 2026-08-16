@@ -9,12 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  Image,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {ColorPalette, spacing, brandColors} from '../shared/theme';
 import {useTheme} from '../shared/ThemeContext';
-import {brandImages, brandCopy} from '../assets/brand';
+import {brandCopy} from '../assets/brand';
+import {BrandLockup, BrandWave} from '../shared/components/BrandLockup';
 import {pageBounceEnter} from '../shared/animations/pageBounce';
 
 interface Props {
@@ -41,8 +41,6 @@ export function PinLockScreen({
   const [localError, setLocalError] = useState<string | null>(null);
   const pinRef = useRef<TextInput>(null);
 
-  // Do not auto-open the system keyboard on app launch (looks like a gray bottom popup).
-  // Keyboard appears only when the user taps the PIN field.
   useEffect(() => {
     Keyboard.dismiss();
     const t = setTimeout(() => {
@@ -72,14 +70,12 @@ export function PinLockScreen({
   };
 
   const handlePinChange = (text: string) => {
-    const numericText = text.replace(/[^0-9]/g, '');
-    setPin(numericText);
+    setPin(text.replace(/[^0-9]/g, ''));
     setLocalError(null);
   };
 
   const handleConfirmPinChange = (text: string) => {
-    const numericText = text.replace(/[^0-9]/g, '');
-    setConfirmPin(numericText);
+    setConfirmPin(text.replace(/[^0-9]/g, ''));
     setLocalError(null);
   };
 
@@ -88,17 +84,11 @@ export function PinLockScreen({
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Animated.View style={styles.content} entering={pageBounceEnter}>
-        <Image source={brandImages.logoMark} style={styles.logo} resizeMode="contain" />
-        <Text style={styles.brandName}>{brandCopy.name}</Text>
-        <Text style={styles.brandFull}>{brandCopy.fullName}</Text>
-        <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
+        <BrandLockup size="lock" light showPillars={false} />
 
-        <Text style={styles.title}>{isSetup ? 'Set Up PIN' : 'Enter PIN'}</Text>
-        <Text style={styles.subtitle}>
-          {isSetup
-            ? 'Create a PIN to protect your MRP app'
-            : 'Enter your PIN to access MRP'}
-        </Text>
+        {isSetup ? (
+          <Text style={styles.setupHint}>Create a 4–6 digit PIN</Text>
+        ) : null}
 
         <View style={styles.inputContainer}>
           <TextInput
@@ -106,33 +96,31 @@ export function PinLockScreen({
             style={styles.pinInput}
             value={pin}
             onChangeText={handlePinChange}
-            placeholder="Enter PIN"
-            placeholderTextColor={colors.textMuted}
+            placeholder={isSetup ? 'New PIN' : 'PIN'}
+            placeholderTextColor="#9AA0A6"
             keyboardType="number-pad"
             maxLength={6}
             secureTextEntry
             autoFocus={false}
-            showSoftInputOnFocus={true}
+            showSoftInputOnFocus
           />
 
-          {isSetup && (
+          {isSetup ? (
             <TextInput
               style={styles.pinInput}
               value={confirmPin}
               onChangeText={handleConfirmPinChange}
               placeholder="Confirm PIN"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor="#9AA0A6"
               keyboardType="number-pad"
               maxLength={6}
               secureTextEntry
               autoFocus={false}
             />
-          )}
+          ) : null}
         </View>
 
-        {(localError || error) && (
-          <Text style={styles.errorText}>{localError || error}</Text>
-        )}
+        {localError || error ? <Text style={styles.errorText}>{localError || error}</Text> : null}
 
         <TouchableOpacity
           style={[styles.button, isLoading && styles.buttonDisabled]}
@@ -151,9 +139,9 @@ export function PinLockScreen({
           </TouchableOpacity>
         ) : null}
 
-        <Text style={styles.pillars}>{brandCopy.pillars}</Text>
         <Text style={styles.driveFooter}>{brandCopy.driveFooter}</Text>
       </Animated.View>
+      <BrandWave />
     </KeyboardAvoidingView>
   );
 }
@@ -162,67 +150,37 @@ function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: colors.bg,
+      backgroundColor: brandColors.surface,
     },
     content: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      padding: 24,
+      paddingHorizontal: 24,
+      paddingBottom: 40,
     },
-    logo: {
-      width: 140,
-      height: 112,
-      marginBottom: spacing.sm,
-    },
-    brandName: {
-      fontSize: 36,
-      fontWeight: '900',
-      color: colors.textPrimary,
-      letterSpacing: 1,
-    },
-    brandFull: {
-      fontSize: 10,
-      fontWeight: '700',
-      color: colors.textSecondary,
-      letterSpacing: 1.4,
-      marginTop: 4,
-      textAlign: 'center',
-    },
-    brandTagline: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: brandColors.googleBlue,
-      marginTop: spacing.sm,
-      marginBottom: spacing.xl,
-      textAlign: 'center',
-    },
-    title: {
-      fontSize: 22,
-      fontWeight: '800',
-      color: colors.textPrimary,
-      marginBottom: 6,
-    },
-    subtitle: {
+    setupHint: {
       fontSize: 14,
-      color: colors.textSecondary,
-      marginBottom: spacing.xl,
+      color: '#5F6368',
+      marginTop: spacing.lg,
+      marginBottom: spacing.md,
       textAlign: 'center',
     },
     inputContainer: {
       width: '100%',
       alignItems: 'center',
+      marginTop: spacing.xl,
     },
     pinInput: {
       width: '80%',
       height: 56,
-      backgroundColor: colors.surface,
+      backgroundColor: '#fff',
       borderRadius: 12,
       borderWidth: 1,
-      borderColor: colors.borderSoft,
+      borderColor: '#E8EAED',
       paddingHorizontal: 16,
       fontSize: 24,
-      color: colors.textPrimary,
+      color: brandColors.onyx,
       textAlign: 'center',
       letterSpacing: 8,
       marginBottom: 16,
@@ -239,7 +197,7 @@ function createStyles(colors: ColorPalette) {
       borderRadius: 12,
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: 16,
+      marginTop: 8,
     },
     buttonDisabled: {
       opacity: 0.6,
@@ -251,16 +209,10 @@ function createStyles(colors: ColorPalette) {
     },
     forgotBtn: {marginTop: 24},
     forgotText: {color: brandColors.googleBlue, fontSize: 15, fontWeight: '700'},
-    pillars: {
-      marginTop: spacing.xxl,
-      fontSize: 13,
-      color: colors.textMuted,
-      fontWeight: '600',
-    },
     driveFooter: {
-      marginTop: 6,
+      marginTop: spacing.xxl,
       fontSize: 12,
-      color: colors.textMuted,
+      color: '#5F6368',
       fontWeight: '600',
     },
   });

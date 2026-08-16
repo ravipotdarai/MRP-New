@@ -49,7 +49,7 @@ Shipped as flag-off, stub, or Console/human work:
 - **Network Guardian DNS VPN** — lists/toggles on device; actual VPN filter paused
 - **Panic → Circle FCM** — Panic is SMS to recovery contacts only
 - **Nest device registry + live JWT mint** — local device id; cloud register / SA JWT optional
-- **Promotions / Affiliates tracking** — static links; Remote Config + referral Nest later
+- **Promotions / Affiliates** — admin-pushed via Firebase `mrp_ops` (Hub + web Admin). Referral tracking still later.
 - **Anti-clone / Play Integrity / R8 / SQLCipher** — after Play-signed AAB + schema freeze
 - **Crashlytics** — optional later
 - **Web** — Circle/Subscriptions UI, Maps Platform, PDF (CSV exists), geofence **edit**, WebSocket live GPS
@@ -97,3 +97,4 @@ Removed unused UI only. Native monitoring, photos, timeline, Circle (flagged), S
 | Date | Change |
 |---|---|
 | 2026-08-16 | Created this file; removed unused Monitoring/EventTimeline duplicates; SMS Settings hides auto-scan card while flag is off |
+| 2026-08-16 | Admin ops panel (users, grants, catalog, inbox) on app + web for allowlisted Firebase admin |

@@ -14,6 +14,8 @@ import {useTheme} from '../../shared/ThemeContext';
 import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
 import {getSubscriptionsCatalog} from './subscriptionCatalog';
 import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import {useOpsCatalog} from '../ops/useOpsCatalog';
+import {parseCatalog} from '../ops/opsCatalogModel';
 
 type Props = {onBack?: () => void};
 
@@ -36,6 +38,10 @@ export function SubscriptionScreen({}: Props) {
   const [busy, setBusy] = useState(false);
   const [enterpriseKey, setEnterpriseKey] = useState('');
   const catalog = useMemo(() => getSubscriptionsCatalog(), []);
+  const {ops} = useOpsCatalog();
+  const catalogLists = parseCatalog(ops.catalog);
+  const coupons = catalogLists.coupons.filter(c => c.active !== false);
+  const discounts = catalogLists.discounts.filter(d => d.active !== false);
 
   const run = async (fn: () => Promise<unknown>, okMsg?: string) => {
     setBusy(true);
@@ -109,6 +115,28 @@ export function SubscriptionScreen({}: Props) {
         {' · '}app flag {CIRCLE_ENABLED ? 'ON' : 'OFF'}
       </Text>
 
+      {coupons.length ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Coupon codes</Text>
+          {coupons.map(c => (
+            <Text key={c.id} style={styles.cardBody}>
+              {c.code}: {c.label || `${c.percent}% off`}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+      {discounts.length ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Discounts</Text>
+          {discounts.map(d => (
+            <Text key={d.id} style={styles.cardBody}>
+              {d.title}: {d.label || `${d.percent}% off`}
+              {d.appliesTo ? ` · ${d.appliesTo}` : ''}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       {catalog.products.map(product => {
         const isCurrent = tier === product.tier;
         return (
@@ -121,7 +149,14 @@ export function SubscriptionScreen({}: Props) {
             </Text>
             <Text style={styles.cardBody}>{product.description}</Text>
             <Text style={styles.productId}>{product.productId}</Text>
-            {product.basePlans.map(bp => (
+            {product.basePlans.map(bp => {
+              const overlay = catalogLists.prices.find(p => p.productId === product.productId);
+              const price =
+                bp.basePlanId === 'yearly'
+                  ? overlay?.yearly || bp.formattedPrice
+                  : overlay?.monthly || bp.formattedPrice;
+              const discount = overlay?.discountNote;
+              return (
               <TouchableOpacity
                 key={`${product.productId}-${bp.basePlanId}`}
                 style={[styles.primaryBtn, isCurrent && styles.primaryBtnMuted]}
@@ -131,11 +166,13 @@ export function SubscriptionScreen({}: Props) {
                 }>
                 <Text style={styles.primaryBtnText}>
                   {isCurrent && product.productId !== 'free'
-                    ? `Selected · ${bp.label} ${bp.formattedPrice}`
-                    : `${bp.label} · ${bp.formattedPrice}`}
+                    ? `Selected · ${bp.label} ${price}`
+                    : `${bp.label} · ${price}`}
+                  {discount ? ` · ${discount}` : ''}
                 </Text>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </View>
         );
       })}

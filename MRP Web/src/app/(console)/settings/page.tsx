@@ -49,10 +49,17 @@ export default function SettingsPage() {
               {
                 ...cfg,
                 accountEmail: user.email || undefined,
+                displayName: user.displayName || undefined,
+                phoneNumber: user.phoneNumber || undefined,
               },
               "web",
             );
-            setInitial({ ...cfg, accountEmail: user.email || undefined });
+            setInitial({
+              ...cfg,
+              accountEmail: user.email || undefined,
+              displayName: user.displayName || undefined,
+              phoneNumber: user.phoneNumber || undefined,
+            });
           }}
         />
       </div>

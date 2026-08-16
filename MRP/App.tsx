@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {StatusBar, View, ActivityIndicator, StyleSheet, Image, Text} from 'react-native';
+import {StatusBar, View, ActivityIndicator, StyleSheet, Text} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {PinLockScreen} from './src/screens/PinLockScreen';
@@ -15,8 +15,8 @@ import {AuthProvider} from './src/services/auth/AuthContext';
 import {EntitlementProvider} from './src/services/entitlements/EntitlementProvider';
 import PinLock from './src/native/PinLock.types';
 import {ThemeProvider, useTheme} from './src/shared/ThemeContext';
-import {brandImages, brandCopy} from './src/assets/brand';
 import {brandColors} from './src/shared/theme';
+import {BrandLockup, BrandWave} from './src/shared/components/BrandLockup';
 import {
   pullRemoteTrackingConfig,
   startDevicePresence,
@@ -236,15 +236,11 @@ function AppContent(): React.JSX.Element {
   // Loading state while checking PIN
   if (isPinSet === null) {
     return (
-      <View style={[shellStyle, styles.centered]}>
-        <StatusBar
-          barStyle={isLight ? 'dark-content' : 'light-content'}
-          backgroundColor={colors.bg}
-        />
-        <Image source={brandImages.logoMark} style={styles.splashLogo} resizeMode="contain" />
-        <Text style={[styles.splashName, {color: colors.textPrimary}]}>{brandCopy.name}</Text>
-        <Text style={styles.splashTagline}>{brandCopy.tagline}</Text>
-        <ActivityIndicator size="large" color={brandColors.googleBlue} style={{marginTop: 24}} />
+      <View style={[styles.splash, styles.centered]}>
+        <StatusBar barStyle="dark-content" backgroundColor={brandColors.surface} />
+        <BrandLockup size="splash" light showPillars />
+        <ActivityIndicator size="large" color={brandColors.googleBlue} style={{marginTop: 28}} />
+        <BrandWave />
       </View>
     );
   }
@@ -282,11 +278,8 @@ function AppContent(): React.JSX.Element {
 
   // Show PIN lock screen (either setup or verify mode)
   return (
-    <View style={shellStyle}>
-      <StatusBar
-        barStyle={isLight ? 'dark-content' : 'light-content'}
-        backgroundColor={colors.bg}
-      />
+    <View style={[shellStyle, {backgroundColor: brandColors.surface}]}>
+      <StatusBar barStyle="dark-content" backgroundColor={brandColors.surface} />
       <PinLockScreen
         isSetup={!isPinSet}
         onPinSet={handlePinSet}
@@ -326,18 +319,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  splashLogo: {width: 140, height: 112, marginBottom: 8},
-  splashName: {
-    fontSize: 36,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
-  splashTagline: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: brandColors.googleBlue,
-    marginTop: 6,
-    textAlign: 'center',
+  splash: {
+    flex: 1,
+    backgroundColor: brandColors.surface,
   },
 });
 

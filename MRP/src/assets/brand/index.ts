@@ -21,7 +21,7 @@ export const brandCopy = {
 } as const;
 
 export const brandImages = {
-  logoMark: require('./logo-mark.png'),
+  logoMark: require('./logo-clear.png'),
   logoStacked: require('./logo-stacked.png'),
   features: {
     deviceProtection: require('./features/device-protection.png'),

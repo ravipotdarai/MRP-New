@@ -46,6 +46,9 @@ import {NetworkGuardianScreen} from '../digital-safety/NetworkGuardianScreen';
 import {AutomationSettingsScreen} from '../digital-safety/AutomationSettingsScreen';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
 import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
+import {useAuth} from '../../services/auth/AuthContext';
+import {AdminOpsScreen} from '../ops/AdminOpsScreen';
+import {InboxScreen} from '../ops/InboxScreen';
 import type {FeatureKey} from '../../services/entitlements/FeatureGate';
 import {brandImages, brandCopy} from '../../assets/brand';
 
@@ -71,7 +74,9 @@ type HubSection =
   | 'automation-settings'
   | 'emergency-card'
   | 'secure-vault'
-  | 'security-center';
+  | 'security-center'
+  | 'admin'
+  | 'inbox';
 
 /** Screens that always return to Digital Safety hub on back. */
 const DS_FEATURE_SECTIONS: ReadonlySet<HubSection> = new Set([
@@ -230,6 +235,7 @@ export function HubScreen({
 }) {
   const {colors} = useTheme();
   const {canUseFeature} = useEntitlements();
+  const {isAdmin} = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [section, setSection] = useState<HubSection>('menu');
   const [safeLinkText, setSafeLinkText] = useState('');
@@ -533,6 +539,34 @@ export function HubScreen({
     );
   }
 
+  if (section === 'admin') {
+    if (!isAdmin) {
+      return (
+        <HubSectionShell title="Admin" styles={styles} onBack={goBack}>
+          <PlaceholderBody
+            title="Admin"
+            body="This panel is only for MRP Firebase admin accounts."
+            styles={styles}
+            colors={colors}
+          />
+        </HubSectionShell>
+      );
+    }
+    return (
+      <HubSectionShell title="Admin" styles={styles} onBack={goBack}>
+        <AdminOpsScreen />
+      </HubSectionShell>
+    );
+  }
+
+  if (section === 'inbox') {
+    return (
+      <HubSectionShell title="Notifications" styles={styles} onBack={goBack}>
+        <InboxScreen />
+      </HubSectionShell>
+    );
+  }
+
   if (section === 'sim-recovery') {
     return (
       <HubSectionShell title="SIM Recovery" styles={styles} onBack={goBack}>
@@ -698,6 +732,17 @@ export function HubScreen({
         </View>
 
         <Text style={[styles.sectionLabel, {marginTop: spacing.lg}]}>More services</Text>
+        {isAdmin ? (
+          <HubMenuCard
+            key="admin"
+            index={0}
+            title="Admin"
+            subtitle="Users, pricing, coupons, push offers"
+            icon="🛠️"
+            colors={colors}
+            onPress={() => openSection('admin')}
+          />
+        ) : null}
         {MENU_ITEMS.map((item, index) => (
           <HubMenuCard
             key={item.id}
@@ -736,10 +781,12 @@ function createStyles(colors: ColorPalette) {
     scrollPad: {padding: spacing.lg, paddingBottom: spacing.xxl},
     brandHero: {
       alignItems: 'center',
+      alignSelf: 'center',
+      width: '100%',
       marginBottom: spacing.xl,
       paddingTop: spacing.sm,
     },
-    brandLogo: {width: 120, height: 96, marginBottom: spacing.sm},
+    brandLogo: {width: 140, height: 112, marginBottom: spacing.sm},
     brandName: {
       fontSize: 36,
       fontWeight: '900',
