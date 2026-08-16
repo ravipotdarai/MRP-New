@@ -722,7 +722,6 @@ export function HomeScreen({
           accessibilityLabel="Open menu">
           <Text style={styles.headerMenuIcon}>☰</Text>
         </TouchableOpacity>
-        <Text style={styles.brandTitle}>MRP</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity
             style={styles.headerIconBtn}
@@ -826,7 +825,7 @@ export function HomeScreen({
           icon="📶"
           label="Wifi"
           value={wifiName}
-          purpose="Network name — open Wi‑Fi tools"
+          purpose="Network name — Wi‑Fi tools"
           accent={network && network.connectionType !== 'Offline' ? colors.sky : colors.red}
           styles={styles}
           onPress={() => goDigitalSafety('TOOLS')}
@@ -835,7 +834,7 @@ export function HomeScreen({
           icon="🔐"
           label="Wi‑Fi grade"
           value={wifiGrade}
-          purpose="Open / WEP / WPA strength of this network"
+          purpose="Open / WEP / WPA of this network"
           accent={
             /open|wep|weak/i.test(wifiGrade)
               ? colors.red
@@ -850,7 +849,7 @@ export function HomeScreen({
           icon="🔒"
           label="Security"
           value={`${securityScore}%`}
-          purpose="Device posture score — open Advisor"
+          purpose="Posture score — open Advisor"
           accent={securityScore >= 80 ? colors.emerald : securityScore >= 50 ? colors.amber : colors.red}
           styles={styles}
           onPress={() => goDigitalSafety('ADVISOR')}
@@ -859,7 +858,7 @@ export function HomeScreen({
           icon="📡"
           label="GPS"
           value={carrierName || '--'}
-          purpose="Location / carrier ready for events"
+          purpose="Location & carrier for events"
           accent={gps?.isLocationAvailable || liveLocation ? colors.emerald : colors.red}
           styles={styles}
         />
@@ -867,7 +866,7 @@ export function HomeScreen({
           icon="🧭"
           label="Advisor"
           value="Scan"
-          purpose="Misconfig checks (USB debug, battery…)"
+          purpose="USB debug, battery, and more"
           accent={colors.sky}
           styles={styles}
           onPress={() => goDigitalSafety('ADVISOR')}
@@ -876,7 +875,7 @@ export function HomeScreen({
           icon="📊"
           label="Threats"
           value="Analyze"
-          purpose="Risky / sideloaded app heuristics"
+          purpose="Risky / sideloaded apps"
           accent={colors.amber}
           styles={styles}
           onPress={() => goDigitalSafety('ANALYZER')}
@@ -885,7 +884,7 @@ export function HomeScreen({
           icon="🆘"
           label="Fraud"
           value="Report"
-          purpose="Cybercrime portals & lost-phone links"
+          purpose="Cybercrime & lost-phone links"
           accent={colors.red}
           styles={styles}
           onPress={() => goDigitalSafety('FRAUD')}
@@ -894,7 +893,7 @@ export function HomeScreen({
           icon="🔗"
           label="Scan URL"
           value="Paste"
-          purpose="Check a link before you open it"
+          purpose="Check a link before opening"
           accent={colors.violet}
           styles={styles}
           onPress={() => goDigitalSafety('TOOLS')}
@@ -903,7 +902,7 @@ export function HomeScreen({
           icon="📷"
           label="Scan QR"
           value="Paste"
-          purpose="Check QR / WIFI: payload safely"
+          purpose="Check QR / WIFI: payload"
           accent={colors.sky}
           styles={styles}
           onPress={() => goDigitalSafety('TOOLS')}
@@ -912,7 +911,7 @@ export function HomeScreen({
           icon="📧"
           label="Breach"
           value="Email"
-          purpose="See if an email appeared in leaks"
+          purpose="Check if an email is in leaks"
           accent={colors.violet}
           styles={styles}
           onPress={() => goDigitalSafety('TOOLS')}
@@ -921,7 +920,7 @@ export function HomeScreen({
           icon="💬"
           label="OTP check"
           value="Paste"
-          purpose="Paste SMS to spot OTP scam wording"
+          purpose="Paste SMS to spot OTP scams"
           accent={colors.amber}
           styles={styles}
           onPress={() => goDigitalSafety('TOOLS')}
@@ -1224,7 +1223,7 @@ function StatCard({
       <View style={styles.statTopRow}>
         <View style={styles.statLabelLeft}>
           <View style={[styles.statIcon, {backgroundColor: accent + '22'}]}>
-            <Text style={{fontSize: 14}}>{icon}</Text>
+            <Text style={{fontSize: 12}}>{icon}</Text>
           </View>
           <Text style={styles.statTitle} numberOfLines={1}>
             {label}
@@ -1268,7 +1267,7 @@ function StatCard({
 function createHomeStyles(colors: ColorPalette) {
   return StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.bg},
-  scrollContent: {padding: spacing.lg, paddingBottom: 40},
+  scrollContent: {padding: spacing.md, paddingBottom: 40},
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1296,7 +1295,6 @@ function createHomeStyles(colors: ColorPalette) {
     color: colors.textPrimary,
   },
   headerRight: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm},
-  brandTitle: {fontSize: 22, fontWeight: '900', color: colors.textPrimary, letterSpacing: 1},
   avatarBtn: {
     width: 40,
     height: 40,
@@ -1379,13 +1377,12 @@ function createHomeStyles(colors: ColorPalette) {
   statCard: {
     width: '48.5%',
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingVertical: 12,
+    borderRadius: radius.md,
+    paddingVertical: 10,
     paddingHorizontal: 10,
-    marginBottom: spacing.sm,
-    borderWidth: 1.5,
+    marginBottom: 8,
+    borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 76,
   },
   statTopRow: {
     flexDirection: 'row',
@@ -1411,34 +1408,29 @@ function createHomeStyles(colors: ColorPalette) {
   },
   statTextCol: {flex: 1, minWidth: 0},
   statIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statChevron: {fontSize: 18, fontWeight: '700', lineHeight: 20},
+  statChevron: {fontSize: 16, fontWeight: '700', lineHeight: 18},
   statTitle: {
-    fontSize: 12,
+    fontSize: 10,
     fontWeight: '800',
     color: colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   statValue: {
-    marginTop: 8,
-    marginLeft: 32,
-    fontSize: 15,
+    marginTop: 4,
+    fontSize: 14,
     fontWeight: '800',
     color: colors.textPrimary,
     textAlign: 'left',
-    width: '100%',
-    paddingRight: 8,
   },
   statPurpose: {
-    marginTop: 4,
-    marginLeft: 32,
-    marginRight: 4,
+    marginTop: 3,
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '600',

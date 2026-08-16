@@ -158,12 +158,23 @@ object LocationEngine {
         if (quality == FixQuality.TRUSTED && resolved?.location != null) {
             val loc = resolved.location
             val geo = helper.evaluateGeofence(loc.latitude, loc.longitude)
+            val osInside = DeviceTrackingPrefs.lastGeofenceInside(app)
+            val osFenceId = DeviceTrackingPrefs.lastGeofenceId(app)
+            // OS ENTER is authority when a new fix still evaluates Away (stale last-known).
+            val useOsEnter = demand is Demand.GeofenceOs && osInside == true && !geo.insideFence
+            val insideFence = if (useOsEnter) true else geo.insideFence
+            val fenceId = if (useOsEnter) osFenceId else geo.fenceId
+            val zoneName = if (useOsEnter) {
+                com.mrp.data.local.GeofenceStorage.list(app).firstOrNull { it.id == osFenceId }?.name
+                    ?: geo.zoneName
+            } else {
+                geo.zoneName
+            }
             val parts = helper.reverseGeocodePartsSync(loc.latitude, loc.longitude)
             val address = parts?.formatted
                 ?: helper.reverseGeocodeSync(loc.latitude, loc.longitude)
 
-            // Only TRUSTED may flip geofence prefs
-            DeviceTrackingPrefs.rememberGeofence(app, geo.insideFence, geo.fenceId)
+            DeviceTrackingPrefs.rememberGeofence(app, insideFence, fenceId)
 
             published = TrustedSnapshotStore.Snapshot(
                 latitude = loc.latitude,
@@ -172,15 +183,15 @@ object LocationEngine {
                 fixMs = if (loc.time > 0L) loc.time else System.currentTimeMillis(),
                 tier = resolved.tier,
                 quality = FixQuality.TRUSTED.name,
-                insideFence = geo.insideFence,
-                fenceId = geo.fenceId,
-                zoneName = geo.zoneName,
-                awayM = if (!geo.insideFence && geo.awayMeters.isFinite()) {
+                insideFence = insideFence,
+                fenceId = fenceId,
+                zoneName = zoneName,
+                awayM = if (!insideFence && geo.awayMeters.isFinite()) {
                     geo.awayMeters.toDouble()
                 } else {
                     null
                 },
-                distanceToCenterM = if (geo.insideFence && geo.distanceToCenter.isFinite()) {
+                distanceToCenterM = if (insideFence && geo.distanceToCenter.isFinite() && !useOsEnter) {
                     geo.distanceToCenter.toDouble()
                 } else {
                     null
@@ -194,7 +205,7 @@ object LocationEngine {
             GpsTrailWriter.enqueueTrusted(app, loc, loc.accuracy, resolved.tier)
             Log.i(
                 TAG,
-                "published TRUSTED inside=${geo.insideFence} zone=${geo.zoneName} " +
+                "published TRUSTED inside=$insideFence zone=$zoneName " +
                     "tier=${resolved.tier} acc=${loc.accuracy}"
             )
         } else if (mustWake && resolved != null) {
@@ -243,15 +254,66 @@ object LocationEngine {
             DeviceTrackingPrefs.rememberGeofence(app, false, fenceId)
         }
         val result = obtain(app, Demand.GeofenceOs)
-        // If we got TRUSTED inside another zone after EXIT, prefs already updated in publish.
-        // If still Away with no TRUSTED, keep OS Away but stamp may be deferred.
-        if (zoneName != null && result.stamp.zoneName == null && entered) {
-            // Enrich stamp name from OS if reuse had no name
+        return applyOsFenceToResult(app, result, entered, fenceId, zoneName)
+    }
+
+    /**
+     * Idle reuse can keep an old Away snapshot. OS ENTER/EXIT still wins the badge.
+     */
+    private fun applyOsFenceToResult(
+        app: Context,
+        result: EngineResult,
+        entered: Boolean,
+        fenceId: String?,
+        zoneName: String?
+    ): EngineResult {
+        val stamp = result.stamp
+        if (entered && fenceId != null) {
+            val alreadyInsideThis = stamp.insideFence && stamp.fenceId == fenceId
+            if (alreadyInsideThis) return result
+            DeviceTrackingPrefs.rememberGeofence(app, true, fenceId)
+            val patchedSnap = result.snapshot?.copy(
+                insideFence = true,
+                fenceId = fenceId,
+                zoneName = zoneName ?: result.snapshot.zoneName,
+                awayM = null,
+            )
+            if (patchedSnap != null) {
+                TrustedSnapshotStore.write(app, patchedSnap)
+                writeLiveStore(app, patchedSnap, "os_enter:$fenceId")
+            }
             return result.copy(
-                stamp = result.stamp.copy(
+                snapshot = patchedSnap ?: result.snapshot,
+                stamp = stamp.copy(
                     insideFence = true,
-                    fenceId = fenceId ?: result.stamp.fenceId,
-                    zoneName = zoneName
+                    fenceId = fenceId,
+                    zoneName = zoneName ?: stamp.zoneName,
+                    awayM = null,
+                    locationDeferred = stamp.locationDeferred,
+                    strategy = "${stamp.strategy}/os_enter"
+                )
+            )
+        }
+        if (!entered && fenceId != null && stamp.insideFence && stamp.fenceId == fenceId) {
+            DeviceTrackingPrefs.rememberGeofence(app, false, fenceId)
+            val patchedSnap = result.snapshot?.copy(
+                insideFence = false,
+                fenceId = fenceId,
+                zoneName = zoneName ?: result.snapshot.zoneName,
+                distanceToCenterM = null,
+            )
+            if (patchedSnap != null) {
+                TrustedSnapshotStore.write(app, patchedSnap)
+                writeLiveStore(app, patchedSnap, "os_exit:$fenceId")
+            }
+            return result.copy(
+                snapshot = patchedSnap ?: result.snapshot,
+                stamp = stamp.copy(
+                    insideFence = false,
+                    fenceId = fenceId,
+                    zoneName = zoneName ?: stamp.zoneName,
+                    distanceToCenterM = null,
+                    strategy = "${stamp.strategy}/os_exit"
                 )
             )
         }

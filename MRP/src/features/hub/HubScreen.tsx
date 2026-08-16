@@ -109,7 +109,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'account',
     title: 'Account',
-    subtitle: 'Google sign-in & device',
+    subtitle: 'Google sign-in & switch account',
     icon: '👤',
   },
   ...(CIRCLE_ENABLED
@@ -583,7 +583,7 @@ export function HubScreen({
 
   if (section === 'emergency-monitoring') {
     return (
-      <HubSectionShell title="Emergency monitoring" styles={styles} onBack={goBack}>
+      <HubSectionShell title="Travel" styles={styles} onBack={goBack}>
         <EmergencyMonitoringScreen onUpgrade={() => openSection('subscriptions')} />
       </HubSectionShell>
     );
@@ -640,7 +640,7 @@ export function HubScreen({
               },
               {
                 id: 'f-live',
-                title: 'Live Location',
+                title: 'Travel',
                 iconSource: brandImages.features.liveLocation,
                 action: () => openSection('emergency-monitoring'),
               },

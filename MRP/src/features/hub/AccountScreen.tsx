@@ -33,6 +33,30 @@ export function AccountScreen({onBack}: Props) {
     }
   };
 
+  const handleSwitchAccount = () => {
+    Alert.alert(
+      'Switch Google account?',
+      'You will sign out, then pick another Google account.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Switch',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await signOut();
+              await signInWithGoogle();
+            } catch (e: any) {
+              Alert.alert('Sign-in failed', e?.message || 'Could not switch Google account');
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert('Sign out of Google?', 'Cloud features will be disabled until you sign in again.', [
       {text: 'Cancel', style: 'cancel'},
@@ -62,7 +86,9 @@ export function AccountScreen({onBack}: Props) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scroll}>
       <Text style={styles.title}>Account</Text>
-      <Text style={styles.sub}>Google account links subscription, backup, and Circle (when enabled).</Text>
+      <Text style={styles.sub}>
+        Signed in at setup. Use this screen to switch to a different Google account.
+      </Text>
 
       <View style={styles.card}>
         <Text style={styles.label}>Google account</Text>
@@ -104,9 +130,21 @@ export function AccountScreen({onBack}: Props) {
       ) : null}
 
       {auth.signedIn ? (
-        <TouchableOpacity style={styles.outlineBtn} onPress={handleSignOut} disabled={busy}>
-          <Text style={styles.outlineBtnText}>Sign out</Text>
-        </TouchableOpacity>
+        <>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={handleSwitchAccount}
+            disabled={busy || !googleConfigured}>
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Switch Google account</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.outlineBtn} onPress={handleSignOut} disabled={busy}>
+            <Text style={styles.outlineBtnText}>Sign out</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <TouchableOpacity
           style={styles.primaryBtn}

@@ -15,8 +15,8 @@ type SecurityTab = 'MONITORING' | 'TIMELINE' | 'PHOTOS' | 'PERMISSIONS';
 const TABS: {key: SecurityTab; label: string; icon: string}[] = [
   {key: 'MONITORING', label: 'Setup', icon: '🛡️'},
   {key: 'TIMELINE', label: 'Activity', icon: '📋'},
+  {key: 'PERMISSIONS', label: 'Permission', icon: '🔒'},
   {key: 'PHOTOS', label: 'Photos', icon: '📷'},
-  {key: 'PERMISSIONS', label: 'Permissions', icon: '🔒'},
 ];
 
 export function SecurityScreen({route}: {route?: any}) {
@@ -65,8 +65,8 @@ export function SecurityScreen({route}: {route?: any}) {
         <HubTabPage pageKey={active}>
           {active === 'MONITORING' && <MonitoringScreen />}
           {active === 'TIMELINE' && <TimelineScreen />}
-          {active === 'PHOTOS' && <PhotoGallery />}
           {active === 'PERMISSIONS' && <PermissionsScreen />}
+          {active === 'PHOTOS' && <PhotoGallery />}
         </HubTabPage>
       </View>
     </View>

@@ -4,16 +4,14 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
+  Pressable,
   ActivityIndicator,
-  Image,
 } from 'react-native';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
-import {useEntitlements} from '../../services/entitlements/EntitlementProvider';
-import {PaywallModal} from '../subscription/PaywallModal';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useFocusEffect} from '@react-navigation/native';
+import {TravelDayMap} from './TravelDayMap';
 
 type Props = {onUpgrade?: () => void};
 
@@ -26,12 +24,33 @@ type TrailPoint = {
   motion?: string;
 };
 
+const PLAYBACK_SPEEDS = [0.5, 1, 2, 4, 8, 16] as const;
+type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
+
 function dayKey(ms: number): string {
   const d = new Date(ms);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function asNum(v: unknown): number | null {
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function coordsOf(e: any): {latitude: number; longitude: number} | null {
+  const lat = asNum(e?.location?.latitude) ?? asNum(e?.latitude) ?? asNum(e?.lat);
+  const lng = asNum(e?.location?.longitude) ?? asNum(e?.longitude) ?? asNum(e?.lng);
+  if (lat == null || lng == null) return null;
+  if (lat === 0 && lng === 0) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return {latitude: lat, longitude: lng};
 }
 
 function haversineKm(
@@ -49,22 +68,6 @@ function haversineKm(
   return 2 * R * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-function staticMapUri(pts: TrailPoint[]): string | null {
-  if (!pts.length) return null;
-  const last = pts[pts.length - 1];
-  const path = pts
-    .slice(0, 120)
-    .map(p => `${p.latitude.toFixed(5)},${p.longitude.toFixed(5)}`)
-    .join('|');
-  return (
-    `https://staticmap.openstreetmap.de/staticmap.php` +
-    `?center=${last.latitude},${last.longitude}` +
-    `&zoom=13&size=720x360&maptype=mapnik` +
-    `&markers=${last.latitude},${last.longitude},red-pushpin` +
-    (path ? `&path=weight:4|color:0xe85d04ff|${path}` : '')
-  );
-}
-
 async function loadTrailDays(): Promise<string[]> {
   const bridge = mrpmModule as any;
   if (typeof bridge.getGpsTrailDays === 'function') {
@@ -75,10 +78,8 @@ async function loadTrailDays(): Promise<string[]> {
   const rows = Array.isArray(timeline) ? timeline : [];
   const set = new Set<string>();
   for (const e of rows) {
-    const lat = e?.location?.latitude;
-    const lng = e?.location?.longitude;
-    if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-    if (!lat && !lng) continue;
+    const c = coordsOf(e);
+    if (!c) continue;
     const t = Date.parse(e.timestamp) || Number(e.timestamp) || 0;
     if (t) set.add(dayKey(t));
   }
@@ -87,55 +88,83 @@ async function loadTrailDays(): Promise<string[]> {
 
 async function loadPointsForDay(day: string): Promise<{points: TrailPoint[]; dense: boolean}> {
   const bridge = mrpmModule as any;
+  const pts: TrailPoint[] = [];
+  let dense = false;
+
   if (typeof bridge.getGpsTrailForDay === 'function') {
     const trail = await bridge.getGpsTrailForDay(day);
     if (Array.isArray(trail) && trail.length) {
-      return {
-        dense: true,
-        points: trail
-          .map(p => ({
-            latitude: p.latitude,
-            longitude: p.longitude,
-            t: p.t,
-            speed: p.speed,
-            motion: p.motion,
-            label: 'GPS',
-          }))
-          .sort((a, b) => a.t - b.t),
-      };
+      dense = true;
+      for (const p of trail) {
+        const lat = asNum(p.latitude);
+        const lng = asNum(p.longitude);
+        const t = asNum(p.t) ?? 0;
+        if (lat == null || lng == null) continue;
+        if (!lat && !lng) continue;
+        pts.push({
+          latitude: lat,
+          longitude: lng,
+          t,
+          speed: asNum(p.speed) ?? undefined,
+          motion: p.motion,
+          label: 'GPS',
+        });
+      }
     }
   }
-  const timeline = await bridge.getTimeline?.();
-  const rows = Array.isArray(timeline) ? timeline : [];
-  const pts: TrailPoint[] = [];
-  for (const e of rows) {
-    const lat = e?.location?.latitude;
-    const lng = e?.location?.longitude;
-    if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-    if (!lat && !lng) continue;
-    const t = Date.parse(e.timestamp) || Number(e.timestamp) || 0;
-    if (dayKey(t) !== day) continue;
-    pts.push({
-      latitude: lat,
-      longitude: lng,
-      t,
-      label: String(e.event_type || e.eventType || 'EVENT'),
-    });
+
+  if (pts.length < 2) {
+    const timeline = await bridge.getTimeline?.();
+    const rows = Array.isArray(timeline) ? timeline : [];
+    for (const e of rows) {
+      const c = coordsOf(e);
+      if (!c) continue;
+      const t = Date.parse(e.timestamp) || Number(e.timestamp) || 0;
+      if (dayKey(t) !== day) continue;
+      pts.push({
+        latitude: c.latitude,
+        longitude: c.longitude,
+        t,
+        label: String(e.event_type || e.eventType || 'EVENT'),
+      });
+    }
   }
+
   pts.sort((a, b) => a.t - b.t);
-  return {points: pts, dense: false};
+  const deduped: TrailPoint[] = [];
+  for (const p of pts) {
+    const last = deduped[deduped.length - 1];
+    if (last && last.t === p.t && last.latitude === p.latitude && last.longitude === p.longitude) {
+      continue;
+    }
+    deduped.push(p);
+  }
+
+  if (!deduped.length && day === dayKey(Date.now()) && typeof bridge.getCurrentLocationWithAddress === 'function') {
+    try {
+      const loc = await bridge.getCurrentLocationWithAddress(false);
+      const lat = asNum(loc?.latitude);
+      const lng = asNum(loc?.longitude);
+      if (lat != null && lng != null && (lat || lng)) {
+        deduped.push({
+          latitude: lat,
+          longitude: lng,
+          t: Date.now(),
+          label: 'Last fix',
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return {points: deduped, dense};
 }
 
-/**
- * Hub Premium+ — local dense GPS trail + sparse timeline fallback.
- */
-export function EmergencyMonitoringScreen({onUpgrade}: Props) {
+export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const {canUseFeature} = useEntitlements();
-  const unlocked = canUseFeature('journey.playback');
 
-  const [paywall, setPaywall] = useState(false);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -143,27 +172,35 @@ export function EmergencyMonitoringScreen({onUpgrade}: Props) {
   const [dense, setDense] = useState(false);
   const [playIdx, setPlayIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState<PlaybackSpeed>(1);
+  const [scrubW, setScrubW] = useState(1);
 
   const refresh = useCallback(async (pickDay?: string | null) => {
     setLoading(true);
+    setPlaying(false);
     try {
+      const today = dayKey(Date.now());
       const keys = await loadTrailDays();
-      setDays(keys);
-      const pick = pickDay && keys.includes(pickDay) ? pickDay : keys[0] || null;
+      const ordered = keys.includes(today) ? keys : [today, ...keys];
+      setDays(ordered);
+      const pick =
+        pickDay && ordered.includes(pickDay)
+          ? pickDay
+          : ordered.includes(today)
+            ? today
+            : ordered[0] || today;
       setSelected(pick);
-      if (pick) {
-        const {points: pts, dense: isDense} = await loadPointsForDay(pick);
-        setPoints(pts);
-        setDense(isDense);
-        setPlayIdx(0);
-      } else {
-        setPoints([]);
-        setDense(false);
-      }
+      const {points: pts, dense: isDense} = await loadPointsForDay(pick);
+      setPoints(pts);
+      setDense(isDense);
+      setPlayIdx(0);
     } catch {
-      setDays([]);
+      const today = dayKey(Date.now());
+      setDays([today]);
+      setSelected(today);
       setPoints([]);
       setDense(false);
+      setPlayIdx(0);
     } finally {
       setLoading(false);
     }
@@ -171,12 +208,13 @@ export function EmergencyMonitoringScreen({onUpgrade}: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      if (unlocked) void refresh();
-    }, [unlocked, refresh]),
+      void refresh();
+    }, [refresh]),
   );
 
   useEffect(() => {
     if (!playing || points.length < 2) return;
+    const stepMs = Math.max(40, Math.round(350 / speed));
     const id = setInterval(() => {
       setPlayIdx(i => {
         if (i >= points.length - 1) {
@@ -185,127 +223,167 @@ export function EmergencyMonitoringScreen({onUpgrade}: Props) {
         }
         return i + 1;
       });
-    }, dense ? 120 : 700);
+    }, stepMs);
     return () => clearInterval(id);
-  }, [playing, points.length, dense]);
+  }, [playing, points.length, speed]);
 
-  if (!unlocked) {
-    return (
-      <View style={styles.wrap}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Premium required</Text>
-          <Text style={styles.body}>
-            Emergency monitoring / journey playback is a Premium+ feature. Dense GPS syncs to Drive
-            for the web investigation desk.
-          </Text>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => (onUpgrade ? onUpgrade() : setPaywall(true))}>
-            <Text style={styles.primaryBtnText}>View subscriptions</Text>
-          </TouchableOpacity>
-        </View>
-        <PaywallModal
-          visible={paywall}
-          message="Journey playback needs Premium or higher."
-          onClose={() => setPaywall(false)}
-          onUpgrade={() => {
-            setPaywall(false);
-            onUpgrade?.();
-          }}
-        />
-      </View>
-    );
-  }
+  const seekFromX = (x: number) => {
+    if (points.length < 2) return;
+    const pct = Math.min(1, Math.max(0, x / Math.max(1, scrubW)));
+    setPlaying(false);
+    setPlayIdx(Math.round(pct * (points.length - 1)));
+  };
 
   if (loading) {
     return (
       <View style={[styles.wrap, styles.center]}>
         <ActivityIndicator color={colors.sky} />
-        <Text style={styles.muted}>Loading journey days…</Text>
+        <Text style={styles.muted}>Loading travel…</Text>
       </View>
     );
   }
 
-  const head = points[Math.min(playIdx, Math.max(0, points.length - 1))];
+  const lastIdx = Math.max(0, points.length - 1);
+  const head = points[Math.min(playIdx, lastIdx)];
   let dist = 0;
   for (let i = 1; i < points.length; i++) {
     dist += haversineKm(points[i - 1], points[i]);
   }
-  const mapUri = staticMapUri(points.slice(0, playIdx + 1));
+  const canPlay = points.length >= 2;
+  const progress = lastIdx > 0 ? playIdx / lastIdx : 0;
+
+  const onPlay = () => {
+    if (!canPlay) return;
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (playIdx >= lastIdx) {
+      setPlayIdx(0);
+    }
+    setPlaying(true);
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false}>
-      <Text style={styles.lead}>
-        {dense
-          ? 'Dense on-device GPS trail for this day.'
-          : 'Sparse timeline GPS — move with monitoring on to build dense trail.'}
-      </Text>
-
-      <Text style={styles.section}>Days with GPS</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dayRow}>
-        {days.length === 0 && <Text style={styles.muted}>No GPS days yet.</Text>}
-        {days.map(d => (
-          <TouchableOpacity
-            key={d}
-            style={[styles.dayChip, selected === d && styles.dayChipOn]}
-            onPress={() => {
-              setPlaying(false);
-              void refresh(d);
-            }}>
-            <Text style={[styles.dayChipText, selected === d && styles.dayChipTextOn]}>{d}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <View style={styles.card}>
-        <Text style={styles.stat}>Source: {dense ? 'Dense GPS trail' : 'Timeline events'}</Text>
-        <Text style={styles.stat}>Points: {points.length}</Text>
-        <Text style={styles.stat}>Distance: {dist.toFixed(2)} km</Text>
-        {head && (
-          <Text style={styles.stat}>
-            Playhead: {new Date(head.t).toLocaleTimeString()} · {head.label}
-            {head.speed != null ? ` · ${(head.speed * 3.6).toFixed(0)} km/h` : ''}
-          </Text>
-        )}
+    <View style={styles.root}>
+      <View style={styles.top}>
+        <Text style={styles.lead}>
+          {points.length
+            ? 'Pinch or use + / − to zoom. Orange line is the travelled path; red marker follows Play.'
+            : 'No GPS yet for this day. Keep monitoring on while you move.'}
+        </Text>
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          style={styles.dayRow}>
+          {days.length === 0 && <Text style={styles.muted}>No GPS days yet.</Text>}
+          {days.map(d => (
+            <Pressable
+              key={d}
+              style={[styles.dayChip, selected === d && styles.dayChipOn]}
+              onPress={() => void refresh(d)}>
+              <Text style={[styles.dayChipText, selected === d && styles.dayChipTextOn]}>{d}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <Text style={styles.stat}>
+          {dense ? 'GPS trail' : 'Timeline'} · {points.length} pts
+          {head ? ` · ${playIdx + 1}/${points.length}` : ''} · {dist.toFixed(2)} km
+          {head ? ` · ${new Date(head.t).toLocaleTimeString()}` : ''}
+        </Text>
       </View>
 
-      {mapUri ? (
-        <Image source={{uri: mapUri}} style={styles.map} resizeMode="cover" />
+      {points.length ? (
+        <View style={styles.mapWrap}>
+          <TravelDayMap points={points} playIdx={playIdx} />
+        </View>
       ) : (
         <View style={[styles.map, styles.center]}>
-          <Text style={styles.muted}>No map trail</Text>
+          <Text style={styles.muted}>No map yet — waiting for GPS</Text>
         </View>
       )}
 
-      <View style={styles.controls}>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => {
-            setPlayIdx(0);
-            setPlaying(false);
-          }}>
-          <Text style={styles.primaryBtnText}>Start</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          onPress={() => setPlaying(p => !p)}
-          disabled={points.length < 2}>
-          <Text style={styles.primaryBtnText}>{playing ? 'Pause' : 'Play'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.secondaryBtn}
-          onPress={() => setPlayIdx(i => Math.min(points.length - 1, i + 1))}
-          disabled={points.length < 2}>
-          <Text style={styles.secondaryBtnText}>Step →</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      <ScrollView
+        style={styles.bottom}
+        contentContainerStyle={styles.bottomPad}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled">
+        <View style={styles.controls} collapsable={false}>
+          <Pressable
+            style={({pressed}) => [styles.primaryBtn, pressed && styles.pressed]}
+            onPress={() => {
+              setPlaying(false);
+              setPlayIdx(0);
+            }}
+            disabled={!points.length}>
+            <Text style={styles.primaryBtnText}>Start</Text>
+          </Pressable>
+          <Pressable
+            style={({pressed}) => [styles.secondaryBtn, pressed && styles.pressed, !canPlay && styles.disabled]}
+            onPress={() => {
+              setPlaying(false);
+              setPlayIdx(i => Math.max(0, i - 1));
+            }}
+            disabled={!canPlay}>
+            <Text style={styles.secondaryBtnText}>− Step</Text>
+          </Pressable>
+          <Pressable
+            style={({pressed}) => [styles.primaryBtn, pressed && styles.pressed, !canPlay && styles.disabled]}
+            onPress={onPlay}
+            disabled={!canPlay}>
+            <Text style={styles.primaryBtnText}>{playing ? 'Pause' : 'Play'}</Text>
+          </Pressable>
+          <Pressable
+            style={({pressed}) => [styles.secondaryBtn, pressed && styles.pressed, !canPlay && styles.disabled]}
+            onPress={() => {
+              setPlaying(false);
+              setPlayIdx(i => Math.min(lastIdx, i + 1));
+            }}
+            disabled={!canPlay}>
+            <Text style={styles.secondaryBtnText}>Step +</Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.section}>Play speed</Text>
+        <View style={styles.speedRow}>
+          {PLAYBACK_SPEEDS.map(s => (
+            <Pressable
+              key={s}
+              style={[styles.speedChip, speed === s && styles.speedChipOn]}
+              onPress={() => setSpeed(s)}>
+              <Text style={[styles.speedChipText, speed === s && styles.speedChipTextOn]}>{s}×</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <View
+          style={styles.scrubber}
+          collapsable={false}
+          onLayout={e => setScrubW(e.nativeEvent.layout.width)}
+          onStartShouldSetResponder={() => canPlay}
+          onMoveShouldSetResponder={() => canPlay}
+          onResponderGrant={e => seekFromX(e.nativeEvent.locationX)}
+          onResponderMove={e => seekFromX(e.nativeEvent.locationX)}>
+          <View style={[styles.scrubFill, {width: `${Math.round(progress * 100)}%`}]} />
+          <View style={[styles.scrubThumb, {left: `${Math.round(progress * 100)}%`}]} />
+        </View>
+        {!canPlay ? (
+          <Text style={styles.muted}>Need at least two GPS points to play the day.</Text>
+        ) : null}
+      </ScrollView>
+    </View>
   );
 }
 
 function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
-    wrap: {padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.sm},
+    wrap: {padding: spacing.lg, paddingBottom: spacing.xxl},
+    root: {flex: 1, backgroundColor: colors.bg},
+    top: {paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
+    mapWrap: {flex: 1, marginHorizontal: spacing.lg, marginVertical: 8, minHeight: 280},
+    bottom: {maxHeight: 220},
+    bottomPad: {paddingHorizontal: spacing.lg, paddingBottom: spacing.md},
     center: {alignItems: 'center', justifyContent: 'center', minHeight: 160},
     lead: {fontSize: 14, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.sm},
     section: {fontSize: 13, fontWeight: '700', color: colors.textPrimary, marginTop: spacing.sm},
@@ -330,34 +408,79 @@ function createStyles(colors: ColorPalette) {
       borderColor: colors.border,
       marginBottom: spacing.sm,
     },
-    title: {fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: spacing.sm},
-    body: {fontSize: 15, lineHeight: 22, color: colors.textBody, marginBottom: spacing.md},
     muted: {fontSize: 13, color: colors.textMuted, marginTop: 8},
     stat: {fontSize: 14, color: colors.textBody, marginBottom: 4},
     map: {
-      width: '100%',
-      height: 220,
+      flex: 1,
+      minHeight: 280,
+      marginHorizontal: spacing.lg,
       borderRadius: radius.lg,
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     },
-    controls: {flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: spacing.md},
+    controls: {flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.md},
     primaryBtn: {
       backgroundColor: colors.sky,
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 12,
       borderRadius: radius.md,
+      marginRight: 8,
+      marginBottom: 8,
     },
     primaryBtnText: {color: '#fff', fontWeight: '800', fontSize: 14},
     secondaryBtn: {
       borderWidth: 1,
       borderColor: colors.border,
       paddingHorizontal: 16,
-      paddingVertical: 10,
+      paddingVertical: 12,
       borderRadius: radius.md,
       backgroundColor: colors.surface,
+      marginRight: 8,
+      marginBottom: 8,
     },
     secondaryBtnText: {color: colors.textPrimary, fontWeight: '700', fontSize: 14},
+    pressed: {opacity: 0.7},
+    disabled: {opacity: 0.4},
+    speedRow: {flexDirection: 'row', flexWrap: 'wrap', marginTop: 8},
+    speedChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginRight: 8,
+      marginBottom: 8,
+      backgroundColor: colors.surface,
+    },
+    speedChipOn: {borderColor: colors.sky, backgroundColor: colors.skySoft},
+    speedChipText: {fontSize: 13, fontWeight: '700', color: colors.textBody},
+    speedChipTextOn: {color: colors.textPrimary},
+    scrubber: {
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginTop: spacing.sm,
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    scrubFill: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      bottom: 0,
+      backgroundColor: colors.skySoft,
+    },
+    scrubThumb: {
+      position: 'absolute',
+      width: 16,
+      height: 16,
+      borderRadius: 8,
+      backgroundColor: colors.sky,
+      marginLeft: -8,
+      top: 5,
+    },
   });
 }

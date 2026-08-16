@@ -10,10 +10,12 @@ import {
   PermissionsAndroid,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useTheme} from '../../shared/ThemeContext';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
+import {useAuth} from '../../services/auth/AuthContext';
 
 export type PermissionSetupStatus = {
   camera: boolean;
@@ -39,7 +41,7 @@ function bluetoothConnectPermission(): string | null {
   return perms.BLUETOOTH_CONNECT ?? 'android.permission.BLUETOOTH_CONNECT';
 }
 
-type StepId = 'runtime' | 'overlay' | 'device_admin' | 'battery' | 'done';
+type StepId = 'runtime' | 'overlay' | 'device_admin' | 'battery' | 'google' | 'done';
 
 const STEPS: {id: StepId; label: string; why: string}[] = [
   {
@@ -62,11 +64,18 @@ const STEPS: {id: StepId; label: string; why: string}[] = [
     label: 'Battery & background (recommended)',
     why: 'Keep monitoring alive after reboot. You can skip and set this later.',
   },
+  {
+    id: 'google',
+    label: 'Google account',
+    why: 'Sign in once so Drive backup, Circle, and Hub Account stay linked to this device.',
+  },
 ];
 
 function firstIncompleteStep(
   status: PermissionSetupStatus | null,
   batterySkipped: boolean,
+  googleSignedIn: boolean,
+  googleSkipped: boolean,
 ): StepId {
   if (!status) return 'runtime';
   if (!status.camera || !status.location || !status.notifications) return 'runtime';
@@ -74,6 +83,7 @@ function firstIncompleteStep(
   if (!status.deviceAdmin) return 'device_admin';
   // Battery is recommended, not required — skippable
   if (!status.batteryExempt && !batterySkipped) return 'battery';
+  if (!googleSignedIn && !googleSkipped) return 'google';
   return 'done';
 }
 
@@ -88,9 +98,11 @@ export function PermissionSetupWizard({
 }) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const {auth, googleConfigured, signInWithGoogle} = useAuth();
   const [status, setStatus] = useState<PermissionSetupStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [batterySkipped, setBatterySkipped] = useState(false);
+  const [googleSkipped, setGoogleSkipped] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const bridge = mrpmModule as any;
 
@@ -107,6 +119,7 @@ export function PermissionSetupWizard({
   useEffect(() => {
     if (visible) {
       setBatterySkipped(false);
+      setGoogleSkipped(false);
       setHint(null);
       refresh();
     }
@@ -119,7 +132,12 @@ export function PermissionSetupWizard({
     return () => sub.remove();
   }, [visible, refresh]);
 
-  const currentStep = firstIncompleteStep(status, batterySkipped);
+  const currentStep = firstIncompleteStep(
+    status,
+    batterySkipped,
+    !!auth.signedIn,
+    googleSkipped,
+  );
   const stepIndex = Math.max(0, STEPS.findIndex(s => s.id === currentStep));
   const stepMeta = STEPS[Math.min(stepIndex, STEPS.length - 1)];
 
@@ -222,6 +240,17 @@ export function PermissionSetupWizard({
             await bridge.openAppBatteryUsageSettings();
           }
           break;
+        case 'google':
+          if (!googleConfigured) {
+            setHint('Google Sign-In is not configured on this build. You can skip and use Hub → Account later.');
+            break;
+          }
+          try {
+            await signInWithGoogle();
+          } catch (e: any) {
+            Alert.alert('Sign-in failed', e?.message || 'Could not sign in with Google');
+          }
+          break;
         default:
           break;
       }
@@ -244,6 +273,14 @@ export function PermissionSetupWizard({
           label: status.batteryExempt
             ? 'Battery unrestricted'
             : 'Battery (optional — skipped OK)',
+        },
+        {
+          ok: !!auth.signedIn || googleSkipped,
+          label: auth.signedIn
+            ? `Google: ${auth.emailMasked || auth.email || 'signed in'}`
+            : googleSkipped
+              ? 'Google (skipped — Hub → Account later)'
+              : 'Google account',
         },
       ]
     : [];
@@ -302,7 +339,9 @@ export function PermissionSetupWizard({
                         ? 'Open overlay settings'
                         : currentStep === 'device_admin'
                           ? 'Enable Device Admin'
-                          : 'Allow permissions'}
+                          : currentStep === 'google'
+                            ? 'Sign in with Google'
+                            : 'Allow permissions'}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -312,6 +351,14 @@ export function PermissionSetupWizard({
                   style={styles.secondaryBtn}
                   onPress={() => setBatterySkipped(true)}>
                   <Text style={styles.secondaryBtnText}>Skip for now</Text>
+                </TouchableOpacity>
+              ) : null}
+
+              {currentStep === 'google' ? (
+                <TouchableOpacity
+                  style={styles.secondaryBtn}
+                  onPress={() => setGoogleSkipped(true)}>
+                  <Text style={styles.secondaryBtnText}>Skip — Hub → Account later</Text>
                 </TouchableOpacity>
               ) : null}
 

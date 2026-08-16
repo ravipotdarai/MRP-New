@@ -68,14 +68,28 @@ class LocationWakePolicyTest {
     }
 
     @Test
-    fun idle_geofence_reuses_snapshot() {
-        assertFalse(
+    fun idle_geofence_wakes_when_snapshot_stale() {
+        assertTrue(
             LocationWakePolicy.shouldWakeGps(
                 idle = true,
                 demandKind = LocationWakePolicy.KIND_GEOFENCE,
                 eventType = null,
                 hasTrusted = true,
                 snapshotAgeMs = idleAge,
+                lockGpsCoalesceOk = true,
+            )
+        )
+    }
+
+    @Test
+    fun idle_geofence_skips_when_fresh() {
+        assertFalse(
+            LocationWakePolicy.shouldWakeGps(
+                idle = true,
+                demandKind = LocationWakePolicy.KIND_GEOFENCE,
+                eventType = null,
+                hasTrusted = true,
+                snapshotAgeMs = fresh,
                 lockGpsCoalesceOk = true,
             )
         )

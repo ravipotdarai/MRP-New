@@ -15,6 +15,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
+import {FlashList} from '@shopify/flash-list';
 import {Card} from '../../shared/components/Card';
 import mrpmModule, {Photo} from '../../shared/hooks/useNativeBridge';
 import {findMatchingEventForPhoto} from '../../shared/utils/selfieMatcher';
@@ -22,7 +23,11 @@ import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 
 const {width, height: WINDOW_HEIGHT} = Dimensions.get('window');
-const PHOTO_SIZE = (width - 48) / 2;
+const COLS = 3;
+const GRID_PAD = 12;
+const GRID_GAP = 6;
+const PHOTO_SIZE = (width - 32 - GRID_PAD * 2 - GRID_GAP * (COLS - 1)) / COLS;
+const CONTROLS_MAX = Math.round(WINDOW_HEIGHT * 0.32);
 const MODAL_ACTIONS_HEIGHT = 76;
 
 interface TimelineEntry {
@@ -135,6 +140,83 @@ const TYPE_FILTER_DEFS: {key: PhotoTypeFilter; label: string}[] = [
   {key: 'OTHER', label: 'Other'},
 ];
 
+function formatPhotoEventName(filename: string) {
+  const upper = (filename || '').toUpperCase();
+  if (
+    upper.includes('TEST_PHOTO') ||
+    upper.includes('TEST_CAPTURE') ||
+    upper.includes('TEST_BULLETPROOF') ||
+    upper.includes('TEST_SELFIE')
+  ) {
+    return 'Test Photo';
+  }
+  if (upper.includes('WRONG_UNLOCK_ATTEMPT')) return 'Wrong Unlock Attempt';
+  if (upper.includes('WRONG_PASSWORD')) return 'Wrong Password';
+  if (upper.includes('WIFI_ENABLED')) return 'Wi-Fi Enabled Capture';
+  const nameWithoutExt = (filename || '').replace(/\.jpe?g$/i, '');
+  const parts = nameWithoutExt.split('_');
+  if (parts.length >= 3) {
+    const eventParts = parts.slice(0, -2);
+    return eventParts.join(' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return nameWithoutExt.replace(/_/g, ' ').toUpperCase();
+}
+
+type GalleryRow =
+  | {kind: 'header'; key: string; label: string; photos: Photo[]}
+  | {kind: 'row'; key: string; photos: Photo[]};
+
+function chunkPhotos(list: Photo[], size: number): Photo[][] {
+  const rows: Photo[][] = [];
+  for (let i = 0; i < list.length; i += size) {
+    rows.push(list.slice(i, i + size));
+  }
+  return rows;
+}
+
+const PhotoThumb = React.memo(function PhotoThumb({
+  item,
+  eventTitle,
+  selectMode,
+  isSelected,
+  styles,
+  onPress,
+  onLongPress,
+}: {
+  item: Photo;
+  eventTitle: string;
+  selectMode: boolean;
+  isSelected: boolean;
+  styles: ReturnType<typeof createStyles>;
+  onPress: (photo: Photo) => void;
+  onLongPress: (photo: Photo) => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.photoContainer, isSelected && styles.photoContainerSelected]}
+      activeOpacity={0.85}
+      onPress={() => onPress(item)}
+      onLongPress={() => onLongPress(item)}>
+      <Image
+        source={{uri: `file://${item.path}`}}
+        style={styles.photo}
+        resizeMode="cover"
+        fadeDuration={0}
+      />
+      {selectMode ? (
+        <View style={[styles.selectCheck, isSelected && styles.selectCheckOn]}>
+          <Text style={styles.selectCheckText}>{isSelected ? '✓' : ''}</Text>
+        </View>
+      ) : null}
+      <View style={styles.photoOverlay}>
+        <Text style={styles.photoTitle} numberOfLines={1}>
+          {eventTitle}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 export function PhotoGallery() {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -151,23 +233,6 @@ export function PhotoGallery() {
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [groupBy, setGroupBy] = useState<GroupBy>('NONE');
 
-  const formatPhotoEventName = (filename: string) => {
-    const upper = (filename || '').toUpperCase();
-    if (upper.includes('TEST_PHOTO') || upper.includes('TEST_CAPTURE') || upper.includes('TEST_BULLETPROOF') || upper.includes('TEST_SELFIE')) {
-      return 'Test Photo';
-    }
-    if (upper.includes('WRONG_UNLOCK_ATTEMPT')) return 'Wrong Unlock Attempt';
-    if (upper.includes('WRONG_PASSWORD')) return 'Wrong Password';
-    if (upper.includes('WIFI_ENABLED')) return 'Wi-Fi Enabled Capture';
-    const nameWithoutExt = (filename || '').replace(/\.jpe?g$/i, '');
-    const parts = nameWithoutExt.split('_');
-    if (parts.length >= 3) {
-      const eventParts = parts.slice(0, -2);
-      return eventParts.join(' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
-    return nameWithoutExt.replace(/_/g, ' ').toUpperCase();
-  };
-
   const openLocation = (lat: number, lng: number) => {
     const url = `https://maps.google.com/?q=${lat},${lng}`;
     Linking.openURL(url).catch(() => {
@@ -178,10 +243,7 @@ export function PhotoGallery() {
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      const [photoList, eventsList] = await Promise.all([
-        mrpmModule.getPhotos().catch(() => []),
-        mrpmModule.getTimeline().catch(() => []),
-      ]);
+      const photoList = await mrpmModule.getPhotos().catch(() => []);
       const normalizedPhotos: Photo[] = (Array.isArray(photoList) ? photoList : []).map((p: any) => {
         const fileName = p.name || p.path?.split('/').pop() || p.path?.split('\\').pop() || 'UNKNOWN_EVENT.jpg';
         return {
@@ -191,7 +253,6 @@ export function PhotoGallery() {
         };
       });
       setPhotos(normalizedPhotos);
-      setTimelineEvents(Array.isArray(eventsList) ? eventsList : []);
     } catch (e) {
       console.error('Failed to load gallery data:', e);
     } finally {
@@ -199,6 +260,17 @@ export function PhotoGallery() {
       if (isRefresh) setRefreshing(false);
     }
   }, []);
+
+  const openPhoto = useCallback(async (photo: Photo) => {
+    setSelectedPhoto(photo);
+    if (timelineEvents.length > 0) return;
+    try {
+      const eventsList = await mrpmModule.getTimeline().catch(() => []);
+      setTimelineEvents(Array.isArray(eventsList) ? eventsList : []);
+    } catch {
+      /* viewer still works without timeline match */
+    }
+  }, [timelineEvents.length]);
 
   // Refresh only when Gallery is opened / focused — no continuous polling
   useFocusEffect(
@@ -283,22 +355,23 @@ export function PhotoGallery() {
     );
   };
 
-  const toggleSelectMode = (on?: boolean) => {
-    const next = on ?? !selectMode;
-    setSelectMode(next);
-    if (next) {
-      setGroupBy(prev => (prev === 'NONE' ? 'WEEK' : prev));
-      setControlsExpanded(true);
-    } else {
-      setSelectedPaths([]);
-    }
-  };
+  const toggleSelectMode = useCallback((on?: boolean) => {
+    setSelectMode(prev => {
+      const next = on ?? !prev;
+      if (next) {
+        setGroupBy(g => (g === 'NONE' ? 'WEEK' : g));
+      } else {
+        setSelectedPaths([]);
+      }
+      return next;
+    });
+  }, []);
 
-  const togglePhotoSelected = (path: string) => {
+  const togglePhotoSelected = useCallback((path: string) => {
     setSelectedPaths(prev =>
       prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path],
     );
-  };
+  }, []);
 
   // Apply type filter + time-range filter + sort order
   const displayedPhotos = useMemo(() => {
@@ -397,53 +470,40 @@ export function PhotoGallery() {
     );
   };
 
-  const renderPhotoItem = (item: Photo) => {
-    const eventTitle = formatPhotoEventName(item.name);
-    const imageUri = `file://${item.path}`;
-    const isSelected = selectedPaths.includes(item.path);
+  const listRows = useMemo<GalleryRow[]>(() => {
+    const rows: GalleryRow[] = [];
+    for (const group of photoGroups) {
+      if (group.label) {
+        rows.push({kind: 'header', key: `h-${group.key}`, label: group.label, photos: group.photos});
+      }
+      chunkPhotos(group.photos, COLS).forEach((photosRow, i) => {
+        rows.push({kind: 'row', key: `r-${group.key}-${i}`, photos: photosRow});
+      });
+    }
+    return rows;
+  }, [photoGroups]);
 
-    return (
-      <TouchableOpacity
-        key={item.path}
-        style={[styles.photoContainer, isSelected && styles.photoContainerSelected]}
-        activeOpacity={0.8}
-        onPress={() =>
-          selectMode ? togglePhotoSelected(item.path) : setSelectedPhoto(item)
-        }
-        onLongPress={() => {
-          if (!selectMode) {
-            toggleSelectMode(true);
-            setSelectedPaths([item.path]);
-          } else {
-            togglePhotoSelected(item.path);
-          }
-        }}>
-        <Image
-          source={{uri: imageUri}}
-          style={styles.photo}
-          resizeMode="contain"
-          onError={e => console.warn('Image load failed:', imageUri, e.nativeEvent.error)}
-        />
-        {selectMode ? (
-          <View style={[styles.selectCheck, isSelected && styles.selectCheckOn]}>
-            <Text style={styles.selectCheckText}>{isSelected ? '✓' : ''}</Text>
-          </View>
-        ) : null}
-        <View style={styles.photoOverlay}>
-          <Text style={styles.photoTitle} numberOfLines={1}>
-            {eventTitle}
-          </Text>
-          <Text style={styles.photoTime}>
-            {new Date(item.timestamp).toLocaleDateString()}{' '}
-            {new Date(item.timestamp).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const onThumbPress = useCallback(
+    (photo: Photo) => {
+      if (selectMode) {
+        togglePhotoSelected(photo.path);
+      } else {
+        openPhoto(photo);
+      }
+    },
+    [selectMode, openPhoto, togglePhotoSelected],
+  );
+
+  const onThumbLongPress = useCallback((photo: Photo) => {
+    if (!selectMode) {
+      toggleSelectMode(true);
+      setSelectedPaths([photo.path]);
+    } else {
+      togglePhotoSelected(photo.path);
+    }
+  }, [selectMode, togglePhotoSelected, toggleSelectMode]);
+
+  const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
 
   const matchedEvent = selectedPhoto
     ? findMatchingEventForPhoto(selectedPhoto, timelineEvents)
@@ -475,7 +535,8 @@ export function PhotoGallery() {
 
   return (
     <View style={styles.container}>
-      <Card style={{marginHorizontal: 0}}>
+      <View style={styles.controlsShell}>
+      <Card style={{marginHorizontal: 0, marginVertical: 0, padding: 12}}>
         <TouchableOpacity
           style={styles.controlsHeader}
           onPress={() => setControlsExpanded(v => !v)}
@@ -483,8 +544,9 @@ export function PhotoGallery() {
           <View style={styles.controlsHeaderText}>
             <Text style={styles.headerLabel}>CONTROLS</Text>
             <Text style={styles.subheader}>
-              {photos.length} total security capture{photos.length !== 1 ? 's' : ''} logged.
-              {!controlsExpanded ? ' · Tap to expand filters' : ''}
+              {photos.length} capture{photos.length !== 1 ? 's' : ''}
+              {selectMode ? ` · ${selectedPaths.length} selected` : ''}
+              {!controlsExpanded ? ' · Filters' : ''}
             </Text>
           </View>
           <View style={styles.chevronBtn}>
@@ -492,8 +554,29 @@ export function PhotoGallery() {
           </View>
         </TouchableOpacity>
 
+        {selectMode ? (
+          <View style={styles.selectBar}>
+            <TouchableOpacity style={styles.selectBarBtn} onPress={() => toggleSelectMode(false)}>
+              <Text style={styles.selectBarBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.selectBarBtn,
+                styles.selectBarDelete,
+                selectedPaths.length === 0 && styles.controlButtonDisabled,
+              ]}
+              disabled={selectedPaths.length === 0}
+              onPress={deleteSelectedPhotos}>
+              <Text style={styles.selectBarBtnText}>Delete ({selectedPaths.length})</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {controlsExpanded && (
-          <>
+          <ScrollView
+            style={styles.controlsScroll}
+            nestedScrollEnabled
+            keyboardShouldPersistTaps="handled">
             <View style={styles.buttonRow}>
               <TouchableOpacity
                 style={[styles.controlButton, capturingTest && styles.controlButtonDisabled]}
@@ -623,9 +706,10 @@ export function PhotoGallery() {
                 ))}
               </View>
             </View>
-          </>
+          </ScrollView>
         )}
       </Card>
+      </View>
 
       {displayedPhotos.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -641,13 +725,14 @@ export function PhotoGallery() {
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView
+        <View style={styles.gridFlex}>
+        <FlashList
+          data={listRows}
+          extraData={selectedPaths}
+          estimatedItemSize={PHOTO_SIZE + 10}
+          keyExtractor={item => item.key}
           contentContainerStyle={styles.gridContainer}
-          showsVerticalScrollIndicator={false}
-          bounces
-          alwaysBounceVertical
-          decelerationRate="normal"
-          overScrollMode="always"
+          showsVerticalScrollIndicator
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -655,33 +740,46 @@ export function PhotoGallery() {
               tintColor={colors.sky}
               colors={[colors.sky]}
             />
-          }>
-          {photoGroups.map(group => (
-            <View key={group.key} style={styles.photoGroup}>
-              {group.label ? (
+          }
+          renderItem={({item}) => {
+            if (item.kind === 'header') {
+              const allOn = item.photos.every(p => selectedSet.has(p.path));
+              return (
                 <View style={styles.groupHeader}>
                   <Text style={styles.groupHeaderText}>
-                    {group.label} · {group.photos.length}
+                    {item.label} · {item.photos.length}
                   </Text>
                   {selectMode ? (
                     <TouchableOpacity
-                      onPress={() => selectGroup(group.photos)}
+                      onPress={() => selectGroup(item.photos)}
                       style={styles.groupSelectBtn}>
                       <Text style={styles.groupSelectBtnText}>
-                        {group.photos.every(p => selectedPaths.includes(p.path))
-                          ? 'Deselect'
-                          : 'Select'}
+                        {allOn ? 'Deselect' : 'Select'}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
-              ) : null}
-              <View style={styles.photoGrid}>
-                {group.photos.map(photo => renderPhotoItem(photo))}
+              );
+            }
+            return (
+              <View style={styles.photoRow}>
+                {item.photos.map(photo => (
+                  <PhotoThumb
+                    key={photo.path}
+                    item={photo}
+                    eventTitle={photo.eventType || formatPhotoEventName(photo.name)}
+                    selectMode={selectMode}
+                    isSelected={selectedSet.has(photo.path)}
+                    styles={styles}
+                    onPress={onThumbPress}
+                    onLongPress={onThumbLongPress}
+                  />
+                ))}
               </View>
-            </View>
-          ))}
-        </ScrollView>
+            );
+          }}
+        />
+        </View>
       )}
 
       <Modal
@@ -857,7 +955,40 @@ function createStyles(colors: ColorPalette) {
     container: {
       flex: 1,
       backgroundColor: colors.bg,
-      padding: 16,
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      paddingBottom: 8,
+    },
+    controlsShell: {
+      flexShrink: 0,
+    },
+    controlsScroll: {
+      maxHeight: CONTROLS_MAX,
+    },
+    selectBar: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 8,
+    },
+    selectBarBtn: {
+      flex: 1,
+      backgroundColor: colors.skyDark,
+      paddingVertical: 8,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    selectBarDelete: {
+      backgroundColor: colors.red,
+    },
+    selectBarBtnText: {
+      color: '#ffffff',
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    gridFlex: {
+      flex: 1,
+      minHeight: 180,
+      marginTop: 8,
     },
     headerLabel: {
       fontSize: 11,
@@ -895,18 +1026,18 @@ function createStyles(colors: ColorPalette) {
     },
     buttonRow: {
       flexDirection: 'row',
-      gap: 12,
-      marginBottom: 16,
-      marginTop: 12,
+      gap: 8,
+      marginBottom: 10,
+      marginTop: 8,
     },
     controlButton: {
       flex: 1,
       backgroundColor: colors.skyDark,
-      paddingVertical: 14,
-      borderRadius: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
-      minHeight: 48,
+      minHeight: 40,
     },
     controlButtonDisabled: {
       backgroundColor: colors.surfaceAlt,
@@ -1006,16 +1137,19 @@ function createStyles(colors: ColorPalette) {
       flexWrap: 'wrap',
       justifyContent: 'space-between',
     },
+    photoRow: {
+      flexDirection: 'row',
+      gap: GRID_GAP,
+      marginBottom: GRID_GAP,
+    },
     photoContainer: {
       width: PHOTO_SIZE,
-      height: PHOTO_SIZE * 1.25,
-      borderRadius: 14,
+      height: PHOTO_SIZE,
+      borderRadius: 8,
       overflow: 'hidden',
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
-      elevation: 4,
-      marginBottom: 14,
     },
     photoContainerSelected: {
       borderColor: colors.sky,
@@ -1054,14 +1188,14 @@ function createStyles(colors: ColorPalette) {
       left: 0,
       right: 0,
       backgroundColor: 'rgba(0, 0, 0, 0.78)',
-      paddingHorizontal: 10,
-      paddingVertical: 8,
+      paddingHorizontal: 6,
+      paddingVertical: 4,
     },
     photoTitle: {
       color: '#f8fafc',
-      fontSize: 12,
+      fontSize: 10,
       fontWeight: '700',
-      marginBottom: 2,
+      marginBottom: 0,
     },
     photoTime: {
       color: '#cbd5e1',

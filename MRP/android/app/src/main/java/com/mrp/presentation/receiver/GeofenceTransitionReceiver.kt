@@ -71,6 +71,17 @@ class GeofenceTransitionReceiver : BroadcastReceiver() {
         primaryId: String,
         primaryName: String
     ) {
+        val prevInside = DeviceTrackingPrefs.lastGeofenceInside(context)
+        val prevId = DeviceTrackingPrefs.lastGeofenceId(context)
+        if (osEntered && prevInside == true && prevId == primaryId) {
+            Log.d(TAG, "skip duplicate ENTER $primaryName (already inside)")
+            return
+        }
+        if (!osEntered && prevInside != true) {
+            Log.d(TAG, "skip duplicate EXIT $primaryName (already away)")
+            return
+        }
+
         val result = LocationEngine.onOsGeofenceTransition(
             context = context,
             entered = osEntered,

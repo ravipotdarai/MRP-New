@@ -119,7 +119,7 @@ object DevicePowerMode {
             GpsTrailIdleTicker.stop()
         }
         if (prevIdle == null || prevIdle != idle) {
-            NativeGeofenceRegistrar.sync(app)
+            NativeGeofenceRegistrar.sync(app, fireInitialTrigger = false)
             DeviceTrackingPrefs.setLastAppliedIdle(app, idle)
             Log.i(TAG, "mode idle=$idle geofenceMs=${geofenceResponsivenessMs(app)}")
         }

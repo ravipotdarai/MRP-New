@@ -23,7 +23,12 @@ object NativeGeofenceRegistrar {
     private const val TAG = "NativeGeofence"
     private const val REQ_CODE = 7741
 
-    fun sync(context: Context) {
+    /**
+     * @param fireInitialTrigger when true, Play may emit ENTER/EXIT immediately for current location
+     * (first register / zone edit). Power-mode re-register must pass false or lock/unlock
+     * re-adds fences and logs a fake GEOFENCE_* row every time.
+     */
+    fun sync(context: Context, fireInitialTrigger: Boolean = true) {
         val app = context.applicationContext
         if (!hasFineLocation(app)) {
             Log.w(TAG, "skip sync — no fine location permission")
@@ -49,13 +54,16 @@ object NativeGeofenceRegistrar {
                     .setNotificationResponsiveness(DevicePowerMode.geofenceResponsivenessMs(app))
                     .build()
             }
-            val request = GeofencingRequest.Builder()
-                .setInitialTrigger(
+            val requestBuilder = GeofencingRequest.Builder().addGeofences(geofences)
+            if (fireInitialTrigger) {
+                requestBuilder.setInitialTrigger(
                     GeofencingRequest.INITIAL_TRIGGER_ENTER or
                         GeofencingRequest.INITIAL_TRIGGER_EXIT
                 )
-                .addGeofences(geofences)
-                .build()
+            } else {
+                requestBuilder.setInitialTrigger(0)
+            }
+            val request = requestBuilder.build()
             try {
                 if (ActivityCompat.checkSelfPermission(app, Manifest.permission.ACCESS_FINE_LOCATION)
                     != PackageManager.PERMISSION_GRANTED
@@ -67,7 +75,8 @@ object NativeGeofenceRegistrar {
                         Log.i(
                             TAG,
                             "registered ${geofences.size} geofences delayMs=" +
-                                DevicePowerMode.geofenceResponsivenessMs(app)
+                                DevicePowerMode.geofenceResponsivenessMs(app) +
+                                " initialTrigger=$fireInitialTrigger"
                         )
                     }
                     .addOnFailureListener { e -> Log.e(TAG, "addGeofences failed", e) }

@@ -7,15 +7,20 @@ import {
   Linking,
   Image,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import {ColorPalette, spacing, radius} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
 import {LiveMapPoint, pinStyle} from './circleMapUrls';
 
+type PathPoint = {latitude: number; longitude: number; atMs?: number};
+
 type Props = {
   points: LiveMapPoint[];
   title?: string;
   fallbackCenter?: {latitude: number; longitude: number} | null;
+  /** Full day trail drawn immediately (Travel), not only live-accumulated points. */
+  path?: PathPoint[];
 };
 
 type TrailPoint = {latitude: number; longitude: number; atMs: number};
@@ -113,6 +118,7 @@ export function CircleLiveMap({
   points,
   title = 'Live map',
   fallbackCenter = null,
+  path,
 }: Props) {
   const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -120,7 +126,9 @@ export function CircleLiveMap({
   const [trails, setTrails] = useState<Record<string, TrailPoint[]>>({});
   const [imgLoading, setImgLoading] = useState(true);
   const [imgError, setImgError] = useState<string | null>(null);
-  const [layoutW, setLayoutW] = useState(0);
+  const [layoutW, setLayoutW] = useState(
+    () => Math.max(280, Dimensions.get('window').width - spacing.lg * 2),
+  );
 
   useEffect(() => {
     if (points.length === 0) return;
@@ -156,17 +164,22 @@ export function CircleLiveMap({
   const fallback = fallbackCenter || {latitude: 18.52, longitude: 73.85};
 
   const allPts = useMemo(() => {
-    const list: {latitude: number; longitude: number}[] = points.map(p => ({
-      latitude: p.latitude,
-      longitude: p.longitude,
-    }));
+    const list: {latitude: number; longitude: number}[] = [];
+    for (const t of path ?? []) {
+      list.push({latitude: t.latitude, longitude: t.longitude});
+    }
+    if (!list.length) {
+      for (const p of points) {
+        list.push({latitude: p.latitude, longitude: p.longitude});
+      }
+    }
     for (const id of Object.keys(trails)) {
       for (const t of trails[id] ?? []) {
         list.push({latitude: t.latitude, longitude: t.longitude});
       }
     }
     return list;
-  }, [points, trails]);
+  }, [points, trails, path]);
 
   const bbox = useMemo(() => buildBBox(allPts, fallback), [allPts, fallback]);
   const mapUrl = useMemo(() => buildMapUrl(bbox), [bbox]);
@@ -203,7 +216,7 @@ export function CircleLiveMap({
         <Image
           source={{uri: mapUrl}}
           style={styles.mapImage}
-          resizeMode="cover"
+          resizeMode="stretch"
           onLoadStart={() => setImgLoading(true)}
           onLoad={() => {
             setImgLoading(false);
@@ -214,6 +227,52 @@ export function CircleLiveMap({
             setImgError('Map image failed to load');
           }}
         />
+
+        {(path?.length ?? 0) >= 2
+          ? (() => {
+              const trail = path!;
+              const color = pinStyle(points[0]?.colorIndex ?? 2).hex;
+              const segments: React.ReactNode[] = [];
+              const maxSeg = 80;
+              const step = trail.length <= maxSeg + 1 ? 1 : (trail.length - 1) / maxSeg;
+              let prevI = 0;
+              for (let s = 1; s <= maxSeg; s++) {
+                const i = Math.min(trail.length - 1, Math.round(s * step));
+                if (i <= prevI) continue;
+                const a = project(
+                  trail[prevI].latitude,
+                  trail[prevI].longitude,
+                  bbox,
+                  drawW,
+                  drawH,
+                );
+                const b = project(trail[i].latitude, trail[i].longitude, bbox, drawW, drawH);
+                prevI = i;
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                if (len < 1) continue;
+                const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+                segments.push(
+                  <View
+                    key={`path-${i}`}
+                    style={{
+                      position: 'absolute',
+                      left: (a.x + b.x) / 2 - len / 2,
+                      top: (a.y + b.y) / 2 - 2,
+                      width: len,
+                      height: 4,
+                      backgroundColor: color,
+                      opacity: 0.9,
+                      borderRadius: 2,
+                      transform: [{rotate: `${angle}deg`}],
+                    }}
+                  />,
+                );
+              }
+              return <React.Fragment key="day-path">{segments}</React.Fragment>;
+            })()
+          : null}
 
         {layoutW > 0
           ? Object.keys(trails).map(id => {
@@ -251,8 +310,7 @@ export function CircleLiveMap({
             })
           : null}
 
-        {layoutW > 0
-          ? points.map(p => {
+        {points.map(p => {
               const {x, y} = project(p.latitude, p.longitude, bbox, drawW, drawH);
               const color = pinStyle(p.colorIndex).hex;
               return (
@@ -268,8 +326,7 @@ export function CircleLiveMap({
                   ]}
                 />
               );
-            })
-          : null}
+            })}
 
         {imgLoading ? (
           <View style={styles.loadingOverlay} pointerEvents="none">

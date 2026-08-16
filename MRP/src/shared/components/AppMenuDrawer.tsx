@@ -67,8 +67,8 @@ const MENU: MenuRow[] = [
     children: [
       {label: 'Setup', target: {screen: 'Security', tab: 'MONITORING'}},
       {label: 'Activity', target: {screen: 'Security', tab: 'TIMELINE'}},
+      {label: 'Permission', target: {screen: 'Security', tab: 'PERMISSIONS'}},
       {label: 'Photos', target: {screen: 'Security', tab: 'PHOTOS'}},
-      {label: 'Permissions', target: {screen: 'Security', tab: 'PERMISSIONS'}},
     ],
   },
   {
@@ -116,7 +116,7 @@ const MENU: MenuRow[] = [
     children: [
       {label: 'Account', target: {screen: 'Hub', section: 'account'}},
       {label: 'Geofence', target: {screen: 'Hub', section: 'geofence'}},
-      {label: 'Emergency monitoring', target: {screen: 'Hub', section: 'emergency-monitoring'}},
+      {label: 'Travel', target: {screen: 'Hub', section: 'emergency-monitoring'}},
       ...(CIRCLE_ENABLED
         ? ([
             {label: 'Circle', target: {screen: 'Hub', section: 'circle'}},

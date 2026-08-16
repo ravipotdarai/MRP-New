@@ -52,8 +52,8 @@ object LocationWakePolicy {
                 else !hasTrusted || snapshotAgeMs > T_DRIVE_STALE_MS
             }
             KIND_GEOFENCE -> {
-                if (idle && idleReusable) false
-                else !trustedFresh
+                // OS ENTER/EXIT must not reuse a hours-old idle snapshot — badge would stick on Away.
+                !trustedFresh
             }
             KIND_EVENT -> {
                 val t = (eventType ?: "").uppercase()
