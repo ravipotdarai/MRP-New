@@ -5,7 +5,7 @@ Project documentation (moved out of the repo root).
 | Folder | Contents |
 |---|---|
 | [`store/`](store/) | Store v1 release, Drive-only scope, security, Play Billing, P8 |
-| [`plans/`](plans/) | Implementation plan, open phase items, changelog |
+| [`plans/`](plans/) | Implementation plan, open phase items, **next version / deferred features** |
 | [`battery/`](battery/) | Battery optimization notes, geofence GPS strategies |
 | [`setup/`](setup/) | Install, onboarding, permissions / trust, FAQ, troubleshooting, env |
 | [`archive/`](archive/) | Older fix write-ups and analyses |
@@ -20,4 +20,9 @@ Project documentation (moved out of the repo root).
 | [FAQ.md](setup/FAQ.md) | Common questions |
 | [TROUBLESHOOTING.md](setup/TROUBLESHOOTING.md) | Selfie, SMS, Drive, battery issues |
 
-Agent notes stay at repo root: [`../CLAUDE.md`](../CLAUDE.md).
+### Plans (agents)
+
+| Doc | Description |
+|---|---|
+| [NEXT_VERSION.md](plans/NEXT_VERSION.md) | Deferred / removed / v2 restore notes (living) |
+| [OPEN_PHASE_ITEMS.md](plans/OPEN_PHASE_ITEMS.md) | Phase IDs still open |

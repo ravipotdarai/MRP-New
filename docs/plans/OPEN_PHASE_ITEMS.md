@@ -1,7 +1,8 @@
 # Open phase items — Not started · Partial · Untested
 
 Living tracker for work that is **not fully Done**.  
-Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.
+Source of acceptance criteria: [`PROJECT_IMPLEMENTATION_PLAN.md`](PROJECT_IMPLEMENTATION_PLAN.md) §8.  
+**Deferred / next version product list:** [`NEXT_VERSION.md`](NEXT_VERSION.md).
 
 **Last updated:** 2026-08-02 (P8-da consumer Device Admin Play-safe checklist; prior: 2026-08-01 Web portal PathSync IA)  
 **Rule going forward:** When you finish or smoke-test an item, move it out of this file (or into the Done log at the bottom). When you start a new gap, add it here under the right status.

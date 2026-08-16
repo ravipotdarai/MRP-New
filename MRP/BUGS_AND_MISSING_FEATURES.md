@@ -1,6 +1,8 @@
 # MRP App - Bugs & Missing Functionality Analysis
 ## Production Readiness Assessment
 
+> **Historical (2026-07-13).** Do not treat as current. Deferred / next-version work: [`docs/plans/NEXT_VERSION.md`](../docs/plans/NEXT_VERSION.md).
+
 **Analysis Date**: July 13, 2026
 **Total TypeScript Files**: 15
 **Total Kotlin Files**: 33+

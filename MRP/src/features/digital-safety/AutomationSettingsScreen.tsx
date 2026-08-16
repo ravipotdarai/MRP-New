@@ -38,7 +38,6 @@ export function AutomationSettingsScreen({
   const [email, setEmail] = useState('');
 
   const clipboardAllowed = canUseFeature('digitalsafe.clipboard_scan');
-  const smsAllowed = canUseFeature('digitalsafe.sms_auto');
   const breachAllowed = canUseFeature('digitalsafe.breach_monitor');
 
   const refresh = useCallback(async () => {
@@ -82,13 +81,9 @@ export function AutomationSettingsScreen({
 
   const toggleSms = async (enabled: boolean) => {
     if (!SMS_AUTO_SCAN_ENABLED) {
-      Alert.alert(
-        'Not available yet',
-        'Incoming SMS auto-scan stays off until policy review. Use Scam Check to paste messages.',
-      );
       return;
     }
-    if (enabled && !smsAllowed) {
+    if (enabled && !canUseFeature('digitalsafe.sms_auto')) {
       onUpgrade?.();
       Alert.alert('Premium required', 'SMS auto-scan is available on Premium, Family, and Enterprise.');
       return;
@@ -222,7 +217,7 @@ export function AutomationSettingsScreen({
         <Text style={styles.rowSub}>• Manual paste — Free (default)</Text>
         <Text style={styles.rowSub}>• Share / deep link to MRP — Free (default on)</Text>
         <Text style={styles.rowSub}>• Clipboard URL scan — Basic+, off until you enable</Text>
-        <Text style={styles.rowSub}>• SMS auto-scan — Premium+, policy-gated (currently off)</Text>
+        <Text style={styles.rowSub}>• SMS auto-scan — next version (policy); paste in Scam Check</Text>
         <Text style={styles.rowSub}>• Breach email re-check — Basic+, after enrollment</Text>
       </View>
 
@@ -247,18 +242,10 @@ export function AutomationSettingsScreen({
           enabled={!!state?.smsAutoScanEnabled}
           onToggle={toggleSms}
           disabled={busy || !state?.smsAutoScanAvailable}
-          locked={!smsAllowed}
+          locked={!canUseFeature('digitalsafe.sms_auto')}
           lockReason="Premium or higher required"
         />
-      ) : (
-        <View style={styles.card}>
-          <Text style={styles.rowTitle}>Incoming SMS scam scan</Text>
-          <Text style={styles.rowSub}>
-            Off by design until Play policy review. Paste messages in Scam Check instead. MRP does not
-            request RECEIVE_SMS for this release.
-          </Text>
-        </View>
-      )}
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.rowTitle}>Breach email monitoring</Text>
