@@ -10,8 +10,13 @@ export type DeviceTrackingConfig = {
   syncOnMobileData: boolean;
   syncLocation: boolean;
   syncGeofenceChanges: boolean;
-  /** Premium+ selfie bytes in Drive vault. */
+  /** Include selfies in Drive vault when Premium+. */
   syncSelfiesPremium: boolean;
+  /** On-device event selfie capture allowed (read-only from native). */
+  mayCaptureSelfies?: boolean;
+  /** Drive pack includes selfies (Premium+ + toggle; read-only). */
+  drivePackSelfies?: boolean;
+  isPremiumPlus?: boolean;
   /** Normal Drive sync cadence (minutes, min 10). Emergency uses its own interval. */
   syncFrequencyMinutes: number;
   emergencyTracking: boolean;

@@ -19,7 +19,7 @@ const BOOL_TOGGLES = [
   ['syncOnMobileData', 'Allow chunk sync on mobile data (LTE/5G)'],
   ['syncLocation', 'Include live location in Drive'],
   ['syncGeofenceChanges', 'Sync when geofence changes'],
-  ['syncSelfiesPremium', 'Premium+ selfies in Drive'],
+  ['syncSelfiesPremium', 'Include selfies in Drive (Premium+ only)'],
   ['emergencyTracking', 'Emergency Tracking'],
 ] as const;
 

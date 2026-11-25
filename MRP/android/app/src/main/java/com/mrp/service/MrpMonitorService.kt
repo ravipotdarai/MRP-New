@@ -1550,10 +1550,9 @@ class MrpMonitorService : Service() {
 
             releaseWakeLock()
 
+            // PARTIAL only — do not force screen on (battery + OEM voltage sag).
             wakeLock = powerManager.newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK or
-                PowerManager.ACQUIRE_CAUSES_WAKEUP or
-                PowerManager.ON_AFTER_RELEASE,
+                PowerManager.PARTIAL_WAKE_LOCK,
                 "MRP:EventWakeLock"
             )
             wakeLock?.acquire(EVENT_WAKE_LOCK_MS)
@@ -1611,13 +1610,24 @@ class MrpMonitorService : Service() {
         fun requestPhoto(context: Context, eventName: String = "unknown") {
             try {
                 val now = System.currentTimeMillis()
-                val key = eventName.uppercase(java.util.Locale.US)
+                var key = eventName.uppercase(java.util.Locale.US)
+                // Accessibility / OEM paths sometimes emit UNLOCK_FAILED — treat as wrong unlock.
+                if (key == "UNLOCK_FAILED") {
+                    key = EventTypes.WRONG_UNLOCK_ATTEMPT
+                }
                 if (SelfieVaultPackager.isNoSelfieEvent(key)) {
                     Log.d(TAG, "requestPhoto skipped for $eventName (no-selfie event)")
                     return
                 }
                 if (!DeviceTrackingPrefs.mayCaptureSelfies(context)) {
-                    Log.d(TAG, "requestPhoto skipped for $eventName (Premium+ + selfie sync required)")
+                    Log.d(TAG, "requestPhoto skipped for $eventName (capture disabled)")
+                    return
+                }
+                if (com.mrp.util.CameraSessionGate.isQrHoldingCamera()) {
+                    Log.d(TAG, "requestPhoto deferred — QR camera busy ($key)")
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        requestPhoto(context, key)
+                    }, 2_500L)
                     return
                 }
                 val critical = key.contains("SIM") || key.contains("WRONG") || key.contains("USB") ||
@@ -1634,12 +1644,12 @@ class MrpMonitorService : Service() {
                 }
                 lastPhotoByEvent[key] = now
                 lastPhotoRequestMs = now
-                Log.d(TAG, "requestPhoto triggered for event: $eventName")
+                Log.d(TAG, "requestPhoto triggered for event: $key")
 
                 // Prefer service-only capture to avoid minimizing the app the user is on.
                 val svc = Intent(context, MrpMonitorService::class.java).apply {
                     action = ACTION_REQUEST_PHOTO
-                    putExtra("eventName", eventName)
+                    putExtra("eventName", key)
                 }
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -40,20 +40,25 @@ class CameraCaptureActivity : Activity() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "CameraCaptureActivity created")
 
-        // Show on top of lock screen reliably across all Android OS versions
+        val softenWake = com.mrp.util.BatteryPowerPolicy.shouldSoftenSelfieWake(this)
+        // Show on top of lock screen; avoid forcing full screen wake when battery is low.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
-            setTurnScreenOn(true)
+            if (!softenWake) {
+                setTurnScreenOn(true)
+            }
             val km = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
             km?.requestDismissKeyguard(this, null)
         }
         @Suppress("DEPRECATION")
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
+        var flags = WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        if (!softenWake) {
+            flags = flags or
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        }
+        window.addFlags(flags)
 
         // Transparent overlay for lock-screen capture. Only use a 1×1 window when the
         // keyguard is locked — a 1×1 window over the open MRP UI makes MainActivity look

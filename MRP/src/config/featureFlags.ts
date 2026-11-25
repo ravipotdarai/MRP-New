@@ -15,3 +15,9 @@ export const CIRCLE_INVITE_LANDING_ENABLED = false;
  * When false, the toggle is hidden and native enable rejects with FLAG_OFF.
  */
 export const SMS_AUTO_SCAN_ENABLED = false;
+
+/**
+ * QR Protection (CameraX + ML Kit). Low-priority feature; heavy camera/ML draw can
+ * brown-out phones below ~25% battery. Off for store v1 — Safe Link / paste still work.
+ */
+export const QR_PROTECTION_ENABLED = false;

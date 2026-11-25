@@ -23,6 +23,7 @@ import {MisuseRulesPanel} from './MisuseRulesPanel';
 import {DataRiskRulesPanel} from './DataRiskRulesPanel';
 import {ColorPalette} from '../../shared/theme';
 import {useTheme} from '../../shared/ThemeContext';
+import {getTrackingConfig} from '../../native/DeviceTracking.types';
 
 type PermOutcome = 'granted' | 'denied' | 'blocked';
 
@@ -256,6 +257,11 @@ export function MonitoringScreen() {
   const [softWipeVisible, setSoftWipeVisible] = useState(false);
   const [softWipeToken, setSoftWipeToken] = useState('');
   const [softWipeBusy, setSoftWipeBusy] = useState(false);
+  const [selfieStatus, setSelfieStatus] = useState<{
+    capture: boolean;
+    drive: boolean;
+    premium: boolean;
+  }>({capture: true, drive: false, premium: false});
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -287,6 +293,33 @@ export function MonitoringScreen() {
   useEffect(() => {
     checkPermissions();
   }, [checkPermissions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSelfieStatus = async () => {
+      try {
+        const cfg = await getTrackingConfig();
+        if (cancelled) return;
+        setSelfieStatus({
+          capture: cfg.mayCaptureSelfies !== false,
+          drive: !!cfg.drivePackSelfies,
+          premium: !!cfg.isPremiumPlus,
+        });
+      } catch {
+        /* keep defaults */
+      }
+    };
+    void loadSelfieStatus();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void loadSelfieStatus();
+      }
+    });
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
 
   // Re-sync when returning from the system permission dialog / Settings
   useEffect(() => {
@@ -332,6 +365,25 @@ export function MonitoringScreen() {
             settings.isMonitoringEnabled ? colors.emerald : colors.textSecondary
           }
         />
+      </View>
+
+      <View style={[styles.sectionCard, {marginTop: 12, paddingVertical: 12}]}>
+        <Text style={styles.itemTitle}>Event selfies</Text>
+        <Text style={styles.itemSubtitle}>
+          {selfieStatus.capture
+            ? 'On-device capture: ON (security events)'
+            : 'On-device capture: OFF'}
+          {' · '}
+          {selfieStatus.drive
+            ? 'Drive pack: ON'
+            : selfieStatus.premium
+              ? 'Drive pack: OFF (Sync Policy)'
+              : 'Drive pack: Premium+ plan'}
+        </Text>
+        <Text style={[styles.itemSubtitle, {marginTop: 4}]}>
+          Lock/unlock alone does not take a selfie. Test with Wi‑Fi toggle, wrong PIN, or SIM
+          change. Camera permission required.
+        </Text>
       </View>
 
       {/* Required Permissions Hub */}

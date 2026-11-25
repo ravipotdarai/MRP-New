@@ -78,16 +78,20 @@ object DeviceTrackingPrefs {
     }
 
     /**
-     * Capture + Drive include selfies only for Premium+ when Sync Policy toggle is on.
-     * Free/basic: never capture or pack selfies into the vault.
+     * Drive vault packing of selfies — Premium+ and Sync Policy toggle.
+     * Free/basic: local capture still allowed; selfies are not packed into Drive.
      */
     fun shouldIncludeSelfies(context: Context): Boolean {
         if (!syncSelfiesPremium(context)) return false
         return isPremiumPlus(context)
     }
 
-    /** Alias for camera path — same Premium+ + toggle gate. */
-    fun mayCaptureSelfies(context: Context): Boolean = shouldIncludeSelfies(context)
+    /**
+     * On-device event selfies (security evidence).
+     * Gated only by monitoring event toggles + camera permission — not by plan tier.
+     * Drive upload remains [shouldIncludeSelfies].
+     */
+    fun mayCaptureSelfies(context: Context): Boolean = true
 
     /** Normal Drive sync cadence (minutes). Emergency uses its own interval. */
     fun syncFrequencyMinutes(context: Context): Int {
@@ -259,6 +263,9 @@ object DeviceTrackingPrefs {
         "syncLocation" to syncLocation(context),
         "syncGeofenceChanges" to syncGeofenceChanges(context),
         "syncSelfiesPremium" to syncSelfiesPremium(context),
+        "mayCaptureSelfies" to mayCaptureSelfies(context),
+        "drivePackSelfies" to shouldIncludeSelfies(context),
+        "isPremiumPlus" to isPremiumPlus(context),
         "syncFrequencyMinutes" to syncFrequencyMinutes(context),
         "emergencyTracking" to isEmergencyTracking(context),
         "emergencyIntervalMinutes" to emergencyIntervalMinutes(context)

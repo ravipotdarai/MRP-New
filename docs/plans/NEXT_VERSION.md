@@ -16,6 +16,7 @@ Related: [`OPEN_PHASE_ITEMS.md`](OPEN_PHASE_ITEMS.md) (phase IDs), [`../store/V1
 | Circle live share | `MRP/src/config/featureFlags.ts` → `CIRCLE_ENABLED = true`. Code stays under `MRP/src/features/circle/` + native Circle modules. Then run Circle 2-device E2E (P8-7). |
 | Circle invite web landing | `CIRCLE_INVITE_LANDING_ENABLED = true` |
 | SMS auto-scan | `SMS_AUTO_SCAN_ENABLED = true` in `featureFlags.ts` **and** `DigitalSafetyFlags.kt`. Register `SmsScamReceiver` + `RECEIVE_SMS` in the manifest (commented today). Automation Settings already shows the consent card when the flag is on. |
+| QR Protection | `QR_PROTECTION_ENABLED = true` in `featureFlags.ts`. Keep native low-battery (&lt;25%) block; do not auto-open camera on mount. |
 | Play Billing | `Subscriptions.json` → `"mode": "play"`; `mrpAllowHardcodedBilling=false`. See Play Billing doc. |
 | USB Restriction | Git history (removed 2026-08-05). Needs **Device Owner** — not for consumer Play. |
 | Network Guardian DNS VPN | Re-enable the local VPN path; UI categories already exist (`NetworkGuardianScreen`). |
@@ -44,6 +45,7 @@ Shipped as flag-off, stub, or Console/human work:
 
 - **Circle** — create/join, live map, FCM invites, 2-device E2E, web Circle map, scheduled `circle_live` TTL (Blaze)
 - **SMS auto-scan** — no `RECEIVE_SMS` until Play policy write-up; users paste in **Scam Check**
+- **QR Protection** — `QR_PROTECTION_ENABLED=false` (heavy CameraX/ML Kit; brown-out risk &lt;25%). Safe Link paste remains. Flip flag + keep low-battery block when re-enabling.
 - **Play Billing** — catalog `mode: hardcoded`; no real money, restore, Family seats, or Nest Play mirror
 - **Play Data Safety form** — paste guide exists; Console not filled by this repo
 - **Network Guardian DNS VPN** — lists/toggles on device; actual VPN filter paused
@@ -54,6 +56,7 @@ Shipped as flag-off, stub, or Console/human work:
 - **Crashlytics** — optional later
 - **Web** — Circle/Subscriptions UI, Maps Platform, PDF (CSV exists), geofence **edit**, WebSocket live GPS
 - **iOS** — not in this track
+- **Release signing** — sideload `assembleRelease` still uses debug keystore until Play upload key is configured
 
 ---
 
@@ -96,5 +99,6 @@ Removed unused UI only. Native monitoring, photos, timeline, Circle (flagged), S
 
 | Date | Change |
 |---|---|
+| 2026-11-08 | Event selfies: local capture no longer Premium-gated (Drive pack still Premium+). QR flag-off + low-battery block + no auto-scan. Boot stagger; softer selfie wake. v1.0.4 |
 | 2026-08-16 | Created this file; removed unused Monitoring/EventTimeline duplicates; SMS Settings hides auto-scan card while flag is off |
 | 2026-08-16 | Admin ops panel (users, grants, catalog, inbox) on app + web for allowlisted Firebase admin |

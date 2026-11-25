@@ -46,7 +46,7 @@ object SelfieVaultPackager {
         "DEVICE_SHUTDOWN",
         "DEVICE_REBOOT",
         "SIM_LOCKED",
-        "UNLOCK_FAILED",
+        // UNLOCK_FAILED maps to wrong-unlock selfie path in requestPhoto
         "SIM_CHANGE",
         "POSTURE_ALERT",
     )
@@ -64,8 +64,9 @@ object SelfieVaultPackager {
         val key = eventType.uppercase(Locale.US)
         if (isNoSelfieEvent(key)) return emptySet()
         return when (key) {
-            "WRONG_PASSWORD" -> setOf("WRONG_UNLOCK_ATTEMPT", "WRONG_PASSWORD")
-            "WRONG_UNLOCK_ATTEMPT" -> setOf("WRONG_UNLOCK_ATTEMPT", "WRONG_PASSWORD")
+            "WRONG_PASSWORD" -> setOf("WRONG_UNLOCK_ATTEMPT", "WRONG_PASSWORD", "UNLOCK_FAILED")
+            "WRONG_UNLOCK_ATTEMPT", "UNLOCK_FAILED" ->
+                setOf("WRONG_UNLOCK_ATTEMPT", "WRONG_PASSWORD", "UNLOCK_FAILED")
             else -> setOf(key)
         }
     }

@@ -16,6 +16,7 @@ import {
   minPlanLabelForCapability,
   type DigitalSafetyCapability,
 } from '../../services/entitlements/DigitalSafetyCapabilityMatrix';
+import {QR_PROTECTION_ENABLED} from '../../config/featureFlags';
 
 export type DigitalSafetyDestination =
   | 'safe-link'
@@ -156,7 +157,11 @@ export function DigitalSafetyHubScreen({
         </View>
 
         {SECTIONS.map(section => {
-          const sectionItems = ITEMS.filter(i => i.section === section);
+          const sectionItems = ITEMS.filter(
+            i =>
+              i.section === section &&
+              (i.id !== 'qr' || QR_PROTECTION_ENABLED),
+          );
           if (sectionItems.length === 0) return null;
           return (
             <View key={section} style={styles.sectionBlock}>

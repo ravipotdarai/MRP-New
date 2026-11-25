@@ -286,6 +286,14 @@ class DigitalSafetyModule(private val reactContext: ReactApplicationContext) :
             promise.reject("NO_ACTIVITY", "No foreground activity")
             return
         }
+        if (com.mrp.util.BatteryPowerPolicy.shouldBlockOptionalCamera(reactContext)) {
+            val pct = com.mrp.util.BatteryPowerPolicy.batteryPercent(reactContext)
+            promise.reject(
+                "BATTERY_LOW",
+                "Battery low ($pct%). Charge to ${com.mrp.util.BatteryPowerPolicy.QR_MIN_PERCENT}%+ to use QR Protection.",
+            )
+            return
+        }
         if (qrPromise != null) {
             promise.reject("BUSY", "QR scan already in progress")
             return

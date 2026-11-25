@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {
   View,
   Text,
@@ -14,9 +14,13 @@ import {DigitalSafetyNative} from './DigitalSafety.native';
 import {scanUrlOrPayload, isWifiQrPayload, parseWifiQr} from '../security-center/urlScan';
 import {logDigitalSafetyEvent} from './digitalSafetyEvents';
 import {SafeLinkResultScreen} from './SafeLinkResultScreen';
+import {QR_PROTECTION_ENABLED} from '../../config/featureFlags';
 
 const FOOTER =
   'Always verify the destination before paying or entering passwords. MRP never auto-opens payment QR codes.';
+
+const LOW_BATTERY_HINT =
+  'QR uses the camera heavily. Below 25% battery, scanning is blocked to avoid phone shutdown.';
 
 export function QrScannerScreen({
   onBack,
@@ -32,6 +36,13 @@ export function QrScannerScreen({
   const [wifiInfo, setWifiInfo] = useState<{ssid: string; security: string} | null>(null);
 
   const scan = useCallback(async () => {
+    if (!QR_PROTECTION_ENABLED) {
+      Alert.alert(
+        'QR Protection unavailable',
+        'This feature is turned off in this build. Use Safe Link (paste) instead.',
+      );
+      return;
+    }
     setBusy(true);
     setPayload(null);
     setWifiInfo(null);
@@ -52,7 +63,6 @@ export function QrScannerScreen({
         return;
       }
 
-      // Payment schemes — preview only, never auto-open
       if (/^(upi|paytm|phonepe|gpay|intent):/i.test(raw)) {
         setPayload(raw);
         void logDigitalSafetyEvent('QR_BLOCKED', 'completed', {
@@ -70,15 +80,17 @@ export function QrScannerScreen({
 
       setPayload(raw);
     } catch (e: any) {
-      Alert.alert('Scan failed', e?.message || String(e));
+      const msg = e?.message || String(e);
+      const code = e?.code || '';
+      if (code === 'BATTERY_LOW' || /battery low/i.test(msg)) {
+        Alert.alert('Battery too low for QR', `${msg}\n\n${LOW_BATTERY_HINT}`);
+      } else {
+        Alert.alert('Scan failed', msg);
+      }
     } finally {
       setBusy(false);
     }
   }, []);
-
-  useEffect(() => {
-    void scan();
-  }, [scan]);
 
   // URL path → Safe Link result UI
   if (payload && !isWifiQrPayload(payload) && !/^(upi|paytm|phonepe|gpay|intent):/i.test(payload)) {
@@ -106,8 +118,18 @@ export function QrScannerScreen({
         <Text style={styles.sub}>Scan & preview before opening</Text>
       )}
 
+      <Text style={styles.hint}>{LOW_BATTERY_HINT}</Text>
+
+      <TouchableOpacity
+        style={[styles.scanBtn, busy && styles.scanBtnDisabled]}
+        onPress={() => void scan()}
+        disabled={busy}
+        activeOpacity={0.85}>
+        <Text style={styles.scanBtnText}>{busy ? 'Scanning…' : 'Scan QR'}</Text>
+      </TouchableOpacity>
+
       {busy ? (
-        <ActivityIndicator size="large" color={brandColors.googleBlue} style={{marginTop: 40}} />
+        <ActivityIndicator size="large" color={brandColors.googleBlue} style={{marginTop: 24}} />
       ) : null}
 
       {payload && wifiInfo ? (
@@ -138,30 +160,30 @@ export function QrScannerScreen({
                   {text: 'Cancel', style: 'cancel'},
                   {
                     text: 'Open payment app',
-                    onPress: () => Linking.openURL(payload).catch(() => {}),
+                    style: 'destructive',
+                    onPress: () => {
+                      void Linking.openURL(payload).catch(() =>
+                        Alert.alert('Could not open', 'No app handled this payment link.'),
+                      );
+                    },
                   },
                 ],
               )
             }>
-            <Text style={styles.dangerOutlineText}>Open payment (manual)</Text>
+            <Text style={styles.dangerOutlineText}>Open in payment app</Text>
           </TouchableOpacity>
         </View>
       ) : null}
 
-      {payload &&
-      !wifiInfo &&
-      !/^(upi|paytm|phonepe|gpay|intent):/i.test(payload) &&
-      !/https?:\/\//i.test(payload) ? (
+      {payload && !wifiInfo && !/^(upi|paytm|phonepe|gpay|intent):/i.test(payload) ? (
         <View style={styles.card}>
-          <Text style={styles.band}>Decoded text</Text>
-          <Text style={styles.norm}>{payload}</Text>
+          <Text style={styles.band}>Raw payload</Text>
+          <Text style={styles.norm} numberOfLines={6}>
+            {payload}
+          </Text>
+          <Text style={styles.footer}>{FOOTER}</Text>
         </View>
       ) : null}
-
-      <TouchableOpacity style={styles.primary} disabled={busy} onPress={scan}>
-        <Text style={styles.primaryText}>{busy ? 'Scanning…' : 'Scan again'}</Text>
-      </TouchableOpacity>
-      <Text style={styles.footer}>{FOOTER}</Text>
     </View>
   );
 }
@@ -170,44 +192,44 @@ function createStyles(colors: ColorPalette) {
   return StyleSheet.create({
     root: {flex: 1, backgroundColor: colors.bg, padding: spacing.lg},
     backBtn: {marginBottom: spacing.sm},
-    backText: {color: brandColors.googleBlue, fontWeight: '700', fontSize: 15},
-    title: {fontSize: 24, fontWeight: '800', color: colors.textPrimary},
-    sub: {fontSize: 14, color: colors.textMuted, marginBottom: spacing.md},
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: 2,
-      borderColor: colors.border,
-      padding: spacing.lg,
-      marginVertical: spacing.md,
+    backText: {fontSize: 16, color: brandColors.googleBlue, fontWeight: '600'},
+    title: {fontSize: 22, fontWeight: '800', color: colors.text},
+    sub: {fontSize: 14, color: colors.textMuted, marginTop: 4, marginBottom: spacing.md},
+    hint: {
+      fontSize: 13,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: spacing.md,
     },
-    band: {fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 6},
-    host: {fontSize: 16, fontWeight: '700', color: colors.textPrimary},
-    norm: {fontSize: 13, color: colors.textBody, marginTop: 4},
-    muted: {fontSize: 12, color: colors.textMuted, marginTop: 6},
-    primary: {
+    scanBtn: {
       backgroundColor: brandColors.googleBlue,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: 14,
       alignItems: 'center',
-      marginTop: spacing.md,
     },
-    primaryText: {color: '#fff', fontWeight: '800'},
+    scanBtnDisabled: {opacity: 0.6},
+    scanBtnText: {color: '#fff', fontWeight: '700', fontSize: 16},
+    card: {
+      marginTop: spacing.lg,
+      padding: spacing.md,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderSoft,
+      backgroundColor: colors.surface,
+    },
+    band: {fontSize: 12, fontWeight: '800', color: brandColors.googleBlue, marginBottom: 6},
+    host: {fontSize: 16, fontWeight: '700', color: colors.text},
+    muted: {fontSize: 13, color: colors.textMuted, marginTop: 4},
+    norm: {fontSize: 13, color: colors.text, marginTop: 4},
+    footer: {fontSize: 12, color: colors.textMuted, marginTop: spacing.sm, lineHeight: 16},
     dangerOutline: {
       marginTop: spacing.md,
       borderWidth: 1,
       borderColor: brandColors.googleRed,
       borderRadius: radius.md,
-      paddingVertical: 12,
+      paddingVertical: 10,
       alignItems: 'center',
     },
     dangerOutlineText: {color: brandColors.googleRed, fontWeight: '700'},
-    footer: {
-      fontSize: 12,
-      color: colors.textMuted,
-      fontStyle: 'italic',
-      lineHeight: 18,
-      marginTop: spacing.md,
-    },
   });
 }

@@ -8,6 +8,7 @@ import {
   BackHandler,
   Image,
   TouchableOpacity,
+  Alert,
   type ImageSourcePropType,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
@@ -28,7 +29,7 @@ import {GeofenceScreen} from '../geofence/GeofenceScreen';
 import {HubMenuCard} from './HubMenuCard';
 import {PromoLinksScreen} from './PromoLinksScreen';
 import {PolicyScreen} from './PolicyScreen';
-import {CIRCLE_ENABLED} from '../../config/featureFlags';
+import {CIRCLE_ENABLED, QR_PROTECTION_ENABLED} from '../../config/featureFlags';
 import Animated, {FadeIn} from 'react-native-reanimated';
 import {SecurityCenterScreen} from '../security-center/SecurityCenterScreen';
 import {EmergencyMonitoringScreen} from '../journey/EmergencyMonitoringScreen';
@@ -371,6 +372,13 @@ export function HubScreen({
           openSection('safe-link', {fromDigitalSafety: true});
           break;
         case 'qr':
+          if (!QR_PROTECTION_ENABLED) {
+            Alert.alert(
+              'QR Protection unavailable',
+              'This feature is off in this build. Use Safe Link (paste) instead.',
+            );
+            break;
+          }
           openSection('qr-scan', {fromDigitalSafety: true});
           break;
         case 'scam':
