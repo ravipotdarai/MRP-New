@@ -16,11 +16,31 @@ import type { GpsPoint, InterpolatedPose } from "../types";
 import type { HeatCell } from "../lib/journey-heatmap";
 import type { JourneyStop } from "../lib/journey-heuristics";
 import { hasGoogleMapsApiKey } from "../lib/google-maps-key";
-import { flattenRoadLegs, resolvePathDisplay } from "../lib/journey-map-paths";
+import {
+  flattenRoadLegs,
+  resolvePathDisplay,
+  TRAIL_STYLE,
+} from "../lib/journey-map-paths";
 import type { FenceCircle, PathMode } from "./journey-map-types";
 import { MapToolbar } from "./MapToolbar";
 import { GoogleJourneyMap } from "./GoogleJourneyMap";
 import "leaflet/dist/leaflet.css";
+
+function endPointIcon(kind: "start" | "end") {
+  const bg = kind === "start" ? "#16a34a" : "#dc2626";
+  const label = kind === "start" ? "A" : "B";
+  return L.divIcon({
+    className: "jpni-endpoint-icon",
+    html: `<div style="
+      width:22px;height:22px;border-radius:50%;
+      background:${bg};color:#fff;font:700 11px/22px system-ui,sans-serif;
+      text-align:center;border:2px solid #fff;
+      box-shadow:0 1px 4px rgba(0,0,0,.45);
+    ">${label}</div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
 
 export type { FenceCircle, PathMode } from "./journey-map-types";
 
@@ -81,9 +101,53 @@ function FitTrail({ path, fitKey }: { path: [number, number][]; fitKey: number }
   const map = useMap();
   useEffect(() => {
     if (path.length < 2) return;
-    map.fitBounds(path, { padding: [48, 48], maxZoom: 16 });
+    map.fitBounds(path, { padding: [56, 56], maxZoom: 17 });
   }, [map, path, fitKey]);
   return null;
+}
+
+function TrailPolylines({
+  legs,
+  style,
+}: {
+  legs: [number, number][][];
+  style: { color: string; weight: number; opacity: number; dashArray?: string };
+}) {
+  return (
+    <>
+      {legs.map((leg, i) =>
+        leg.length > 1 ? (
+          <Polyline
+            key={`c-${i}`}
+            positions={leg}
+            pathOptions={{
+              color: TRAIL_STYLE.casing.color,
+              weight: style.weight + 4,
+              opacity: TRAIL_STYLE.casing.opacity,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        ) : null,
+      )}
+      {legs.map((leg, i) =>
+        leg.length > 1 ? (
+          <Polyline
+            key={`s-${i}`}
+            positions={leg}
+            pathOptions={{
+              color: style.color,
+              weight: style.weight,
+              opacity: style.opacity,
+              dashArray: style.dashArray,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        ) : null,
+      )}
+    </>
+  );
 }
 
 function mapsUrl(lat: number, lng: number) {
@@ -109,7 +173,7 @@ function OsmJourneyMap({
   eventMarkers = [],
   showControls = true,
 }: Props) {
-  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("roads");
+  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("gps");
   const pathMode = pathModeProp ?? pathModeLocal;
   const setPathMode = onPathModeChange ?? setPathModeLocal;
   const [fitKey, setFitKey] = useState(0);
@@ -125,10 +189,22 @@ function OsmJourneyMap({
   }, [pathLegs, roadPath]);
   const roadFlat = useMemo(() => flattenRoadLegs(roadLegsResolved), [roadLegsResolved]);
 
-  const { showGps, showRoads, hasRoads, fullPath, completed, remaining } = useMemo(
+  const {
+    showGps,
+    showRoads,
+    hasRoads,
+    fullPath,
+    completedLegs,
+    remainingLegs,
+    gpsLegs,
+    fitPoints,
+  } = useMemo(
     () => resolvePathDisplay(pathMode, gpsPath, roadFlat, points, pose),
     [pathMode, gpsPath, roadFlat, points, pose],
   );
+
+  const startPt = fullPath[0] || gpsPath[0];
+  const endPt = fullPath[fullPath.length - 1] || gpsPath[gpsPath.length - 1];
 
   const center = useMemo((): [number, number] => {
     if (pose) return [pose.lat, pose.lng];
@@ -167,55 +243,52 @@ function OsmJourneyMap({
       >
         <ZoomControl position="topright" />
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution="Esri"
+          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}"
+          maxZoom={19}
         />
 
-        {showGps && pathMode === "both" && gpsPath.length > 1 && (
-          <Polyline positions={gpsPath} pathOptions={{ color: "#0d9488", weight: 3, opacity: 0.35 }} />
+        {showGps && pathMode === "both" && (
+          <TrailPolylines legs={gpsLegs} style={TRAIL_STYLE.gpsBoth} />
         )}
-        {showGps && pathMode === "gps" && !pose && gpsPath.length > 1 && (
-          <Polyline positions={gpsPath} pathOptions={{ color: "#0d9488", weight: 5, opacity: 0.9 }} />
+        {showGps && pathMode === "gps" && !pose && (
+          <TrailPolylines legs={gpsLegs} style={TRAIL_STYLE.stroke} />
         )}
-        {showGps && pathMode === "gps" && pose && remaining.length > 1 && (
-          <Polyline
-            positions={remaining}
-            pathOptions={{ color: "#94a3b8", weight: 5, opacity: 0.5, dashArray: "8 10" }}
-          />
+        {showGps && pathMode === "gps" && pose && (
+          <>
+            <TrailPolylines legs={remainingLegs} style={TRAIL_STYLE.remaining} />
+            <TrailPolylines legs={completedLegs} style={TRAIL_STYLE.stroke} />
+          </>
         )}
-        {showGps && pathMode === "gps" && pose && completed.length > 1 && (
-          <Polyline positions={completed} pathOptions={{ color: "#0d9488", weight: 6, opacity: 0.95 }} />
-        )}
-        {showGps && pathMode === "roads" && !showRoads && gpsPath.length > 1 && (
-          <Polyline positions={gpsPath} pathOptions={{ color: "#0d9488", weight: 5, opacity: 0.9 }} />
+        {showGps && pathMode === "roads" && !showRoads && (
+          <TrailPolylines legs={gpsLegs} style={TRAIL_STYLE.stroke} />
         )}
 
-        {showRoads &&
-          !pose &&
-          roadLegsResolved.map((leg, i) =>
-            leg.length > 1 ? (
-              <Polyline
-                key={`road-${i}`}
-                positions={leg}
-                pathOptions={{
-                  color: "#e85d04",
-                  weight: pathMode === "both" ? 4 : 6,
-                  opacity: pathMode === "both" ? 0.75 : 0.95,
-                }}
-              />
-            ) : null,
-          )}
-        {showRoads && pose && remaining.length > 1 && (
-          <Polyline
-            positions={remaining}
-            pathOptions={{ color: "#94a3b8", weight: 5, opacity: 0.55, dashArray: "8 10" }}
+        {showRoads && !pose && (
+          <TrailPolylines
+            legs={roadLegsResolved}
+            style={{
+              ...TRAIL_STYLE.roads,
+              weight: pathMode === "both" ? 4 : TRAIL_STYLE.roads.weight,
+              opacity: pathMode === "both" ? 0.8 : TRAIL_STYLE.roads.opacity,
+            }}
           />
         )}
-        {showRoads && pose && completed.length > 1 && (
-          <Polyline positions={completed} pathOptions={{ color: "#e85d04", weight: 6, opacity: 0.95 }} />
+        {showRoads && pose && pathMode === "roads" && (
+          <>
+            <TrailPolylines legs={remainingLegs} style={TRAIL_STYLE.remaining} />
+            <TrailPolylines legs={completedLegs} style={TRAIL_STYLE.roads} />
+          </>
         )}
 
-        <FitTrail path={fullPath.length >= 2 ? fullPath : gpsPath} fitKey={fitKey} />
+        {startPt ? (
+          <Marker position={startPt} icon={endPointIcon("start")} zIndexOffset={900} />
+        ) : null}
+        {endPt && (endPt[0] !== startPt?.[0] || endPt[1] !== startPt?.[1]) ? (
+          <Marker position={endPt} icon={endPointIcon("end")} zIndexOffset={900} />
+        ) : null}
+
+        <FitTrail path={fitPoints} fitKey={fitKey} />
         {showHeatmap &&
           heatCells.map((c, i) => (
             <CircleMarker
@@ -295,11 +368,11 @@ function OsmJourneyMap({
 }
 
 export function JourneyMap(props: Props) {
-  const [engine, setEngine] = useState<"google" | "osm">(() =>
-    hasGoogleMapsApiKey() ? "google" : "osm",
-  );
+  // Prefer Esri/Leaflet (no Maps JS key). Google only if a dedicated key exists
+  // and the user hasn't already fallen back after a Maps API failure.
+  const [engine, setEngine] = useState<"google" | "osm">("osm");
 
-  if (engine === "google") {
+  if (engine === "google" && hasGoogleMapsApiKey()) {
     return (
       <GoogleJourneyMap
         {...props}

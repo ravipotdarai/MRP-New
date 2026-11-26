@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,9 @@ import {useTheme} from '../../shared/ThemeContext';
 import mrpmModule from '../../shared/hooks/useNativeBridge';
 import {useFocusEffect} from '@react-navigation/native';
 import {TravelDayMap} from './TravelDayMap';
+
+/** Quiet live refresh while Travel is open on today. */
+const LIVE_POLL_MS = 3_000;
 
 type Props = {onUpgrade?: () => void};
 
@@ -140,18 +143,37 @@ async function loadPointsForDay(day: string): Promise<{points: TrailPoint[]; den
     deduped.push(p);
   }
 
-  if (!deduped.length && day === dayKey(Date.now()) && typeof bridge.getCurrentLocationWithAddress === 'function') {
+  // Always append / extend with latest fix for today so the path stays live.
+  if (day === dayKey(Date.now()) && typeof bridge.getCurrentLocationWithAddress === 'function') {
     try {
       const loc = await bridge.getCurrentLocationWithAddress(false);
       const lat = asNum(loc?.latitude);
       const lng = asNum(loc?.longitude);
       if (lat != null && lng != null && (lat || lng)) {
-        deduped.push({
-          latitude: lat,
-          longitude: lng,
-          t: Date.now(),
-          label: 'Last fix',
-        });
+        const last = deduped[deduped.length - 1];
+        const moved =
+          !last ||
+          Math.abs(last.latitude - lat) > 0.00005 ||
+          Math.abs(last.longitude - lng) > 0.00005;
+        if (!deduped.length) {
+          deduped.push({
+            latitude: lat,
+            longitude: lng,
+            t: Date.now(),
+            label: 'Last fix',
+          });
+        } else if (moved) {
+          deduped.push({
+            latitude: lat,
+            longitude: lng,
+            t: Date.now(),
+            label: 'Live',
+          });
+        } else {
+          last.latitude = lat;
+          last.longitude = lng;
+          last.t = Date.now();
+        }
       }
     } catch {
       // ignore
@@ -174,10 +196,23 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<PlaybackSpeed>(1);
   const [scrubW, setScrubW] = useState(1);
+  /** Today: draw from this index forward (session), not the whole day dump. */
+  const [sessionAnchor, setSessionAnchor] = useState<number | null>(null);
+  const [liveMode, setLiveMode] = useState(true);
+  const selectedRef = useRef<string | null>(null);
+  const playingRef = useRef(false);
+  const liveModeRef = useRef(true);
+  const sessionAnchorRef = useRef<number | null>(null);
+  selectedRef.current = selected;
+  playingRef.current = playing;
+  liveModeRef.current = liveMode;
+  sessionAnchorRef.current = sessionAnchor;
 
-  const refresh = useCallback(async (pickDay?: string | null) => {
-    setLoading(true);
-    setPlaying(false);
+  const refresh = useCallback(async (pickDay?: string | null, quiet = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setPlaying(false);
+    }
     try {
       const today = dayKey(Date.now());
       const keys = await loadTrailDays();
@@ -186,29 +221,72 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
       const pick =
         pickDay && ordered.includes(pickDay)
           ? pickDay
-          : ordered.includes(today)
-            ? today
-            : ordered[0] || today;
+          : quiet && selectedRef.current && ordered.includes(selectedRef.current)
+            ? selectedRef.current
+            : ordered.includes(today)
+              ? today
+              : ordered[0] || today;
       setSelected(pick);
       const {points: pts, dense: isDense} = await loadPointsForDay(pick);
       setPoints(pts);
       setDense(isDense);
-      setPlayIdx(0);
+
+      if (pick === today) {
+        if (!quiet || sessionAnchorRef.current == null) {
+          // Live session starts at current tip — path grows as you move.
+          const anchor = Math.max(0, pts.length - 1);
+          setSessionAnchor(anchor);
+          sessionAnchorRef.current = anchor;
+          setLiveMode(true);
+          liveModeRef.current = true;
+          setPlayIdx(0);
+        } else if (!playingRef.current && liveModeRef.current) {
+          const from = sessionAnchorRef.current;
+          setPlayIdx(Math.max(0, pts.length - 1 - from));
+        }
+      } else if (!quiet) {
+        setSessionAnchor(null);
+        sessionAnchorRef.current = null;
+        setLiveMode(false);
+        liveModeRef.current = false;
+        // Past day: show full travelled path; use Start/Play to scrub.
+        setPlayIdx(Math.max(0, pts.length - 1));
+      }
     } catch {
-      const today = dayKey(Date.now());
-      setDays([today]);
-      setSelected(today);
-      setPoints([]);
-      setDense(false);
-      setPlayIdx(0);
+      if (!quiet) {
+        const today = dayKey(Date.now());
+        setDays([today]);
+        setSelected(today);
+        setPoints([]);
+        setDense(false);
+        setPlayIdx(0);
+        setSessionAnchor(null);
+        setLiveMode(true);
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
+      setSessionAnchor(null);
+      sessionAnchorRef.current = null;
+      setLiveMode(true);
       void refresh();
+      const bridge = mrpmModule as any;
+      if (typeof bridge.getCurrentLocationWithAddress === 'function') {
+        void bridge.getCurrentLocationWithAddress(true).catch(() => {});
+      }
+      const id = setInterval(() => {
+        const today = dayKey(Date.now());
+        if (selectedRef.current !== today) return;
+        void refresh(today, true);
+        if (typeof bridge.getCurrentLocationWithAddress === 'function') {
+          void bridge.getCurrentLocationWithAddress(true).catch(() => {});
+        }
+      }, LIVE_POLL_MS);
+      return () => clearInterval(id);
     }, [refresh]),
   );
 
@@ -227,11 +305,54 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
     return () => clearInterval(id);
   }, [playing, points.length, speed]);
 
+  const today = dayKey(Date.now());
+  const isToday = selected === today;
+  const followingLive = isToday && liveMode && !playing;
+  const mapPoints = useMemo(() => {
+    if (!followingLive || sessionAnchor == null) return points;
+    return points.slice(Math.min(sessionAnchor, Math.max(0, points.length - 1)));
+  }, [points, followingLive, sessionAnchor]);
+  const mapPlayIdx = followingLive
+    ? Math.max(0, mapPoints.length - 1)
+    : Math.min(playIdx, Math.max(0, points.length - 1));
+
   const seekFromX = (x: number) => {
     if (points.length < 2) return;
     const pct = Math.min(1, Math.max(0, x / Math.max(1, scrubW)));
+    setLiveMode(false);
+    liveModeRef.current = false;
     setPlaying(false);
     setPlayIdx(Math.round(pct * (points.length - 1)));
+  };
+
+  const enterDayReplay = useCallback(() => {
+    setLiveMode(false);
+    liveModeRef.current = false;
+  }, []);
+
+  const onPlay = () => {
+    if (points.length < 2) return;
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    enterDayReplay();
+    if (playIdx >= points.length - 1) {
+      setPlayIdx(0);
+    }
+    setPlaying(true);
+  };
+
+  const goLive = () => {
+    setPlaying(false);
+    setLiveMode(true);
+    liveModeRef.current = true;
+    const anchor = sessionAnchor ?? Math.max(0, points.length - 1);
+    if (sessionAnchor == null) {
+      setSessionAnchor(anchor);
+      sessionAnchorRef.current = anchor;
+    }
+    setPlayIdx(Math.max(0, points.length - 1 - anchor));
   };
 
   if (loading) {
@@ -243,34 +364,29 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
     );
   }
 
-  const lastIdx = Math.max(0, points.length - 1);
-  const head = points[Math.min(playIdx, lastIdx)];
+  const lastIdx = Math.max(0, mapPoints.length - 1);
+  const head = mapPoints[Math.min(mapPlayIdx, lastIdx)];
   let dist = 0;
-  for (let i = 1; i < points.length; i++) {
-    dist += haversineKm(points[i - 1], points[i]);
+  for (let i = 1; i < mapPoints.length; i++) {
+    dist += haversineKm(mapPoints[i - 1], mapPoints[i]);
   }
   const canPlay = points.length >= 2;
-  const progress = lastIdx > 0 ? playIdx / lastIdx : 0;
-
-  const onPlay = () => {
-    if (!canPlay) return;
-    if (playing) {
-      setPlaying(false);
-      return;
-    }
-    if (playIdx >= lastIdx) {
-      setPlayIdx(0);
-    }
-    setPlaying(true);
-  };
+  const progress =
+    followingLive
+      ? 1
+      : points.length > 1
+        ? playIdx / (points.length - 1)
+        : 0;
 
   return (
     <View style={styles.root}>
       <View style={styles.top}>
         <Text style={styles.lead}>
-          {points.length
-            ? 'Pinch or use + / − to zoom. Orange line is the travelled path; red marker follows Play.'
-            : 'No GPS yet for this day. Keep monitoring on while you move.'}
+          {mapPoints.length
+            ? followingLive
+              ? 'Live: pinch or +/− to zoom, drag to pan. Blue line grows as you move. Fit recenters.'
+              : 'Day replay: path grows with Play. Pinch to zoom. Tap Live to track travel again.'
+            : 'Waiting for GPS — keep monitoring on while you move.'}
         </Text>
         <ScrollView
           horizontal
@@ -282,21 +398,32 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
             <Pressable
               key={d}
               style={[styles.dayChip, selected === d && styles.dayChipOn]}
-              onPress={() => void refresh(d)}>
+              onPress={() => {
+                if (d === today) {
+                  setSessionAnchor(null);
+                  sessionAnchorRef.current = null;
+                  setLiveMode(true);
+                }
+                void refresh(d);
+              }}>
               <Text style={[styles.dayChipText, selected === d && styles.dayChipTextOn]}>{d}</Text>
             </Pressable>
           ))}
         </ScrollView>
         <Text style={styles.stat}>
-          {dense ? 'GPS trail' : 'Timeline'} · {points.length} pts
-          {head ? ` · ${playIdx + 1}/${points.length}` : ''} · {dist.toFixed(2)} km
+          {followingLive ? 'Live' : dense ? 'GPS trail' : 'Timeline'} · {mapPoints.length} pts
+          {head ? ` · ${mapPlayIdx + 1}/${mapPoints.length}` : ''} · {dist.toFixed(2)} km
           {head ? ` · ${new Date(head.t).toLocaleTimeString()}` : ''}
         </Text>
       </View>
 
-      {points.length ? (
+      {mapPoints.length ? (
         <View style={styles.mapWrap}>
-          <TravelDayMap points={points} playIdx={playIdx} />
+          <TravelDayMap
+            points={mapPoints}
+            playIdx={mapPlayIdx}
+            follow={followingLive}
+          />
         </View>
       ) : (
         <View style={[styles.map, styles.center]}>
@@ -310,9 +437,25 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled">
         <View style={styles.controls} collapsable={false}>
+          {isToday ? (
+            <Pressable
+              style={({pressed}) => [
+                followingLive ? styles.primaryBtn : styles.secondaryBtn,
+                pressed && styles.pressed,
+              ]}
+              onPress={goLive}>
+              <Text
+                style={
+                  followingLive ? styles.primaryBtnText : styles.secondaryBtnText
+                }>
+                Live
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={({pressed}) => [styles.primaryBtn, pressed && styles.pressed]}
             onPress={() => {
+              enterDayReplay();
               setPlaying(false);
               setPlayIdx(0);
             }}
@@ -322,6 +465,7 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
           <Pressable
             style={({pressed}) => [styles.secondaryBtn, pressed && styles.pressed, !canPlay && styles.disabled]}
             onPress={() => {
+              enterDayReplay();
               setPlaying(false);
               setPlayIdx(i => Math.max(0, i - 1));
             }}
@@ -337,8 +481,9 @@ export function EmergencyMonitoringScreen({onUpgrade: _onUpgrade}: Props) {
           <Pressable
             style={({pressed}) => [styles.secondaryBtn, pressed && styles.pressed, !canPlay && styles.disabled]}
             onPress={() => {
+              enterDayReplay();
               setPlaying(false);
-              setPlayIdx(i => Math.min(lastIdx, i + 1));
+              setPlayIdx(i => Math.min(points.length - 1, i + 1));
             }}
             disabled={!canPlay}>
             <Text style={styles.secondaryBtnText}>Step +</Text>
@@ -381,8 +526,8 @@ function createStyles(colors: ColorPalette) {
     wrap: {padding: spacing.lg, paddingBottom: spacing.xxl},
     root: {flex: 1, backgroundColor: colors.bg},
     top: {paddingHorizontal: spacing.lg, paddingTop: spacing.sm},
-    mapWrap: {flex: 1, marginHorizontal: spacing.lg, marginVertical: 8, minHeight: 280},
-    bottom: {maxHeight: 220},
+    mapWrap: {flex: 1.4, marginHorizontal: spacing.md, marginVertical: 6, minHeight: 320},
+    bottom: {maxHeight: 180},
     bottomPad: {paddingHorizontal: spacing.lg, paddingBottom: spacing.md},
     center: {alignItems: 'center', justifyContent: 'center', minHeight: 160},
     lead: {fontSize: 14, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.sm},

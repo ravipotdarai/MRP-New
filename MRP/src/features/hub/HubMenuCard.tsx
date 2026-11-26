@@ -72,6 +72,11 @@ export function HubMenuCard({
             <Text style={styles.tileTitle} numberOfLines={2}>
               {title}
             </Text>
+            {subtitle ? (
+              <Text style={styles.tileSubtitle} numberOfLines={2}>
+                {subtitle}
+              </Text>
+            ) : null}
           </Animated.View>
         </Pressable>
       </Animated.View>
@@ -169,7 +174,7 @@ function createStyles(colors: ColorPalette) {
       marginLeft: spacing.sm,
     },
     tileWrap: {
-      width: '25%',
+      width: '50%',
       padding: 4,
       marginBottom: 4,
     },
@@ -177,11 +182,11 @@ function createStyles(colors: ColorPalette) {
       backgroundColor: colors.surface,
       borderRadius: 16,
       paddingVertical: 12,
-      paddingHorizontal: 4,
+      paddingHorizontal: 8,
       alignItems: 'center',
       borderWidth: 1,
       borderColor: colors.borderSubtle,
-      minHeight: 108,
+      minHeight: 128,
     },
     tileIconWrap: {
       width: 52,
@@ -193,9 +198,18 @@ function createStyles(colors: ColorPalette) {
     tileIconImg: {width: 52, height: 52},
     tileEmoji: {fontSize: 28, textAlign: 'center', lineHeight: 52},
     tileTitle: {
-      fontSize: 11,
-      fontWeight: '700',
+      fontSize: 13,
+      fontWeight: '800',
       color: colors.textPrimary,
+      textAlign: 'center',
+      lineHeight: 16,
+      paddingHorizontal: 2,
+    },
+    tileSubtitle: {
+      marginTop: 4,
+      fontSize: 11,
+      fontWeight: '600',
+      color: colors.textMuted,
       textAlign: 'center',
       lineHeight: 14,
       paddingHorizontal: 2,

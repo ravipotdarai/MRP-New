@@ -44,8 +44,8 @@ export function MapToolbar({
           title="Path style"
           aria-label="Path style"
         >
-          <option value="roads">Roads (travelled)</option>
-          <option value="gps">GPS samples</option>
+          <option value="gps">GPS path (recorded)</option>
+          <option value="roads">Roads (snapped)</option>
           <option value="both">GPS + roads</option>
         </select>
       ) : null}

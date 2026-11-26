@@ -28,19 +28,18 @@ const MAP_STYLE: StyleSpecification = {
   version: 8,
   name: "PathSync Streets",
   sources: {
-    carto: {
+    esri: {
       type: "raster",
+      // Public Esri street tiles — no Google/Carto API key.
       tiles: [
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png",
+        "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
       ],
       tileSize: 256,
-      attribution: "© OpenStreetMap © CARTO",
-      maxzoom: 20,
+      attribution: "Esri",
+      maxzoom: 19,
     },
   },
-  layers: [{ id: "carto", type: "raster", source: "carto" }],
+  layers: [{ id: "esri", type: "raster", source: "esri" }],
 };
 
 const PATH_COLOR_DEFAULT = "#e85d04";

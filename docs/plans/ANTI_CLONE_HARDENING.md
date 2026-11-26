@@ -1,18 +1,20 @@
 # MRP Anti-Clone & Client Hardening Plan
 
-**Status:** Phase 1 audit doc started — full execution still gated on Play-signed AAB.  
+**Status:** Phase 1 audit + soft startup signing check (`RuntimeIntegrityChecker`) shipped. **BLA** ([qybaihe/bla](https://github.com/qybaihe/bla) / `bla-agents`) is the chosen Counter-REA release shield for DEX/JS build outputs. Play Integrity / expected SHA pin still gated on Play-signed AAB.  
 **Strategy rating (review):** 9.8/10 with refinements below.  
 **Overview:** Protect the user’s data first, then harden the APK as a separate layer. Raise clone/tamper cost and keep vault, accounts, and billing useless to imposters—without claiming reverse engineering is preventable or rewriting core logic into JNI.
 
-**Baseline audit:** [`../security/SECURITY_AUDIT_HARDENING.md`](../security/SECURITY_AUDIT_HARDENING.md)
+**Baseline audit:** [`../security/SECURITY_AUDIT_HARDENING.md`](../security/SECURITY_AUDIT_HARDENING.md)  
+**BLA release steps:** [`../security/BLA_RELEASE_HARDENING.md`](../security/BLA_RELEASE_HARDENING.md)
 
 ## Priority stack (execution order)
 
 1. **Data security** — Drive vault, Android Keystore, EncryptedSharedPreferences, SQLCipher once schema is stable  
 2. **Application hardening** — R8, release signing, debug/log removal (first-class; not optional fluff)  
-3. **Integrity and detection** — signature / root / debug / Frida (best-effort), Play Integrity by policy, security events → risk → notify  
-4. **Backend trust** — SHA-locked OAuth, App Check / licensing when Nest is live  
-5. **Advanced defenses** — native helpers (fingerprint, security score, evidence hashing), signed rule packs  
+3. **BLA (bla-agents)** — harden **unsigned** release DEX / JS build artifacts against AI RE agents; resign after (signed APKs are refused by design)  
+4. **Integrity and detection** — signature / root / debug / Frida (best-effort), Play Integrity by policy, security events → risk → notify  
+5. **Backend trust** — SHA-locked OAuth, App Check / licensing when Nest is live  
+6. **Advanced defenses** — native helpers (fingerprint, security score, evidence hashing), signed rule packs  
 
 **Mindset:** Attackers will eventually read Kotlin/JS. Objective is **increase cost**, not impossibility. Do **not** pin Google/Firebase/Drive TLS; pin only MRP’s own Nest API if/when required.
 
@@ -22,8 +24,9 @@
 - [ ] Data layer: vault/Keystore review; schedule SQLCipher after schema freeze
 - [ ] Evidence integrity: per-event SHA-256, hash chain, signed export, tamper events
 - [ ] Enable R8, release keystore, disable hardcoded billing in release, RN minify/no maps
-- [ ] SHA/package lockdown checklist for Firebase/Google/Play + cert check
-- [ ] RuntimeIntegrityChecker → timeline `SECURITY_*` → risk bump → user notify
+- [ ] BLA: dry-run `npx bla-agents harden` on unsigned release outputs → verify → resign (see BLA_RELEASE_HARDENING.md)
+- [x] SHA/package lockdown checklist for Firebase/Google/Play + cert check (checker + BuildConfig pin hook)
+- [x] RuntimeIntegrityChecker → timeline `SECURITY_TAMPER` (cooldown); risk bump / notify still open
 - [ ] Play Integrity gates per policy table (vault restore / recovery contacts / premium)
 - [ ] Strip/gate sensitive and debug logs in release
 - [ ] Introduce `RuleProvider` interface with `LocalRuleProvider` (signed remote later)
@@ -121,6 +124,26 @@ Files: [`build.gradle`](../../MRP/android/app/build.gradle), [`proguard-rules.pr
 5. Remove Maps API key source fallback; fail closed in release if env missing.
 
 **Regression:** auth, Drive vault backup/restore, selfie, SIM path, billing mode=play smoke on release APK.
+
+## Phase 4b — BLA Counter-REA shield ([qybaihe/bla](https://github.com/qybaihe/bla))
+
+**Tool:** [`bla-agents`](https://www.npmjs.com/package/bla-agents) (Blind LLM Agents). Raises cost for AI reverse-engineering / casual cloning of **our own** release artifacts. Not a claim that Ghidra/Frida/JADX are impossible.
+
+**Honest limits (from BLA docs):**
+- Hardens DEX (recomputes SHA-1 + Adler32), JS/TS, and related formats.
+- **Signed APKs are refused** — harden **unsigned** outputs, then resign with the Play/upload key.
+- Runtime hot path should stay equivalent; always run MRP smoke tests after `--apply`.
+
+**Pipeline:** see [`../security/BLA_RELEASE_HARDENING.md`](../security/BLA_RELEASE_HARDENING.md).
+
+```bash
+# After unsigned release build (example)
+npx bla-agents@latest harden "MRP/android/app/build/outputs"   # mirror → .bla-hardened/
+# smoke-test the hardened APK after resign, then:
+npx bla-agents@latest harden "MRP/android/app/build/outputs" --apply
+```
+
+Keep `RuntimeIntegrityChecker` + Play Integrity — BLA is artifact defense; they are identity/runtime defense.
 
 ## Phase 5 — Anti-clone identity locks
 

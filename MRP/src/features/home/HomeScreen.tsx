@@ -33,8 +33,8 @@ import {getTrackingConfig} from '../../native/DeviceTracking.types';
 import {setSecurityCenterTab} from '../security-center/securityCenterNav';
 import {brandImages, brandCopy} from '../../assets/brand';
 import {useOpsCatalog} from '../ops/useOpsCatalog';
+import {useAuth} from '../../services/auth/AuthContext';
 
-const USER_NAME = 'Ravi';
 const PANIC_MAX_BURST = 3;
 const PANIC_WINDOW_MS = 15 * 60 * 1000;
 const PANIC_BANNER_MS = 60 * 1000;
@@ -95,6 +95,9 @@ const EVENT_ICONS: Record<string, string> = {
   VAULT_BACKUP_RESTORED: '☁️',
   VAULT_BACKUP_FAILED: '☁️',
   VAULT_AUTH_FAILED: '🔐',
+  SECURITY_TAMPER: '🛡️',
+  SECURITY_DEBUGGER: '🛡️',
+  SECURITY_ROOT: '🛡️',
 };
 
 interface TimelineEntry {
@@ -143,13 +146,6 @@ const formatEventType = (type: string | undefined): string => {
   return formatDigitalSafetyEventType(type);
 };
 
-const getGreeting = (): string => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good Morning';
-  if (h < 17) return 'Good Afternoon';
-  return 'Good Evening';
-};
-
 const formatTime = (ts: string): string => {
   try {
     const d = new Date(ts);
@@ -185,7 +181,15 @@ export function HomeScreen({
 }) {
   const {settings} = useSettings();
   const {ops} = useOpsCatalog();
+  const {auth, device} = useAuth();
   const inboxUnread = ops.unread > 0;
+  const userName = (
+    auth.displayName?.trim() ||
+    (auth.email ? auth.email.split('@')[0] : '') ||
+    device?.label?.trim() ||
+    ''
+  ).trim();
+  const homeTitle = userName || (auth.signedIn ? 'MRP user' : 'Guest');
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [liveLocation, setLiveLocation] = useState<{
@@ -740,7 +744,7 @@ export function HomeScreen({
             {inboxUnread ? <View style={styles.badgeDot} /> : null}
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatarBtn} onPress={handleAvatarPress}>
-            <Text style={styles.avatarText}>{USER_NAME[0]}</Text>
+            <Text style={styles.avatarText}>{(homeTitle[0] || 'M').toUpperCase()}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -776,8 +780,8 @@ export function HomeScreen({
 
       <View style={styles.greetingRow}>
         <View style={{flex: 1}}>
-          <Text style={styles.greeting}>
-            {getGreeting()}, {USER_NAME}
+          <Text style={styles.greeting} numberOfLines={1}>
+            {homeTitle}
           </Text>
           <Text
             style={[
@@ -786,6 +790,16 @@ export function HomeScreen({
             ]}>
             {isProtected ? '✓ Your device is protected' : '⚠ Protection incomplete'}
           </Text>
+          {!auth.signedIn ? (
+            <TouchableOpacity
+              onPress={() => navigation?.navigate?.('Hub', {openSection: 'account'})}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in to MRP">
+              <Text style={styles.signInPrompt}>
+                Sign in required — tap to open Account
+              </Text>
+            </TouchableOpacity>
+          ) : null}
           {!isProtected ? (
             <Text style={styles.syncedText} numberOfLines={2}>
               Missing: {permissionGaps.join(', ')}
@@ -1363,6 +1377,13 @@ function createHomeStyles(colors: ColorPalette) {
   greetingRow: {marginBottom: spacing.lg},
   greeting: {fontSize: 22, fontWeight: '800', color: colors.textPrimary},
   protectionStatus: {fontSize: 14, fontWeight: '700', marginTop: 4},
+  signInPrompt: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.red,
+    marginTop: 6,
+    textDecorationLine: 'underline',
+  },
   syncedText: {fontSize: 12, color: colors.textMuted, marginTop: 4},
   quickActionRow: {
     flexDirection: 'row',

@@ -33,10 +33,7 @@ import {CIRCLE_ENABLED, QR_PROTECTION_ENABLED} from '../../config/featureFlags';
 import Animated, {FadeIn} from 'react-native-reanimated';
 import {SecurityCenterScreen} from '../security-center/SecurityCenterScreen';
 import {EmergencyMonitoringScreen} from '../journey/EmergencyMonitoringScreen';
-import {
-  DigitalSafetyHubScreen,
-  type DigitalSafetyDestination,
-} from '../digital-safety/DigitalSafetyHubScreen';
+import type {DigitalSafetyDestination} from '../digital-safety/DigitalSafetyHubScreen';
 import {SafeLinkResultScreen} from '../digital-safety/SafeLinkResultScreen';
 import {QrScannerScreen} from '../digital-safety/QrScannerScreen';
 import {ScamCheckScreen} from '../digital-safety/ScamCheckScreen';
@@ -102,64 +99,71 @@ type MenuItem = {
   badge?: string;
 };
 
-/** Brand-kit 8 feature tiles → Hub / Security destinations */
+/** Brand-kit feature tiles → Hub / Security destinations */
 type FeatureTile = {
   id: string;
   title: string;
+  purpose: string;
   iconSource: ImageSourcePropType;
   action: () => void;
 };
 
-/** More services — exclude Safety (own tab) and Key features grid items. */
-const MENU_ITEMS: MenuItem[] = [
+/** Account & billing */
+const ACCOUNT_ITEMS: MenuItem[] = [
   {
     id: 'account',
     title: 'Account',
-    subtitle: 'Google sign-in & switch account',
+    subtitle: 'Sign in with Google — needed for Drive backup',
     icon: '👤',
+  },
+  {
+    id: 'subscriptions',
+    title: 'Plans',
+    subtitle: 'See what each plan unlocks and upgrade',
+    icon: '⭐',
   },
   ...(CIRCLE_ENABLED
     ? ([
         {
           id: 'circle',
           title: 'Circle',
-          subtitle: 'Live Share — Enterprise',
+          subtitle: 'Share live location with family (Enterprise)',
           icon: '📍',
           badge: 'Enterprise',
         },
       ] as MenuItem[])
     : []),
-  {
-    id: 'subscriptions',
-    title: 'Subscriptions',
-    subtitle: 'Plans & billing',
-    icon: '⭐',
-  },
+];
+
+/** Offers & help */
+const HELP_ITEMS: MenuItem[] = [
   {
     id: 'promotions',
-    title: 'Promotions',
-    subtitle: 'Offers & rewards',
+    title: 'Offers',
+    subtitle: 'Partner deals and rewards',
     icon: '🎁',
   },
   {
     id: 'affiliates',
-    title: 'Affiliates',
-    subtitle: 'Share & earn',
+    title: 'Refer & earn',
+    subtitle: 'Share MRP and track affiliate links',
     icon: '🔗',
   },
   {
     id: 'policy',
-    title: 'Policy',
-    subtitle: 'Privacy, Play & permissions',
+    title: 'Privacy & policy',
+    subtitle: 'What MRP collects and Play disclosures',
     icon: '📜',
   },
   {
     id: 'about',
-    title: 'About MRP',
-    subtitle: 'Guide, trust & version',
+    title: 'How to use MRP',
+    subtitle: 'Setup guide, trust notes, and app version',
     icon: 'ℹ️',
   },
 ];
+
+const MENU_ITEMS: MenuItem[] = [...ACCOUNT_ITEMS, ...HELP_ITEMS];
 
 function HubSectionShell({
   title,
@@ -667,52 +671,57 @@ export function HubScreen({
           <Text style={styles.brandName}>{brandCopy.name}</Text>
           <Text style={styles.brandFull}>{brandCopy.fullName}</Text>
           <Text style={styles.brandTagline}>{brandCopy.tagline}</Text>
-          <Text style={styles.brandPillars}>{brandCopy.pillars}</Text>
+          <Text style={styles.hubPurpose}>
+            Backups, SIM recovery, travel, and account — scam tools live in the Safety tab
+          </Text>
         </View>
 
-        <Text style={styles.sectionLabel}>Key features</Text>
+        <Text style={styles.sectionLabel}>Protect & recover</Text>
+        <Text style={styles.sectionHint}>
+          What each tool does — tap one to open it
+        </Text>
         <View style={styles.featureGrid}>
           {(
             [
               {
-                id: 'f-protect',
-                title: 'Device Protection',
-                iconSource: brandImages.features.deviceProtection,
-                action: () => navigation?.navigate?.('Digital Safety'),
-              },
-              {
-                id: 'f-live',
-                title: 'Travel',
-                iconSource: brandImages.features.liveLocation,
-                action: () => openSection('emergency-monitoring'),
-              },
-              {
                 id: 'f-drive',
                 title: 'Drive Backup',
+                purpose: 'Save evidence & vault to your Google Drive',
                 iconSource: brandImages.features.driveBackup,
                 action: () => openSection('drive-sync'),
               },
               {
                 id: 'f-sim',
                 title: 'SIM Recovery',
+                purpose: 'Alert contacts if the SIM is swapped',
                 iconSource: brandImages.features.simAlert,
                 action: () => openSection('sim-recovery'),
               },
               {
                 id: 'f-selfie',
                 title: 'Unlock Selfie',
+                purpose: 'Photos taken on wrong unlock / USB events',
                 iconSource: brandImages.features.unlockSelfie,
                 action: () => navigation?.navigate?.('Security', {initialTab: 'PHOTOS'}),
               },
               {
                 id: 'f-geo',
                 title: 'Geofencing',
+                purpose: 'Mark home/work so events show Inside/Away',
                 iconSource: brandImages.features.geofencing,
                 action: () => openSection('geofence'),
               },
               {
+                id: 'f-live',
+                title: 'Travel',
+                purpose: 'Higher-rate GPS while you are travelling',
+                iconSource: brandImages.features.liveLocation,
+                action: () => openSection('emergency-monitoring'),
+              },
+              {
                 id: 'f-lock',
-                title: 'Remote Lock',
+                title: 'Lost phone',
+                purpose: 'Locate, lock tips, and cybercrime links',
                 iconSource: brandImages.features.remoteLock,
                 action: () => {
                   setSecurityCenterTab('FRAUD');
@@ -722,8 +731,16 @@ export function HubScreen({
               {
                 id: 'f-timeline',
                 title: 'Activity',
+                purpose: 'Full timeline of locks, SIM, USB, apps',
                 iconSource: brandImages.features.activityTimeline,
                 action: () => navigation?.navigate?.('Security', {initialTab: 'TIMELINE'}),
+              },
+              {
+                id: 'f-safety',
+                title: 'Safety tools',
+                purpose: 'Open the Safety tab for links & scam checks',
+                iconSource: brandImages.features.deviceProtection,
+                action: () => navigation?.navigate?.('Digital Safety'),
               },
             ] as FeatureTile[]
           ).map((tile, index) => (
@@ -731,6 +748,7 @@ export function HubScreen({
               key={tile.id}
               index={index}
               title={tile.title}
+              subtitle={tile.purpose}
               iconSource={tile.iconSource}
               colors={colors}
               variant="tile"
@@ -739,7 +757,8 @@ export function HubScreen({
           ))}
         </View>
 
-        <Text style={[styles.sectionLabel, {marginTop: spacing.lg}]}>More services</Text>
+        <Text style={[styles.sectionLabel, {marginTop: spacing.lg}]}>Your account</Text>
+        <Text style={styles.sectionHint}>Sign-in and what you pay for</Text>
         {isAdmin ? (
           <HubMenuCard
             key="admin"
@@ -751,7 +770,25 @@ export function HubScreen({
             onPress={() => openSection('admin')}
           />
         ) : null}
-        {MENU_ITEMS.map((item, index) => (
+        {ACCOUNT_ITEMS.map((item, index) => (
+          <HubMenuCard
+            key={item.id}
+            index={index}
+            title={item.title}
+            subtitle={item.subtitle}
+            icon={item.icon}
+            iconSource={item.iconSource}
+            badge={item.badge}
+            colors={colors}
+            onPress={() => {
+              openSection(item.id);
+            }}
+          />
+        ))}
+
+        <Text style={[styles.sectionLabel, {marginTop: spacing.lg}]}>Offers & help</Text>
+        <Text style={styles.sectionHint}>Deals, referrals, and how MRP works</Text>
+        {HELP_ITEMS.map((item, index) => (
           <HubMenuCard
             key={item.id}
             index={index}
@@ -815,18 +852,29 @@ function createStyles(colors: ColorPalette) {
       marginTop: spacing.sm,
       textAlign: 'center',
     },
-    brandPillars: {
+    hubPurpose: {
       fontSize: 13,
-      color: colors.textMuted,
-      marginTop: 4,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginTop: spacing.sm,
+      textAlign: 'center',
+      lineHeight: 18,
+      paddingHorizontal: spacing.sm,
     },
     sectionLabel: {
       fontSize: 12,
       fontWeight: '800',
       color: colors.textMuted,
       letterSpacing: 1,
-      marginBottom: spacing.sm,
+      marginBottom: 4,
       textTransform: 'uppercase',
+    },
+    sectionHint: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      marginBottom: spacing.sm,
+      lineHeight: 18,
     },
     featureGrid: {
       flexDirection: 'row',

@@ -5,9 +5,49 @@ import type { GpsPoint, InterpolatedPose } from "../types";
 import type { HeatCell } from "../lib/journey-heatmap";
 import type { JourneyStop } from "../lib/journey-heuristics";
 import { loadGoogleMaps } from "../lib/load-google-maps";
-import { flattenRoadLegs, resolvePathDisplay } from "../lib/journey-map-paths";
+import {
+  flattenRoadLegs,
+  resolvePathDisplay,
+  TRAIL_STYLE,
+} from "../lib/journey-map-paths";
 import type { FenceCircle, PathMode } from "./journey-map-types";
 import { MapToolbar } from "./MapToolbar";
+
+function addCasedPolylines(
+  g: typeof google,
+  map: google.maps.Map,
+  legs: [number, number][][],
+  style: { color: string; weight: number; opacity: number; dashArray?: string },
+  bucket: google.maps.Polyline[],
+  zBase: number,
+) {
+  for (const leg of legs) {
+    if (leg.length < 2) continue;
+    const path = toLatLngs(leg);
+    if (!style.dashArray) {
+      bucket.push(
+        new g.maps.Polyline({
+          path,
+          strokeColor: TRAIL_STYLE.casing.color,
+          strokeOpacity: TRAIL_STYLE.casing.opacity,
+          strokeWeight: style.weight + 4,
+          map,
+          zIndex: zBase,
+        }),
+      );
+    }
+    bucket.push(
+      new g.maps.Polyline({
+        path,
+        strokeColor: style.color,
+        strokeOpacity: style.opacity,
+        strokeWeight: style.weight,
+        map,
+        zIndex: zBase + 1,
+      }),
+    );
+  }
+}
 
 type Props = {
   points: GpsPoint[];
@@ -59,7 +99,7 @@ export function GoogleJourneyMap({
   showControls = true,
   onFatalError,
 }: Props) {
-  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("roads");
+  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("gps");
   const pathMode = pathModeProp ?? pathModeLocal;
   const setPathMode = onPathModeChange ?? setPathModeLocal;
   const [fitKey, setFitKey] = useState(0);
@@ -69,17 +109,12 @@ export function GoogleJourneyMap({
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const layersRef = useRef<{
-    gps?: google.maps.Polyline;
-    gpsDone?: google.maps.Polyline;
-    gpsRest?: google.maps.Polyline;
-    roadDone?: google.maps.Polyline;
-    roadRest?: google.maps.Polyline;
-    roadLegs: google.maps.Polyline[];
+    lines: google.maps.Polyline[];
     circles: google.maps.Circle[];
     markers: google.maps.Marker[];
     vehicle?: google.maps.Marker;
     accuracy?: google.maps.Circle;
-  }>({ roadLegs: [], circles: [], markers: [] });
+  }>({ lines: [], circles: [], markers: [] });
 
   const gpsPath = useMemo(
     (): [number, number][] => points.map((p) => [p.lat, p.lng]),
@@ -92,10 +127,22 @@ export function GoogleJourneyMap({
   }, [pathLegs, roadPath]);
   const roadFlat = useMemo(() => flattenRoadLegs(roadLegs), [roadLegs]);
 
-  const { showGps, showRoads, hasRoads, fullPath, completed, remaining } = useMemo(
+  const {
+    showGps,
+    showRoads,
+    hasRoads,
+    fullPath,
+    completedLegs,
+    remainingLegs,
+    gpsLegs,
+    fitPoints,
+  } = useMemo(
     () => resolvePathDisplay(pathMode, gpsPath, roadFlat, points, pose),
     [pathMode, gpsPath, roadFlat, points, pose],
   );
+
+  const startPt = fullPath[0] || gpsPath[0];
+  const endPt = fullPath[fullPath.length - 1] || gpsPath[gpsPath.length - 1];
 
   const center = useMemo((): google.maps.LatLngLiteral => {
     if (pose) return { lat: pose.lat, lng: pose.lng };
@@ -170,110 +217,78 @@ export function GoogleJourneyMap({
     const g = window.google;
     const L = layersRef.current;
 
-    clearOverlays([
-      L.gps,
-      L.gpsDone,
-      L.gpsRest,
-      L.roadDone,
-      L.roadRest,
-      ...L.roadLegs,
-      ...L.circles,
-      ...L.markers,
-      L.vehicle,
-      L.accuracy,
-    ]);
-    L.roadLegs = [];
+    clearOverlays([...L.lines, ...L.circles, ...L.markers, L.vehicle, L.accuracy]);
+    L.lines = [];
     L.circles = [];
     L.markers = [];
-    L.gps = L.gpsDone = L.gpsRest = L.roadDone = L.roadRest = L.vehicle = L.accuracy = undefined;
+    L.vehicle = L.accuracy = undefined;
 
-    if (showGps && pathMode === "both" && gpsPath.length > 1) {
-      L.gps = new g.maps.Polyline({
-        path: toLatLngs(gpsPath),
-        strokeColor: "#0d9488",
-        strokeOpacity: 0.35,
-        strokeWeight: 3,
-        map,
-        zIndex: 1,
-      });
-    } else if (showGps && pathMode === "gps" && !pose && gpsPath.length > 1) {
-      L.gps = new g.maps.Polyline({
-        path: toLatLngs(gpsPath),
-        strokeColor: "#0d9488",
-        strokeOpacity: 0.9,
-        strokeWeight: 5,
-        map,
-        zIndex: 2,
-      });
+    if (showGps && pathMode === "both") {
+      addCasedPolylines(g, map, gpsLegs, TRAIL_STYLE.gpsBoth, L.lines, 2);
+    } else if (showGps && pathMode === "gps" && !pose) {
+      addCasedPolylines(g, map, gpsLegs, TRAIL_STYLE.stroke, L.lines, 2);
     } else if (showGps && pathMode === "gps" && pose) {
-      if (remaining.length > 1) {
-        L.gpsRest = new g.maps.Polyline({
-          path: toLatLngs(remaining),
-          strokeColor: "#94a3b8",
-          strokeOpacity: 0.5,
-          strokeWeight: 5,
-          map,
-          zIndex: 2,
-        });
-      }
-      if (completed.length > 1) {
-        L.gpsDone = new g.maps.Polyline({
-          path: toLatLngs(completed),
-          strokeColor: "#0d9488",
-          strokeOpacity: 0.95,
-          strokeWeight: 6,
-          map,
-          zIndex: 3,
-        });
-      }
-    } else if (showGps && pathMode === "roads" && !showRoads && gpsPath.length > 1) {
-      L.gps = new g.maps.Polyline({
-        path: toLatLngs(gpsPath),
-        strokeColor: "#0d9488",
-        strokeOpacity: 0.9,
-        strokeWeight: 5,
-        map,
-        zIndex: 2,
-      });
+      addCasedPolylines(g, map, remainingLegs, TRAIL_STYLE.remaining, L.lines, 2);
+      addCasedPolylines(g, map, completedLegs, TRAIL_STYLE.stroke, L.lines, 4);
+    } else if (showGps && pathMode === "roads" && !showRoads) {
+      addCasedPolylines(g, map, gpsLegs, TRAIL_STYLE.stroke, L.lines, 2);
     }
 
-    if (showRoads) {
-      if (!pose) {
-        for (const leg of roadLegs) {
-          if (leg.length < 2) continue;
-          L.roadLegs.push(
-            new g.maps.Polyline({
-              path: toLatLngs(leg),
-              strokeColor: "#e85d04",
-              strokeOpacity: pathMode === "both" ? 0.75 : 0.95,
-              strokeWeight: pathMode === "both" ? 4 : 6,
-              map,
-              zIndex: 4,
-            }),
-          );
-        }
-      } else {
-        if (remaining.length > 1) {
-          L.roadRest = new g.maps.Polyline({
-            path: toLatLngs(remaining),
-            strokeColor: "#94a3b8",
-            strokeOpacity: 0.55,
-            strokeWeight: 5,
-            map,
-            zIndex: 4,
-          });
-        }
-        if (completed.length > 1) {
-          L.roadDone = new g.maps.Polyline({
-            path: toLatLngs(completed),
-            strokeColor: "#e85d04",
-            strokeOpacity: 0.95,
-            strokeWeight: 6,
-            map,
-            zIndex: 5,
-          });
-        }
-      }
+    if (showRoads && !pose) {
+      addCasedPolylines(
+        g,
+        map,
+        roadLegs,
+        {
+          ...TRAIL_STYLE.roads,
+          weight: pathMode === "both" ? 4 : TRAIL_STYLE.roads.weight,
+          opacity: pathMode === "both" ? 0.8 : TRAIL_STYLE.roads.opacity,
+        },
+        L.lines,
+        6,
+      );
+    } else if (showRoads && pose && pathMode === "roads") {
+      addCasedPolylines(g, map, remainingLegs, TRAIL_STYLE.remaining, L.lines, 6);
+      addCasedPolylines(g, map, completedLegs, TRAIL_STYLE.roads, L.lines, 8);
+    }
+
+    if (startPt) {
+      L.markers.push(
+        new g.maps.Marker({
+          position: { lat: startPt[0], lng: startPt[1] },
+          map,
+          title: "Start",
+          label: { text: "A", color: "#fff", fontWeight: "700" },
+          icon: {
+            path: g.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#16a34a",
+            fillOpacity: 1,
+            strokeColor: "#fff",
+            strokeWeight: 2,
+          },
+          zIndex: 900,
+        }),
+      );
+    }
+    if (endPt && (endPt[0] !== startPt?.[0] || endPt[1] !== startPt?.[1])) {
+      L.markers.push(
+        new g.maps.Marker({
+          position: { lat: endPt[0], lng: endPt[1] },
+          map,
+          title: "End",
+          label: { text: "B", color: "#fff", fontWeight: "700" },
+          icon: {
+            path: g.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#dc2626",
+            fillOpacity: 1,
+            strokeColor: "#fff",
+            strokeWeight: 2,
+          },
+          zIndex: 900,
+        }),
+      );
     }
 
     if (showHeatmap) {
@@ -375,7 +390,7 @@ export function GoogleJourneyMap({
         zIndex: 1000,
         icon: {
           path: g.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
+          scale: 6,
           rotation: pose.heading,
           fillColor: "#f59e0b",
           fillOpacity: 1,
@@ -389,10 +404,12 @@ export function GoogleJourneyMap({
     showGps,
     showRoads,
     pathMode,
-    gpsPath,
+    gpsLegs,
     roadLegs,
-    completed,
-    remaining,
+    completedLegs,
+    remainingLegs,
+    startPt,
+    endPt,
     pose,
     fences,
     mediaMarkers,
@@ -411,12 +428,12 @@ export function GoogleJourneyMap({
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready || !window.google?.maps) return;
-    const path = fullPath.length >= 2 ? fullPath : gpsPath;
+    const path = fitPoints.length >= 2 ? fitPoints : gpsPath;
     if (path.length < 2) return;
     const bounds = new window.google.maps.LatLngBounds();
     for (const [lat, lng] of path) bounds.extend({ lat, lng });
-    map.fitBounds(bounds, 48);
-  }, [ready, fitKey, fullPath, gpsPath]);
+    map.fitBounds(bounds, 56);
+  }, [ready, fitKey, fitPoints, gpsPath]);
 
   return (
     <div

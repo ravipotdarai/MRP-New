@@ -27,6 +27,9 @@ const LABELS: Record<string, string> = {
   VAULT_ITEM_DELETED: 'Vault item deleted',
   VAULT_BACKUP_SYNCED: 'Vault Drive backup synced',
   SAFE_LINK_FALSE_POSITIVE: 'Safe Link false-positive reported',
+  SECURITY_TAMPER: 'App integrity — possible tamper / clone',
+  SECURITY_DEBUGGER: 'App integrity — debugger detected',
+  SECURITY_ROOT: 'App integrity — root signal',
 };
 
 export function formatDigitalSafetyEventType(type: string | undefined): string {

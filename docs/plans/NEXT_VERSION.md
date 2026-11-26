@@ -52,7 +52,7 @@ Shipped as flag-off, stub, or Console/human work:
 - **Panic → Circle FCM** — Panic is SMS to recovery contacts only
 - **Nest device registry + live JWT mint** — local device id; cloud register / SA JWT optional
 - **Promotions / Affiliates** — admin-pushed via Firebase `mrp_ops` (Hub + web Admin). Referral tracking still later.
-- **Anti-clone / Play Integrity / R8 / SQLCipher** — after Play-signed AAB + schema freeze
+- **Anti-clone / BLA / Play Integrity / R8 / SQLCipher** — [bla-agents](https://github.com/qybaihe/bla) for unsigned DEX/JS release shield (see `docs/security/BLA_RELEASE_HARDENING.md`); `RuntimeIntegrityChecker` shipped; pin `mrpExpectedSigningSha256` + Play Integrity after Play-signed AAB
 - **Crashlytics** — optional later
 - **Web** — Circle/Subscriptions UI, Maps Platform, PDF (CSV exists), geofence **edit**, WebSocket live GPS
 - **iOS** — not in this track
@@ -99,6 +99,7 @@ Removed unused UI only. Native monitoring, photos, timeline, Circle (flagged), S
 
 | Date | Change |
 |---|---|
+| 2026-11-26 | Home: real account/device name; red Sign-in CTA when logged out. Hub + Safety purpose regroup. Soft signing check + **BLA** (`bla-agents` / [qybaihe/bla](https://github.com/qybaihe/bla)) release pipeline documented. |
 | 2026-11-08 | Event selfies: local capture no longer Premium-gated (Drive pack still Premium+). QR flag-off + low-battery block + no auto-scan. Boot stagger; softer selfie wake. v1.0.4 |
 | 2026-08-16 | Created this file; removed unused Monitoring/EventTimeline duplicates; SMS Settings hides auto-scan card while flag is off |
 | 2026-08-16 | Admin ops panel (users, grants, catalog, inbox) on app + web for allowlisted Firebase admin |

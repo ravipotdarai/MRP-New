@@ -172,6 +172,11 @@ object EventTypes {
     const val VAULT_BACKUP_RESTORED = "VAULT_BACKUP_RESTORED"
     const val VAULT_BACKUP_FAILED = "VAULT_BACKUP_FAILED"
     const val VAULT_AUTH_FAILED = "VAULT_AUTH_FAILED"
+
+    // Anti-clone / runtime integrity (soft — does not kill monitoring)
+    const val SECURITY_TAMPER = "SECURITY_TAMPER"
+    const val SECURITY_DEBUGGER = "SECURITY_DEBUGGER"
+    const val SECURITY_ROOT = "SECURITY_ROOT"
 }
 
 object StatusValues {

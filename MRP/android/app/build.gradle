@@ -120,6 +120,9 @@ android {
         resValue "string", "google_maps_api_key", googleMapsApiKey
         buildConfigField "boolean", "ALLOW_HARDCODED_BILLING",
             "${project.hasProperty('mrpAllowHardcodedBilling') ? project.property('mrpAllowHardcodedBilling') : 'true'}"
+        // Hex SHA-256 of the Play/release signing cert (no colons). Empty = record-only.
+        buildConfigField "String", "EXPECTED_SIGNING_CERT_SHA256",
+            "\"${project.hasProperty('mrpExpectedSigningSha256') ? project.property('mrpExpectedSigningSha256') : ''}\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

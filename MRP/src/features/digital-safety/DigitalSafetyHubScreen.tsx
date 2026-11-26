@@ -39,9 +39,17 @@ type HubItem = {
   subtitle: string;
   icon?: string;
   iconSource?: ImageSourcePropType;
-  section: 'PROTECT' | 'MONITOR' | 'RECOVER' | 'SECURE';
+  section: SectionId;
   /** Capability that must be unlocked to open (omit = free / always). */
   capability?: DigitalSafetyCapability;
+};
+
+type SectionId = 'CHECK' | 'NETWORK' | 'HEALTH' | 'LOST';
+
+type SectionMeta = {
+  id: SectionId;
+  label: string;
+  purpose: string;
 };
 
 /** Unique DS tools only — Drive Sync and SIM Recovery live under Hub. */
@@ -49,90 +57,111 @@ const ITEMS: HubItem[] = [
   {
     id: 'safe-link',
     title: 'Safe Link',
-    subtitle: 'Check URLs you paste or share to MRP',
+    subtitle: 'Paste a URL — see if it looks risky before you open it',
     icon: '🔗',
-    section: 'PROTECT',
-  },
-  {
-    id: 'network-guardian',
-    title: 'Network Guardian',
-    subtitle: 'Ad, tracker, and threat category lists',
-    icon: '🛡️',
-    section: 'PROTECT',
-    capability: 'networkGuardian',
-  },
-  {
-    id: 'qr',
-    title: 'QR Protection',
-    subtitle: 'Scan & preview destinations before opening',
-    iconSource: brandImages.features.unlockSelfie,
-    section: 'PROTECT',
+    section: 'CHECK',
   },
   {
     id: 'scam',
     title: 'Scam Check',
-    subtitle: 'Paste suspicious messages — MRP does not read your inbox',
+    subtitle: 'Paste a suspicious SMS or message (MRP does not read your inbox)',
     icon: '⚠️',
-    section: 'PROTECT',
+    section: 'CHECK',
+  },
+  {
+    id: 'qr',
+    title: 'QR Protection',
+    subtitle: 'Preview where a QR goes before your browser opens it',
+    iconSource: brandImages.features.unlockSelfie,
+    section: 'CHECK',
+  },
+  {
+    id: 'network-guardian',
+    title: 'Network Guardian',
+    subtitle: 'Block ad / tracker / threat domain categories (DNS only)',
+    icon: '🛡️',
+    section: 'NETWORK',
+    capability: 'networkGuardian',
   },
   {
     id: 'cellular',
     title: 'Cellular Security',
-    subtitle: 'SIM and carrier anomaly signals (not fake-tower proof)',
+    subtitle: 'Watch for odd SIM / carrier signals (not fake-tower proof)',
     icon: '📶',
-    section: 'PROTECT',
+    section: 'NETWORK',
     capability: 'cellularMonitor',
+  },
+  {
+    id: 'security-center',
+    title: 'Security Advisor',
+    subtitle: 'Device posture score and risky-app heuristics',
+    iconSource: brandImages.features.deviceProtection,
+    section: 'HEALTH',
+  },
+  {
+    id: 'timeline',
+    title: 'Activity',
+    subtitle: 'Safety events from scans and tools on this phone',
+    iconSource: brandImages.features.activityTimeline,
+    section: 'HEALTH',
   },
   {
     id: 'automation',
     title: 'Automation',
     subtitle: 'Clipboard opt-in, breach watch, and policy-safe scans',
     icon: '⚙️',
-    section: 'MONITOR',
-  },
-  {
-    id: 'security-center',
-    title: 'Security Advisor',
-    subtitle: 'Device posture & app risk heuristics',
-    iconSource: brandImages.features.deviceProtection,
-    section: 'MONITOR',
-  },
-  {
-    id: 'timeline',
-    title: 'Activity',
-    subtitle: 'Protection and monitoring events',
-    iconSource: brandImages.features.activityTimeline,
-    section: 'MONITOR',
+    section: 'HEALTH',
   },
   {
     id: 'emergency-card',
     title: 'Emergency Card',
-    subtitle: 'ICE info on-device + Android Emergency Info link',
+    subtitle: 'ICE info on this phone + Android Emergency Info',
     icon: '🆘',
-    section: 'RECOVER',
+    section: 'LOST',
   },
   {
     id: 'lost-mobile',
     title: 'Lost Mobile',
-    subtitle: 'Locate, lock & recovery tools',
+    subtitle: 'Locate / lock tips and cybercrime report links',
     iconSource: brandImages.features.remoteLock,
-    section: 'RECOVER',
+    section: 'LOST',
     capability: 'lostMobile',
   },
   {
     id: 'secure-vault',
     title: 'Secure Vault',
-    subtitle: 'Encrypted documents & notes on this device',
+    subtitle: 'Encrypted notes & docs stored on this device',
     icon: '🔐',
-    section: 'SECURE',
+    section: 'LOST',
     capability: 'secureVault',
   },
 ];
 
-const SECTIONS = ['PROTECT', 'MONITOR', 'RECOVER', 'SECURE'] as const;
+const SECTIONS: SectionMeta[] = [
+  {
+    id: 'CHECK',
+    label: 'Check before you trust',
+    purpose: 'Links, SMS text, and QR codes you paste or scan here',
+  },
+  {
+    id: 'NETWORK',
+    label: 'Network & SIM',
+    purpose: 'Optional filters and carrier anomaly signals',
+  },
+  {
+    id: 'HEALTH',
+    label: 'Phone health',
+    purpose: 'Posture, risky apps, and automation settings',
+  },
+  {
+    id: 'LOST',
+    label: 'If the phone is lost',
+    purpose: 'ICE card, recovery links, and on-device vault',
+  },
+];
 
 const FOOTER_COPY =
-  'Checks links you paste or share to MRP. Does not scan links opened in other apps unless you share them. Network Guardian uses DNS filtering only — not HTTPS content inspection.';
+  'Safety checks what you paste or share into MRP. It does not scan links you open in other apps unless you share them here. Monitoring (locks, USB, SIM events) is under the Security tab.';
 
 export function DigitalSafetyHubScreen({
   onNavigate,
@@ -152,20 +181,24 @@ export function DigitalSafetyHubScreen({
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <Image source={brandImages.logoMark} style={styles.heroLogo} resizeMode="contain" />
+          <Text style={styles.heroTitle}>Safety</Text>
           <Text style={styles.heroTagline}>{brandCopy.tagline}</Text>
-          <Text style={styles.heroSub}>{brandCopy.pillars} · Secure</Text>
+          <Text style={styles.heroSub}>
+            Scam checks and recovery tools — not the same as Security monitoring
+          </Text>
         </View>
 
         {SECTIONS.map(section => {
           const sectionItems = ITEMS.filter(
             i =>
-              i.section === section &&
+              i.section === section.id &&
               (i.id !== 'qr' || QR_PROTECTION_ENABLED),
           );
           if (sectionItems.length === 0) return null;
           return (
-            <View key={section} style={styles.sectionBlock}>
-              <Text style={styles.sectionLabel}>{section}</Text>
+            <View key={section.id} style={styles.sectionBlock}>
+              <Text style={styles.sectionLabel}>{section.label}</Text>
+              <Text style={styles.sectionPurpose}>{section.purpose}</Text>
               {sectionItems.map(item => {
                 const locked =
                   !!item.capability && !canUseDsCapability(item.capability);
@@ -213,60 +246,80 @@ function createStyles(colors: ColorPalette) {
     scroll: {padding: spacing.lg, paddingBottom: spacing.xxl},
     hero: {alignItems: 'center', alignSelf: 'center', width: '100%', marginBottom: spacing.lg},
     heroLogo: {width: 96, height: 78, marginBottom: spacing.sm},
+    heroTitle: {
+      fontSize: 22,
+      fontWeight: '900',
+      color: colors.textPrimary,
+      marginBottom: 4,
+    },
     heroTagline: {
       fontSize: 16,
       fontWeight: '700',
       color: brandColors.googleBlue,
       textAlign: 'center',
     },
-    heroSub: {fontSize: 13, color: colors.textMuted, marginTop: 4},
+    heroSub: {
+      marginTop: spacing.sm,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 18,
+      paddingHorizontal: spacing.sm,
+    },
     sectionBlock: {marginBottom: spacing.lg},
     sectionLabel: {
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: '800',
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    sectionPurpose: {
+      fontSize: 12,
+      fontWeight: '600',
       color: colors.textMuted,
-      letterSpacing: 1,
       marginBottom: spacing.sm,
+      lineHeight: 16,
     },
     card: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
-      padding: spacing.md,
-      marginBottom: spacing.sm,
       borderWidth: 1,
       borderColor: colors.borderSoft,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md,
+      marginBottom: spacing.sm,
     },
-    cardLocked: {opacity: 0.92, borderColor: colors.amber},
+    cardLocked: {opacity: 0.85},
     iconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      backgroundColor: brandColors.iconBg,
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: brandColors.iconBg || colors.skySoft,
       alignItems: 'center',
       justifyContent: 'center',
       marginRight: spacing.md,
       overflow: 'hidden',
     },
-    iconImg: {width: 44, height: 44},
     icon: {fontSize: 22},
+    iconImg: {width: 48, height: 48, borderRadius: 14},
     cardText: {flex: 1},
     cardTitle: {fontSize: 16, fontWeight: '800', color: colors.textPrimary},
-    cardSub: {fontSize: 13, color: colors.textMuted, marginTop: 2},
+    cardSub: {fontSize: 13, color: colors.textMuted, marginTop: 2, lineHeight: 18},
     lockBadge: {
       marginTop: 4,
       fontSize: 11,
       fontWeight: '800',
-      color: colors.amber,
+      color: brandColors.googleBlue,
     },
-    chevron: {fontSize: 22, color: colors.textMuted, marginLeft: 8},
+    chevron: {fontSize: 22, color: colors.textMuted, marginLeft: spacing.sm},
     footer: {
       fontSize: 12,
       color: colors.textMuted,
       lineHeight: 18,
-      marginTop: spacing.md,
-      fontStyle: 'italic',
+      marginTop: spacing.sm,
     },
     driveFooter: {
       textAlign: 'center',

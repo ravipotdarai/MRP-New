@@ -76,7 +76,7 @@ function TravelBody() {
   const [playIdx, setPlayIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [follow, setFollow] = useState(true);
-  const [pathMode, setPathMode] = useState<PathMode>("roads");
+  const [pathMode, setPathMode] = useState<PathMode>("gps");
   const [speed, setSpeed] = useState<PlaybackSpeeds>(1);
   const [liveNow, setLiveNow] = useState(() => formatLiveClock());
 
