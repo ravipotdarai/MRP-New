@@ -5,6 +5,7 @@
 
 import {
   BACKUP_FILE_NAME,
+  EXTRAS_FILE_NAME,
   downloadDriveFile,
 } from "@/lib/drive-appdata";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/lib/vault-crypto";
 
 export const LIVE_FILE_NAME = "mrp_live.enc";
+export const EXTRAS_FILE = EXTRAS_FILE_NAME;
 export const EVT_PREFIX = "mrp_evt_";
 export const SELFIE_PREFIX = "mrp_selfie_";
 
@@ -34,8 +36,18 @@ export type ProgressiveVaultHandlers = {
   onStage?: (msg: string) => void;
   /** Fired once recent window is ready — UI may unlock. */
   onPartial?: (result: ChunkMergeResult) => void;
+  /**
+   * Fired after vault/extras (+ recent events) — stop blocking the UI.
+   * Photo packs and older history load after this (or on Media demand).
+   */
+  onReady?: (result: ChunkMergeResult) => void;
+  /** Optional progress while older evt packs decrypt in the background. */
+  onHistoryProgress?: (result: ChunkMergeResult) => void;
   signal?: AbortSignal;
 };
+
+/** Max older event packs decrypted during unlock (rest stays out of the critical path). */
+const MAX_OLDER_EVT_PACKS_ON_UNLOCK = 36;
 
 async function listAppDataContaining(
   accessToken: string,
@@ -226,6 +238,38 @@ async function decryptSelfiePack(
   }
 }
 
+/**
+ * Load selfie packs on demand (Media page) — not during unlock.
+ * Newest packs first; [limit] caps how many to decrypt this call.
+ */
+export async function fetchSelfiePacks(opts: {
+  accessToken: string;
+  pin: string;
+  limit?: number;
+  signal?: AbortSignal;
+  onStage?: (msg: string) => void;
+}): Promise<{ selfies: unknown[]; loaded: number; totalListed: number }> {
+  const { accessToken, pin, signal, onStage } = opts;
+  const limit = Math.max(1, opts.limit ?? 40);
+  throwIfAborted(signal);
+  onStage?.("Listing photo packs…");
+  const files = (await listAppDataContaining(accessToken, SELFIE_PREFIX)).filter(
+    (f) => f.name.startsWith(SELFIE_PREFIX) && f.name.endsWith(".enc"),
+  );
+  const sorted = [...files].sort((a, b) =>
+    (b.modifiedTime || b.name).localeCompare(a.modifiedTime || a.name),
+  );
+  const slice = sorted.slice(0, limit);
+  if (!slice.length) return { selfies: [], loaded: 0, totalListed: files.length };
+  onStage?.(`Loading ${slice.length} of ${files.length} photo(s)…`);
+  const results = await mapPool(slice, 6, async (f) => decryptSelfiePack(accessToken, pin, f), signal);
+  const selfies: unknown[] = [];
+  for (const r of results) {
+    if (r) selfies.push(r.row);
+  }
+  return { selfies, loaded: selfies.length, totalListed: files.length };
+}
+
 function filterTimelineRecent(timeline: unknown[], windowMs: number, nowMs: number): unknown[] {
   const cutoff = nowMs - windowMs;
   const kept = timeline.filter((row) => {
@@ -239,6 +283,52 @@ function filterTimelineRecent(timeline: unknown[], windowMs: number, nowMs: numb
     return true;
   });
   return kept.length ? kept : timeline.slice(-80);
+}
+
+function createdAtMs(obj: unknown): number {
+  if (!obj || typeof obj !== "object") return 0;
+  const v = (obj as Record<string, unknown>).createdAtMs ?? (obj as Record<string, unknown>).exportedAtMs;
+  return typeof v === "number" ? v : Number(v) || 0;
+}
+
+/** Prefer newer extras pack fields over a stale full-vault snapshot. */
+function mergeExtrasIntoVault(base: VaultPayload, extras: VaultPayload | null): VaultPayload {
+  if (!extras) return base;
+  const extrasAt = createdAtMs(extras);
+  const baseAt = createdAtMs(base);
+  const preferExtras = extrasAt >= baseAt || !base.geofences?.length;
+
+  const geofences =
+    preferExtras && Array.isArray(extras.geofences) && extras.geofences.length
+      ? extras.geofences
+      : base.geofences?.length
+        ? base.geofences
+        : extras.geofences;
+
+  const appUsage =
+    preferExtras && extras.appUsage
+      ? extras.appUsage
+      : base.appUsage || extras.appUsage;
+
+  const deviceHealth =
+    preferExtras && extras.deviceHealth
+      ? extras.deviceHealth
+      : base.deviceHealth || extras.deviceHealth;
+
+  return {
+    ...base,
+    version: base.version ?? extras.version ?? 3,
+    geofences,
+    appUsage,
+    deviceHealth,
+    trackingConfigSnapshot:
+      (preferExtras && extras.trackingConfigSnapshot) ||
+      base.trackingConfigSnapshot ||
+      extras.trackingConfigSnapshot,
+    pendingSync: preferExtras && extras.pendingSync ? extras.pendingSync : base.pendingSync || extras.pendingSync,
+    simHistory: preferExtras && extras.simHistory ? extras.simHistory : base.simHistory || extras.simHistory,
+    email: base.email || extras.email,
+  };
 }
 
 function assembleVault(opts: {
@@ -286,30 +376,31 @@ export async function fetchAndMergeVaultPayload(
     typeof onStageOrHandlers === "function"
       ? { onStage: onStageOrHandlers }
       : onStageOrHandlers || {};
-  const { onStage, onPartial, signal } = handlers;
+  const { onStage, onPartial, onReady, onHistoryProgress, signal } = handlers;
   const nowMs = Date.now();
 
   onStage?.("Listing Drive app data…");
   throwIfAborted(signal);
-  const [vaultFiles, evtFiles, selfieFiles, liveFiles] = await Promise.all([
+  // Skip listing selfie packs on unlock — Media loads them on demand (can be 100s of files).
+  const [vaultFiles, extrasFiles, evtFiles, liveFiles] = await Promise.all([
     listExact(accessToken, BACKUP_FILE_NAME),
+    listExact(accessToken, EXTRAS_FILE),
     listAppDataContaining(accessToken, EVT_PREFIX),
-    listAppDataContaining(accessToken, SELFIE_PREFIX),
     listExact(accessToken, LIVE_FILE_NAME),
   ]);
 
   const evtPacks = evtFiles.filter((f) => f.name.startsWith(EVT_PREFIX) && f.name.endsWith(".enc"));
-  const selfiePacks = selfieFiles.filter(
-    (f) => f.name.startsWith(SELFIE_PREFIX) && f.name.endsWith(".enc"),
-  );
   const latestVault = [...vaultFiles].sort((a, b) =>
+    (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
+  )[0];
+  const latestExtras = [...extrasFiles].sort((a, b) =>
     (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
   )[0];
   const latestLive = [...liveFiles].sort((a, b) =>
     (b.modifiedTime || "").localeCompare(a.modifiedTime || ""),
   )[0];
 
-  if (!latestVault && evtPacks.length === 0 && !latestLive) {
+  if (!latestVault && !latestExtras && evtPacks.length === 0 && !latestLive) {
     throw new Error("No encrypted device backup or event packs found in Drive app data");
   }
 
@@ -401,10 +492,30 @@ export async function fetchAndMergeVaultPayload(
     }
   }
 
-  // --- Phase 2: vault snapshot early (appUsage / geofences / deviceHealth / selfies meta) ---
+  // --- Phase 2: vault + extras snapshot (appUsage / geofences / deviceHealth) ---
   let merged: VaultPayload = emptyBase;
   let hadVault = false;
+  let hadExtras = false;
   let metaName = "Event packs";
+  let extrasPayload: VaultPayload | null = null;
+
+  if (latestExtras) {
+    onStage?.(partialFired ? "Loading zones & usage…" : "Decrypting extras snapshot…");
+    throwIfAborted(signal);
+    try {
+      const blob = await downloadDriveFile(accessToken, latestExtras.id);
+      sizeBytes += blob.byteLength;
+      const plain = await decryptVaultUtf8(blob, pin);
+      extrasPayload = parseVaultJson(plain);
+      hadExtras = true;
+      metaName = latestExtras.name || EXTRAS_FILE;
+      metaModified = latestExtras.modifiedTime || metaModified;
+      merged = mergeExtrasIntoVault(merged, extrasPayload);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      /* extras optional when vault or events exist */
+    }
+  }
 
   if (latestVault) {
     onStage?.(
@@ -417,31 +528,15 @@ export async function fetchAndMergeVaultPayload(
       const plain = await decryptVaultUtf8(blob, pin);
       await new Promise<void>((r) => setTimeout(r, 0));
       throwIfAborted(signal);
-      merged = parseVaultJson(plain);
+      const vaultSnap = parseVaultJson(plain);
       hadVault = true;
       metaName = latestVault.name || BACKUP_FILE_NAME;
       metaModified = latestVault.modifiedTime || metaModified;
+      // Vault carries timeline/selfies; extras win for geofences/appUsage when newer.
+      merged = mergeExtrasIntoVault(vaultSnap, extrasPayload);
 
-      // Keep vault selfie blobs when there are no separate packs — otherwise Media stays empty
-      // until a long history load finishes (or aborts). Only defer when packs will supply blobs.
-      const deferSelfieBlobs = selfiePacks.length > 0;
-      const paintSelfies = deferSelfieBlobs
-        ? (merged.selfies || []).map((s) => {
-            if (!s || typeof s !== "object") return s;
-            const o = { ...(s as Record<string, unknown>) };
-            if (
-              typeof o.dataBase64 === "string" ||
-              typeof o.base64 === "string" ||
-              typeof o.data === "string"
-            ) {
-              delete o.dataBase64;
-              delete o.base64;
-              delete o.data;
-              o.blobDeferred = true;
-            }
-            return o;
-          })
-        : merged.selfies || [];
+      // Keep vault-embedded selfie blobs for Media; packs load only on the Media page.
+      const paintSelfies = merged.selfies || [];
 
       if (onPartial) {
         const partialVault = assembleVault({
@@ -472,60 +567,143 @@ export async function fetchAndMergeVaultPayload(
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") throw e;
-      if (!timelineExtra.length && !liveFromPack) throw e;
+      if (!timelineExtra.length && !liveFromPack && !hadExtras) throw e;
       /* keep chunk-only merge */
     }
+  } else if (hadExtras && onPartial) {
+    const partialVault = assembleVault({
+      base: merged,
+      timelineExtra: [...timelineExtra],
+      selfieExtra: [],
+      liveFromPack,
+      filterRecentMs: partialFired ? undefined : RECENT_WINDOW_MS,
+      nowMs,
+    });
+    onPartial({
+      vault: partialVault,
+      meta: { name: metaName, modifiedTime: metaModified, sizeBytes },
+      sources: {
+        vault: false,
+        evtPacks: sortedRecent.length,
+        selfies: 0,
+        live: Boolean(liveFromPack || partialVault.liveLocation),
+      },
+      partial: true,
+    });
+    partialFired = true;
   }
 
-  // --- Phase 3: remaining event packs ---
-  if (sortedOlder.length) {
-    onStage?.(partialFired ? "Loading full history…" : `Decrypting ${sortedOlder.length} event packs…`);
-    throwIfAborted(signal);
-    const results = await mapPool(sortedOlder, 5, async (f) => decryptEvtPack(accessToken, pin, f), signal);
-    for (const r of results) {
-      if (!r) continue;
-      timelineExtra.push(...r.events);
-      sizeBytes += r.bytes;
-      metaModified = r.modifiedTime || metaModified;
-    }
+  // Photo packs are NOT decrypted on unlock (can be hundreds). Media page loads on demand.
+  if (!(merged.selfies && merged.selfies.length)) {
+    merged = { ...merged, selfiesOmitted: true, selfies: merged.selfies || [] };
   }
 
-  // --- Phase 4: selfie packs ---
-  const selfieExtra: unknown[] = [];
-  if (selfiePacks.length) {
-    onStage?.(`Loading ${selfiePacks.length} selfie pack(s)…`);
+  // UI-ready: vault/extras + recent events — do not wait for photos or full history.
+  const olderForUnlock = sortedOlder
+    .slice()
+    .sort((a, b) => (b.modifiedTime || b.name).localeCompare(a.modifiedTime || a.name))
+    .slice(0, MAX_OLDER_EVT_PACKS_ON_UNLOCK);
+  const readyVault = assembleVault({
+    base: merged,
+    timelineExtra: [...timelineExtra],
+    selfieExtra: [],
+    liveFromPack,
+  });
+  if (onReady || onPartial) {
+    const readyResult: ChunkMergeResult = {
+      vault: readyVault,
+      meta: {
+        name: hadVault || hadExtras ? metaName : "Recent activity",
+        modifiedTime: metaModified,
+        sizeBytes,
+      },
+      sources: {
+        vault: hadVault || hadExtras,
+        evtPacks: sortedRecent.length,
+        selfies: readyVault.selfies?.length || 0,
+        live: Boolean(liveFromPack),
+      },
+      partial: olderForUnlock.length > 0,
+    };
+    if (onReady) onReady(readyResult);
+    else onPartial?.(readyResult);
+    await new Promise<void>((r) => setTimeout(r, 0));
+  }
+
+  // --- Cap older event packs (background; UI already ready) ---
+  if (olderForUnlock.length) {
+    onStage?.(
+      olderForUnlock.length < sortedOlder.length
+        ? `Updating recent history (${olderForUnlock.length} of ${sortedOlder.length} packs)…`
+        : `Updating history (${olderForUnlock.length} packs)…`,
+    );
     throwIfAborted(signal);
-    const results = await mapPool(selfiePacks, 3, async (f) => decryptSelfiePack(accessToken, pin, f), signal);
-    for (const r of results) {
-      if (!r) continue;
-      selfieExtra.push(r.row);
-      sizeBytes += r.bytes;
-      metaModified = r.modifiedTime || metaModified;
+    const BATCH = 10;
+    for (let i = 0; i < olderForUnlock.length; i += BATCH) {
+      throwIfAborted(signal);
+      const slice = olderForUnlock.slice(i, i + BATCH);
+      const results = await mapPool(slice, 5, async (f) => decryptEvtPack(accessToken, pin, f), signal);
+      for (const r of results) {
+        if (!r) continue;
+        timelineExtra.push(...r.events);
+        sizeBytes += r.bytes;
+        metaModified = r.modifiedTime || metaModified;
+      }
+      if (onHistoryProgress) {
+        onHistoryProgress({
+          vault: assembleVault({
+            base: merged,
+            timelineExtra: [...timelineExtra],
+            selfieExtra: [],
+            liveFromPack,
+          }),
+          meta: {
+            name: hadVault || hadExtras ? metaName : "Event packs",
+            modifiedTime: metaModified,
+            sizeBytes,
+          },
+          sources: {
+            vault: hadVault || hadExtras,
+            evtPacks: sortedRecent.length + Math.min(i + BATCH, olderForUnlock.length),
+            selfies: merged.selfies?.length || 0,
+            live: Boolean(liveFromPack),
+          },
+          partial: i + BATCH < olderForUnlock.length,
+        });
+      }
+      if (i + BATCH < olderForUnlock.length) {
+        await new Promise<void>((r) => setTimeout(r, 0));
+      }
     }
   }
 
   const vault = assembleVault({
     base: merged,
     timelineExtra,
-    selfieExtra,
+    selfieExtra: [],
     liveFromPack,
   });
 
-  if (!hadVault && (vault.timeline?.length ?? 0) === 0 && !vault.liveLocation) {
+  if (
+    !hadVault &&
+    !hadExtras &&
+    (vault.timeline?.length ?? 0) === 0 &&
+    !vault.liveLocation
+  ) {
     throw new Error("Could not decrypt any Drive chunk packs — check PIN");
   }
 
   return {
     vault,
     meta: {
-      name: hadVault ? metaName : "Event packs",
+      name: hadVault || hadExtras ? metaName : "Event packs",
       modifiedTime: metaModified,
       sizeBytes,
     },
     sources: {
-      vault: hadVault,
+      vault: hadVault || hadExtras,
       evtPacks: evtPacks.length,
-      selfies: selfieExtra.length,
+      selfies: vault.selfies?.length || 0,
       live: Boolean(liveFromPack),
     },
     partial: false,

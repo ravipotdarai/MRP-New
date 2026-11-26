@@ -112,6 +112,10 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
                         putBoolean("recoveryAcknowledged", recoveryAck)
                         putBoolean("wifiOnly", wifiOnly)
                         putBoolean("pausedQuota", pausedQuota)
+                        putBoolean(
+                            "autoSyncEnabled",
+                            com.mrp.domain.usecase.DriveVaultSync.hasAutoSyncPin(reactContext),
+                        )
                         putDouble("lastBackupMs", lastBackupMs.toDouble())
                         putString("lastFileId", lastFileId)
                         putInt("pendingSyncCount", pending)
@@ -183,6 +187,40 @@ class DriveVaultModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             connectPromise = null
             promise.reject("DRIVE_CONNECT", e.message, e)
+        }
+    }
+
+    @ReactMethod
+    fun enableAutoSync(pin: String, promise: Promise) {
+        executor.execute {
+            try {
+                requireRecoveryAck()
+                requirePin(pin)
+                val account = GoogleSignIn.getLastSignedInAccount(reactContext)
+                    ?: throw IllegalStateException("Sign in with Google first")
+                if (!GoogleSignIn.hasPermissions(account, Scope(DriveAppDataClient.SCOPE_APPDATA))) {
+                    throw IllegalStateException("Connect Drive (appdata) first")
+                }
+                val token = getAccessToken(account)
+                    ?: throw IllegalStateException("Missing Google access token — reconnect Drive")
+                val ok = com.mrp.domain.usecase.DriveVaultSync.enableAutoSync(
+                    reactContext,
+                    pin,
+                    token,
+                    account.email ?: "",
+                )
+                if (!ok) throw IllegalStateException("Could not start automatic sync")
+                promise.resolve(
+                    Arguments.createMap().apply {
+                        putBoolean("ok", true)
+                        putBoolean("autoSyncEnabled", true)
+                        putString("mode", "chunks_evt_selfie_live_extras")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "enableAutoSync", e)
+                promise.reject("AUTO_SYNC", e.message, e)
+            }
         }
     }
 

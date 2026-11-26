@@ -23,8 +23,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Privacy MVP: syncable device data → Drive (encrypted), never Firebase.
  *
- * Automatic path = append-only chunks (evt / selfie / live). Full vault only via
- * Hub manual [performFullVaultBackup] / reason=manual.
+ * Automatic path = append-only chunks (evt / selfie / live / extras).
+ * Full vault only via Hub manual [performFullVaultBackup] / reason=manual.
+ * Event sync ([EventSyncPublisher]) is unchanged — one queue per event → coalesced packs.
  */
 object DriveVaultSync {
 
@@ -65,6 +66,41 @@ object DriveVaultSync {
         }
     }
 
+    fun hasAutoSyncPin(context: Context): Boolean =
+        try {
+            !vaultPrefs(context).getString(KEY_AUTO_PIN, null).isNullOrBlank()
+        } catch (_: Exception) {
+            false
+        }
+
+    /**
+     * One-time enable: store PIN + flush events/selfies + extras snapshot.
+     * Does **not** upload a full vault — Hub “Back up now” remains optional.
+     */
+    fun enableAutoSync(context: Context, pin: String, accessToken: String, email: String): Boolean {
+        if (!verifyPin(context, pin)) {
+            throw IllegalStateException("Incorrect PIN")
+        }
+        rememberPinForAutoSync(context, pin)
+        if (!running.compareAndSet(false, true)) {
+            requestSyncAsync(context, "enable_auto")
+            return true
+        }
+        return try {
+            performChunkFlush(
+                context,
+                pin,
+                accessToken,
+                "enable_auto",
+                criticalOnly = false,
+                forceExtras = true,
+                email = email,
+            )
+        } finally {
+            running.set(false)
+        }
+    }
+
     /**
      * Wi‑Fi / cellular / ethernet just became available — flush pending event chunks
      * (append-only packs). Does not upload a full vault.
@@ -87,13 +123,24 @@ object DriveVaultSync {
         if (!isPanicReason(reason) &&
             !DeviceTrackingPrefs.isEventSyncEnabled(context) &&
             !DeviceTrackingPrefs.isEmergencyTracking(context) &&
-            reason != "manual"
+            reason != "manual" &&
+            reason != "zones_changed" &&
+            !reason.startsWith("enable_auto") &&
+            !reason.startsWith("extras")
         ) {
             return
         }
         val app = context.applicationContext
         when {
-            reason == "manual" || reason == "zones_changed" -> executor.execute {
+            reason == "manual" -> executor.execute {
+                try {
+                    trySync(app, reason, panic = false)
+                } catch (t: Throwable) {
+                    Log.e(TAG, "requestSync $reason", t)
+                }
+            }
+            // Zone definitions → extras pack (not full vault). Enter/exit stay on event path.
+            reason == "zones_changed" -> executor.execute {
                 try {
                     trySync(app, reason, panic = false)
                 } catch (t: Throwable) {
@@ -191,18 +238,33 @@ object DriveVaultSync {
             val token = obtainAccessToken(context, account) ?: return false
             val email = account.email ?: ""
             return when {
-                reason == "manual" || reason == "zones_changed" ->
+                reason == "manual" || reason.startsWith("manual") ->
                     performFullVaultBackup(context, pin, token, email, reason)
-                reason.startsWith("drive_heartbeat") ->
+                reason == "zones_changed" || reason.startsWith("enable_auto") || reason.startsWith("extras") ->
+                    performChunkFlush(
+                        context, pin, token, reason,
+                        criticalOnly = false,
+                        forceExtras = true,
+                        email = email,
+                    )
+                reason.startsWith("drive_heartbeat") -> {
                     performLiveOnly(context, pin, token, reason)
+                    // Periodic extras refresh (throttled inside writer)
+                    performChunkFlush(
+                        context, pin, token, reason,
+                        criticalOnly = false,
+                        forceExtras = false,
+                        email = email,
+                    )
+                }
                 panic || reason.startsWith("panic:") ->
-                    performChunkFlush(context, pin, token, reason, criticalOnly = true)
+                    performChunkFlush(context, pin, token, reason, criticalOnly = true, email = email)
                 reason.startsWith("emergency") -> {
                     performLiveOnly(context, pin, token, reason)
-                    performChunkFlush(context, pin, token, reason, criticalOnly = false)
+                    performChunkFlush(context, pin, token, reason, criticalOnly = false, email = email)
                 }
                 else ->
-                    performChunkFlush(context, pin, token, reason, criticalOnly = false)
+                    performChunkFlush(context, pin, token, reason, criticalOnly = false, email = email)
             }
         } finally {
             running.set(false)
@@ -214,7 +276,10 @@ object DriveVaultSync {
             reason.startsWith("geofence") ||
             reason.startsWith("drive_heartbeat") ||
             reason.startsWith("emergency") ||
-            reason.startsWith("panic:")
+            reason.startsWith("panic:") ||
+            reason == "zones_changed" ||
+            reason.startsWith("enable_auto") ||
+            reason.startsWith("extras")
 
     /** Hub manual / Export snapshot — only automatic caller of full vault. */
     fun performBackup(
@@ -257,6 +322,8 @@ object DriveVaultSync {
         accessToken: String,
         reason: String,
         criticalOnly: Boolean,
+        forceExtras: Boolean = false,
+        email: String = "",
     ): Boolean {
         val client = DriveAppDataClient(accessToken)
         val prefs = vaultPrefs(context)
@@ -281,11 +348,21 @@ object DriveVaultSync {
             LivePackWriter.uploadLive(context, pin, client)
         }
 
+        var extrasBytes = 0
+        if (!criticalOnly) {
+            extrasBytes = ExtrasSnapshotWriter.uploadIfNeeded(
+                context = context,
+                pin = pin,
+                client = client,
+                email = email,
+                force = forceExtras,
+            )
+        }
+
         val sim = SimRecoveryStorage(context)
         if (sim.getPendingSyncCount() > 0) {
-            // Pending SIM rows still travel via optional manual vault; mark drained after chunk path
-            // when we at least pushed events.
-            if (evtCount > 0) sim.clearPendingSync()
+            // Pending SIM also rides in extras pack; clear after a successful extras or event push.
+            if (evtCount > 0 || extrasBytes > 0) sim.clearPendingSync()
         }
 
         if (!criticalOnly) {
@@ -308,9 +385,9 @@ object DriveVaultSync {
             .apply()
         Log.i(
             TAG,
-            "Drive sync ok reason=$reason chunks evtPacks=$evtCount selfies=$selfieCount critical=$criticalOnly"
+            "Drive sync ok reason=$reason chunks evtPacks=$evtCount selfies=$selfieCount extras=$extrasBytes critical=$criticalOnly"
         )
-        return evtCount > 0 || selfieCount > 0 || criticalOnly
+        return evtCount > 0 || selfieCount > 0 || extrasBytes > 0 || criticalOnly
     }
 
     /**

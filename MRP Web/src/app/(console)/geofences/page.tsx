@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
 import { InteractiveMap } from "@/components/InteractiveMap";
@@ -64,19 +64,32 @@ function GeofencesBody() {
     [vault?.geofences],
   );
 
-  // Only highlight when user picks a zone — never filter the map down to one circle.
   const selected = selectedId ? mapFences.find((z) => z.id === selectedId) || null : null;
 
-  const resolveZoneName = (row: Record<string, unknown>) => {
+  // Selecting a zone card also filters enter/exit to that zone.
+  useEffect(() => {
+    if (selected) setZoneFilter(selected.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when selection id changes
+  }, [selected?.id, selected?.name]);
+
+  const resolveZone = (row: Record<string, unknown>) => {
     const badge = rowGeofence(row);
-    if (badge.fenceName) return badge.fenceName;
-    if (badge.fenceId) {
-      const hit = mapFences.find((z) => z.id === badge.fenceId);
-      if (hit) return hit.name;
-    }
-    const meta = (row.metadata || {}) as Record<string, unknown>;
-    const n = String(meta.geofence_name || meta.zoneName || meta.name || "").trim();
-    return n || "Unknown zone";
+    const byId = badge.fenceId
+      ? mapFences.find((z) => z.id === badge.fenceId || z.id === String(badge.fenceId))
+      : null;
+    const name =
+      badge.fenceName ||
+      byId?.name ||
+      (() => {
+        const meta = (row.metadata || {}) as Record<string, unknown>;
+        return String(meta.geofence_name || meta.zoneName || meta.transition_zone || meta.name || "").trim();
+      })() ||
+      "Unknown zone";
+    return {
+      name,
+      fenceId: badge.fenceId || byId?.id || null,
+      inside: badge.inside,
+    };
   };
 
   const enterExit = useMemo(() => {
@@ -87,11 +100,13 @@ function GeofencesBody() {
     return [...rows]
       .map((r) => {
         const t = eventTimeMs(r);
+        const zone = resolveZone(r);
         return {
           row: r,
           timeMs: t,
           day: toDayKey(t),
-          zone: resolveZoneName(r),
+          zone: zone.name,
+          fenceId: zone.fenceId,
           type: eventType(r),
           kind: enterExitKind(eventType(r), rowStatus(r)),
           ll: rowLatLng(r),
@@ -100,16 +115,24 @@ function GeofencesBody() {
         };
       })
       .sort((a, b) => b.timeMs - a.timeMs);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveZoneName uses mapFences
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- resolveZone uses mapFences
   }, [vault, mapFences]);
 
   const filteredEvents = useMemo(() => {
     return enterExit.filter((e) => {
-      if (zoneFilter !== "all" && e.zone !== zoneFilter) return false;
+      if (zoneFilter !== "all") {
+        const matchName = e.zone === zoneFilter;
+        const matchSelectedId =
+          selected && (e.fenceId === selected.id || e.zone === selected.name);
+        const matchFilterId = mapFences.find((z) => z.name === zoneFilter);
+        const matchById =
+          matchFilterId && e.fenceId && e.fenceId === matchFilterId.id;
+        if (!matchName && !matchSelectedId && !matchById) return false;
+      }
       if (dateFilter && e.day !== dateFilter) return false;
       return true;
     });
-  }, [enterExit, zoneFilter, dateFilter]);
+  }, [enterExit, zoneFilter, dateFilter, selected, mapFences]);
 
   const zoneOptions = useMemo(() => {
     const names = new Set<string>();
@@ -120,28 +143,40 @@ function GeofencesBody() {
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [mapFences, enterExit]);
 
-  const shownFences = mapFences.map((z) => ({
-    id: z.id,
-    lat: z.lat,
-    lng: z.lng,
-    radiusMeters: z.radiusMeters,
-    name: z.name,
-    highlight: selected?.id === z.id,
-  }));
+  // When a zone is selected, emphasize it and still draw others faintly via highlight flag.
+  const shownFences = useMemo(
+    () =>
+      mapFences.map((z) => ({
+        id: z.id,
+        lat: z.lat,
+        lng: z.lng,
+        radiusMeters: z.radiusMeters,
+        name: z.name,
+        highlight: selectedId != null && selectedId === z.id,
+      })),
+    [mapFences, selectedId],
+  );
+
+  const selectZone = (id: string) => {
+    setSelectedId(id);
+    const z = mapFences.find((x) => x.id === id);
+    if (z) setZoneFilter(z.name);
+  };
 
   return (
     <div>
       <h1 className="page-title">Geofences</h1>
       <p className="page-lead">
-        Read-only from device backup. Create/edit zones on the phone (Hub → Geofence). Map shows all
-        zone areas; click a zone to highlight it.
+        Read-only from device backup. Create/edit zones on the phone (Hub → Geofence). Click a zone
+        to focus the map and filter enter/exit events.
       </p>
       <div className="grid-2">
         <div className="panel">
           <h2>Zones ({mapFences.length})</h2>
           {mapFences.length === 0 ? (
             <p className="muted">
-              No geofences in this backup — create zones on the phone, sync Drive, then Refresh.
+              No geofences in this backup — create zones on the phone, enable automatic Drive sync,
+              then Refresh.
             </p>
           ) : (
             <ul className="zone-list">
@@ -152,7 +187,7 @@ function GeofencesBody() {
                     <button
                       type="button"
                       className={`zone-card ${active ? "zone-card-active" : ""}`}
-                      onClick={() => setSelectedId(z.id)}
+                      onClick={() => selectZone(z.id)}
                     >
                       <div className="zone-card-head">
                         <strong>{z.name}</strong>
@@ -185,13 +220,28 @@ function GeofencesBody() {
           )}
         </div>
         <div className="panel">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: "0.75rem",
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
             <h2 style={{ margin: 0 }}>
               Map · {shownFences.length} zone{shownFences.length === 1 ? "" : "s"}
               {selected ? ` · ${selected.name}` : ""}
             </h2>
             {selectedId ? (
-              <button type="button" className="btn btn-sm" onClick={() => setSelectedId(null)}>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={() => {
+                  setSelectedId(null);
+                  setZoneFilter("all");
+                }}
+              >
                 Show all
               </button>
             ) : null}
@@ -199,23 +249,35 @@ function GeofencesBody() {
           {shownFences.length ? (
             <>
               <InteractiveMap
+                key={`gf-map-${selectedId || "all"}-${shownFences.length}`}
                 geofences={shownFences}
-                markers={shownFences.map((g) => ({
-                  lat: g.lat,
-                  lng: g.lng,
-                  id: g.id,
-                  color: g.highlight ? "#f59e0b" : "#0d9488",
-                }))}
+                markers={
+                  selected
+                    ? [
+                        {
+                          lat: selected.lat,
+                          lng: selected.lng,
+                          id: selected.id,
+                          color: "#f59e0b",
+                        },
+                      ]
+                    : shownFences.map((g) => ({
+                        lat: g.lat,
+                        lng: g.lng,
+                        id: g.id,
+                        color: "#0d9488",
+                      }))
+                }
                 center={selected ? { lat: selected.lat, lng: selected.lng } : undefined}
                 zoom={selected ? 15 : undefined}
                 height={360}
                 onMarkerClick={(id) => {
-                  if (id) setSelectedId(id);
+                  if (id) selectZone(id);
                 }}
               />
               <p className="muted" style={{ marginTop: "0.65rem", fontSize: "0.85rem" }}>
                 {selected
-                  ? `Highlighted: ${selected.name} · ${selected.radiusMeters}m radius. Teal = other zones.`
+                  ? `Focused: ${selected.name} · ${selected.radiusMeters}m radius (amber). Other zones stay teal.`
                   : "Teal circles = coverage for every zone in this backup."}
               </p>
             </>
@@ -234,7 +296,16 @@ function GeofencesBody() {
               id="geo-zone-filter"
               className="input"
               value={zoneFilter}
-              onChange={(e) => setZoneFilter(e.target.value)}
+              onChange={(e) => {
+                const name = e.target.value;
+                setZoneFilter(name);
+                if (name === "all") {
+                  setSelectedId(null);
+                } else {
+                  const hit = mapFences.find((z) => z.name === name);
+                  setSelectedId(hit?.id || null);
+                }
+              }}
             >
               <option value="all">All zones</option>
               {zoneOptions.map((name) => (
@@ -262,6 +333,7 @@ function GeofencesBody() {
               onClick={() => {
                 setZoneFilter("all");
                 setDateFilter("");
+                setSelectedId(null);
               }}
             >
               Clear filters
@@ -285,12 +357,19 @@ function GeofencesBody() {
                   <div className="timeline-row-body geo-timeline-body">
                     <div className="geo-timeline-head">
                       <div className="geo-timeline-title">
-                        <span className={`badge badge-sm ${e.kind === "Exit" ? "badge-alert" : "badge-safe"}`}>
-                          {e.kind === "Enter" || e.kind === "Exit" ? e.kind : formatEventType(e.type)}
+                        <span
+                          className={`badge badge-sm ${e.kind === "Exit" ? "badge-alert" : "badge-safe"}`}
+                        >
+                          {e.kind === "Enter" || e.kind === "Exit"
+                            ? e.kind
+                            : formatEventType(e.type)}
                         </span>
                         <strong className="geo-zone-name">{e.zone}</strong>
                       </div>
-                      <time className="mono muted geo-timeline-when" dateTime={e.timeMs ? new Date(e.timeMs).toISOString() : undefined}>
+                      <time
+                        className="mono muted geo-timeline-when"
+                        dateTime={e.timeMs ? new Date(e.timeMs).toISOString() : undefined}
+                      >
                         {e.timeMs ? new Date(e.timeMs).toLocaleString() : "—"}
                       </time>
                     </div>

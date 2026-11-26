@@ -64,9 +64,26 @@ export function EventDetailDrawer({
     Boolean((selfie as Record<string, unknown>).blobDeferred);
 
   const meta = (row.metadata || {}) as Record<string, unknown>;
+  const loc = (row.location || {}) as Record<string, unknown>;
   const battery = row.battery ?? meta.battery ?? meta.batteryPct;
-  const accuracy =
-    row.accuracy ?? meta.accuracy ?? (row.location as Record<string, unknown> | undefined)?.accuracy;
+  const accuracyRaw =
+    row.accuracy ??
+    meta.accuracy ??
+    meta.accuracyMeters ??
+    loc.accuracy ??
+    loc.accuracyMeters ??
+    loc.accuracyM;
+  const accuracyM =
+    typeof accuracyRaw === "number"
+      ? accuracyRaw
+      : typeof accuracyRaw === "string"
+        ? Number(accuracyRaw)
+        : NaN;
+  const accuracyLabel = Number.isFinite(accuracyM)
+    ? `±${Math.round(accuracyM)} m`
+    : accuracyRaw != null && String(accuracyRaw) !== ""
+      ? String(accuracyRaw)
+      : null;
 
   const panel = (
     <div
@@ -138,16 +155,33 @@ export function EventDetailDrawer({
               <dd>{String(battery)}</dd>
             </>
           ) : null}
-          {accuracy != null && String(accuracy) !== "" ? (
+          {accuracyLabel ? (
             <>
               <dt>Accuracy</dt>
-              <dd>{String(accuracy)}</dd>
+              <dd>{accuracyLabel}</dd>
             </>
           ) : null}
         </dl>
         {!hideMap && ll ? (
           <div className="drawer-map-wrap">
-            <InteractiveMap center={ll} markers={[{ ...ll, id: "ev" }]} height={200} />
+            <InteractiveMap
+              center={ll}
+              markers={[{ ...ll, id: "ev" }]}
+              geofences={
+                Number.isFinite(accuracyM) && accuracyM > 0
+                  ? [
+                      {
+                        id: "acc",
+                        lat: ll.lat,
+                        lng: ll.lng,
+                        radiusMeters: Math.min(Math.max(accuracyM, 12), 250),
+                        name: "GPS accuracy",
+                      },
+                    ]
+                  : []
+              }
+              height={200}
+            />
           </div>
         ) : null}
         <div className="drawer-nav">

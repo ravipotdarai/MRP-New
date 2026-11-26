@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
 import { InteractiveMap } from "@/components/InteractiveMap";
@@ -28,9 +28,13 @@ function eventLabel(o: Record<string, unknown>): string {
 }
 
 function MediaBody() {
-  const { vault } = useVaultSession();
+  const { vault, mediaLoading, loadMediaSelfies, unlockStage } = useVaultSession();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [fullIdx, setFullIdx] = useState<number | null>(null);
+
+  useEffect(() => {
+    void loadMediaSelfies({ limit: 80 });
+  }, [loadMediaSelfies]);
 
   const items = useMemo(() => {
     return (vault?.selfies || [])
@@ -50,6 +54,27 @@ function MediaBody() {
         }
         const fence = linked ? rowGeofence(linked) : null;
         const address = linked ? rowAddress(linked) : String(o.address || "");
+        const linkedLoc = linked
+          ? ((linked.location || {}) as Record<string, unknown>)
+          : {};
+        const linkedMeta = linked
+          ? ((linked.metadata || {}) as Record<string, unknown>)
+          : {};
+        const accuracyRaw =
+          o.accuracy ??
+          o.accuracyMeters ??
+          o.accuracyM ??
+          linked?.accuracy ??
+          linkedMeta.accuracy ??
+          linkedMeta.accuracyMeters ??
+          linkedLoc.accuracy ??
+          linkedLoc.accuracyMeters;
+        const accuracyM =
+          typeof accuracyRaw === "number"
+            ? accuracyRaw
+            : typeof accuracyRaw === "string"
+              ? Number(accuracyRaw)
+              : NaN;
         return {
           s,
           i,
@@ -61,6 +86,7 @@ function MediaBody() {
           lng,
           address,
           fence,
+          accuracyM: Number.isFinite(accuracyM) ? accuracyM : null,
           sev: severityOf(type),
         };
       })
@@ -75,6 +101,7 @@ function MediaBody() {
       lng: number | null;
       address: string;
       fence: ReturnType<typeof rowGeofence> | null;
+      accuracyM: number | null;
       sev: ReturnType<typeof severityOf>;
     }>;
   }, [vault]);
@@ -87,13 +114,26 @@ function MediaBody() {
         <div>
           <h1 className="page-title">Selfie evidence</h1>
           <p className="page-lead">
-            From encrypted Drive backup
-            {vault?.selfiesOmitted
-              ? " · selfies omitted — Premium+ plan and Premium+ selfies in Drive must be on, then sync from the phone"
+            Photos load on this page only (not during unlock)
+            {vault?.selfiesOmitted && !items.length
+              ? " · enable Premium+ selfies on the phone, sync Drive, then open Media"
               : ""}
-            . Unlock and Refresh after the phone finishes Drive sync to load new captures.
+            .
           </p>
+          {mediaLoading || unlockStage ? (
+            <p className="muted" style={{ marginTop: "0.35rem" }}>
+              {unlockStage || "Loading photos…"}
+            </p>
+          ) : null}
         </div>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={mediaLoading}
+          onClick={() => void loadMediaSelfies({ limit: 200, force: true })}
+        >
+          {mediaLoading ? "Loading…" : "Load more photos"}
+        </button>
       </div>
 
       <div className="media-toolbar">
@@ -239,12 +279,31 @@ function MediaBody() {
                         : "Outside fence")
                   : "—"}
               </dd>
+              {full.accuracyM != null ? (
+                <>
+                  <dt>Accuracy</dt>
+                  <dd>±{Math.round(full.accuracyM)} m</dd>
+                </>
+              ) : null}
             </dl>
 
             {full.lat != null && full.lng != null ? (
               <InteractiveMap
                 center={{ lat: full.lat, lng: full.lng }}
                 markers={[{ lat: full.lat, lng: full.lng, id: "selfie" }]}
+                geofences={
+                  full.accuracyM != null && full.accuracyM > 0
+                    ? [
+                        {
+                          id: "acc",
+                          lat: full.lat,
+                          lng: full.lng,
+                          radiusMeters: Math.min(Math.max(full.accuracyM, 12), 250),
+                          name: "GPS accuracy",
+                        },
+                      ]
+                    : []
+                }
                 height={200}
               />
             ) : null}
@@ -283,7 +342,6 @@ export default function MediaPage() {
   return (
     <VaultUnlockGate
       title="Unlock device data for media"
-      hideChildrenWhileHydrating
     >
       <MediaBody />
     </VaultUnlockGate>

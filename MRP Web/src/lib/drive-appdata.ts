@@ -5,6 +5,8 @@
 
 export const DRIVE_APPDATA_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 export const BACKUP_FILE_NAME = "mrp_vault_backup.v1.enc";
+/** Replace-only auto-sync pack: appUsage / geofences / deviceHealth. */
+export const EXTRAS_FILE_NAME = "mrp_extras.enc";
 
 const TOKEN_KEY = "mrp_drive_access_token_v1";
 

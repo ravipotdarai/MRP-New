@@ -244,50 +244,52 @@ export function InteractiveMap({
       }
 
       const fenceFc = fencesToFeatureCollection(geofences);
-      if (map.getSource("geofence-circles")) {
-        (map.getSource("geofence-circles") as GeoJSONSource).setData(fenceFc);
-      } else if (fenceFc.features.length) {
-        map.addSource("geofence-circles", { type: "geojson", data: fenceFc });
-        map.addLayer({
-          id: "geofence-fill",
-          type: "fill",
-          source: "geofence-circles",
-          paint: {
-            "fill-color": [
-              "case",
-              ["==", ["get", "highlight"], 1],
-              GF_FILL_HI,
-              GF_FILL,
-            ],
-            "fill-opacity": [
-              "case",
-              ["==", ["get", "highlight"], 1],
-              0.42,
-              0.28,
-            ],
-          },
-        });
-        map.addLayer({
-          id: "geofence-outline",
-          type: "line",
-          source: "geofence-circles",
-          paint: {
-            "line-color": [
-              "case",
-              ["==", ["get", "highlight"], 1],
-              GF_LINE_HI,
-              GF_LINE,
-            ],
-            "line-width": [
-              "case",
-              ["==", ["get", "highlight"], 1],
-              4.5,
-              3,
-            ],
-            "line-opacity": 1,
-          },
-        });
-      }
+      const ensureFenceLayers = () => {
+        if (!map.getSource("geofence-circles")) return;
+        if (!map.getLayer("geofence-fill")) {
+          map.addLayer({
+            id: "geofence-fill",
+            type: "fill",
+            source: "geofence-circles",
+            paint: {
+              "fill-color": [
+                "case",
+                ["==", ["get", "highlight"], 1],
+                GF_FILL_HI,
+                GF_FILL,
+              ],
+              "fill-opacity": [
+                "case",
+                ["==", ["get", "highlight"], 1],
+                0.45,
+                0.32,
+              ],
+            },
+          });
+        }
+        if (!map.getLayer("geofence-outline")) {
+          map.addLayer({
+            id: "geofence-outline",
+            type: "line",
+            source: "geofence-circles",
+            paint: {
+              "line-color": [
+                "case",
+                ["==", ["get", "highlight"], 1],
+                GF_LINE_HI,
+                GF_LINE,
+              ],
+              "line-width": [
+                "case",
+                ["==", ["get", "highlight"], 1],
+                4.5,
+                3,
+              ],
+              "line-opacity": 1,
+            },
+          });
+        }
+      };
 
       if (!fenceFc.features.length) {
         try {
@@ -298,31 +300,51 @@ export function InteractiveMap({
           /* ignore */
         }
         fittedFenceRef.current = "";
-      } else if (coords.length < 2) {
-        // Fit camera to all circles when not following a travel path / playhead.
-        // Include highlight flag so re-selection still refits when useful.
-        const fenceSig = fenceFc.features
-          .map((f) => {
-            const ring = f.geometry.coordinates[0] || [];
-            return `${f.properties.id}:${f.properties.highlight}:${ring[0]?.join(",")}:${ring.length}`;
-          })
-          .join("|");
-        if (fenceSig !== fittedFenceRef.current) {
-          const highlighted = fenceFc.features.filter((f) => f.properties.highlight === 1);
-          const fitFeatures = highlighted.length ? highlighted : fenceFc.features;
-          const bounds = new maplibregl.LngLatBounds();
-          for (const f of fitFeatures) {
-            const ring = f.geometry.coordinates[0] || [];
-            for (const c of ring) bounds.extend(c as [number, number]);
+      } else {
+        try {
+          if (map.getSource("geofence-circles")) {
+            (map.getSource("geofence-circles") as GeoJSONSource).setData(fenceFc);
+          } else {
+            map.addSource("geofence-circles", { type: "geojson", data: fenceFc });
           }
-          if (!bounds.isEmpty()) {
-            // Small radii need a high maxZoom or the circle looks like a pin.
-            map.fitBounds(bounds, {
-              padding: 56,
-              maxZoom: highlighted.length ? 17 : 15,
-              duration: 650,
-            });
-            fittedFenceRef.current = fenceSig;
+          ensureFenceLayers();
+        } catch {
+          /* style not ready — retries below */
+        }
+
+        if (coords.length < 2) {
+          // Fit camera to all circles when not following a travel path / playhead.
+          const fenceSig = fenceFc.features
+            .map((f) => {
+              const ring = f.geometry.coordinates[0] || [];
+              return `${f.properties.id}:${f.properties.highlight}:${ring[0]?.join(",")}:${ring.length}`;
+            })
+            .join("|");
+          if (fenceSig !== fittedFenceRef.current) {
+            const highlighted = fenceFc.features.filter((f) => f.properties.highlight === 1);
+            const fitFeatures = highlighted.length ? highlighted : fenceFc.features;
+            const bounds = new maplibregl.LngLatBounds();
+            for (const f of fitFeatures) {
+              const ring = f.geometry.coordinates[0] || [];
+              for (const c of ring) bounds.extend(c as [number, number]);
+            }
+            // Only frame the zones we're fitting (selected highlight, or all).
+            const fitIds = new Set(fitFeatures.map((f) => f.properties.id));
+            for (const g of geofences) {
+              if (!Number.isFinite(g.lat) || !Number.isFinite(g.lng)) continue;
+              if (highlighted.length && g.id && !fitIds.has(g.id) && !g.highlight) continue;
+              if (!highlighted.length || g.highlight || (g.id && fitIds.has(g.id))) {
+                bounds.extend([g.lng, g.lat]);
+              }
+            }
+            if (!bounds.isEmpty()) {
+              map.fitBounds(bounds, {
+                padding: 72,
+                maxZoom: highlighted.length ? 16 : 14,
+                duration: 650,
+              });
+              fittedFenceRef.current = fenceSig;
+            }
           }
         }
       }
@@ -339,15 +361,19 @@ export function InteractiveMap({
     } else {
       map.once("load", run);
     }
+    map.once("idle", run);
     // Retry — inline styles can report loaded before layers accept addLayer.
     const t1 = window.setTimeout(run, 80);
     const t2 = window.setTimeout(run, 320);
+    const t3 = window.setTimeout(run, 900);
 
     return () => {
       cancelled = true;
       window.clearTimeout(t1);
       window.clearTimeout(t2);
+      window.clearTimeout(t3);
       map.off("load", run);
+      map.off("idle", run);
     };
   }, [polyline, geofences, pathColor, center]);
 

@@ -280,8 +280,8 @@ function OsmJourneyMap({
             <TrailPolylines legs={completedLegs} style={TRAIL_STYLE.stroke} />
           </>
         )}
-        {/* Roads mode: never draw GPS air-lines as a fake route. Dots only until OSRM returns. */}
-        {pathMode === "roads" && !showRoads &&
+        {/* Roads mode: dots while snapping; gap-split GPS polyline if OSRM unavailable. */}
+        {pathMode === "roads" && !showRoads && routing &&
           points.map((p, i) => (
             <CircleMarker
               key={`gps-dot-${i}`}
@@ -295,6 +295,9 @@ function OsmJourneyMap({
               }}
             />
           ))}
+        {pathMode === "roads" && !showRoads && !routing && gpsLegs.length > 0 && (
+          <TrailPolylines legs={gpsLegs} style={TRAIL_STYLE.stroke} />
+        )}
 
         {showRoads && !pose && (
           <TrailPolylines

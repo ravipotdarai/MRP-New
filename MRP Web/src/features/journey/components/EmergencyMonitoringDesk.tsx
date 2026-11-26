@@ -624,6 +624,20 @@ export function EmergencyMonitoringDesk() {
             <li>Speed: {pose ? `${(pose.speed * 3.6).toFixed(1)} km/h` : "—"}</li>
             <li>Heading: {pose ? `${Math.round(pose.heading)}°` : "—"}</li>
             <li>Accuracy: {pose ? `${Math.round(pose.accuracy)} m` : "—"}</li>
+            <li>
+              Roads:{" "}
+              {routingRoads
+                ? "Snapping…"
+                : trail?.source === "osrm"
+                  ? "OSRM"
+                  : "GPS fallback"}
+            </li>
+            {(trail?.gapCount ?? 0) > 0 || routeError ? (
+              <li>
+                Gaps: {trail?.gapCount ?? 0}
+                {routeError ? ` · ${routeError}` : " skipped"}
+              </li>
+            ) : null}
             <li>Motion: {pose?.motion ?? "—"}</li>
             <li>Pos: {pose ? `${pose.lat.toFixed(5)}, ${pose.lng.toFixed(5)}` : "—"}</li>
             <li>Geofence: {activeFence?.name || activeFence?.id || "Outside zones"}</li>

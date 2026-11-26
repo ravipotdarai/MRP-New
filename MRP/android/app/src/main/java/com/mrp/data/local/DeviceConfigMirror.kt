@@ -19,7 +19,8 @@ object DeviceConfigMirror {
                     val remoteAt = (snap.child("updatedAtMs").getValue(Long::class.java) ?: 0L)
                     val remoteSource = snap.child("source").getValue(String::class.java)?.lowercase().orEmpty()
                     val ageMs = System.currentTimeMillis() - remoteAt
-                    if (remoteAt > 0 && ageMs < 120_000L && (remoteSource == "web" || remoteSource == "admin")) {
+                    // Protect PathSync Web / admin emergency start-stop from stale device push.
+                    if (remoteAt > 0 && ageMs < 900_000L && (remoteSource == "web" || remoteSource == "admin")) {
                         return@addOnSuccessListener
                     }
                     ref.updateChildren(DeviceTrackingPrefs.toFirebaseConfigMap(context))

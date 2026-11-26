@@ -16,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { requestDriveAppDataToken } from "@/lib/drive-appdata";
-import { fetchAndMergeVaultPayload } from "@/lib/vault-chunks";
+import { fetchAndMergeVaultPayload, fetchSelfiePacks } from "@/lib/vault-chunks";
 import {
   clearVaultKeyCache,
   decryptVaultUtf8,
@@ -36,8 +36,12 @@ type VaultSessionValue = {
   error: string | null;
   info: string | null;
   unlocked: boolean;
+  /** True while Media is pulling selfie packs on demand. */
+  mediaLoading: boolean;
   unlock: (pin: string) => Promise<boolean>;
   refresh: (quiet?: boolean) => Promise<void>;
+  /** Load photo packs into the session (Media page). */
+  loadMediaSelfies: (opts?: { limit?: number; force?: boolean }) => Promise<void>;
   lock: () => void;
   clearError: () => void;
   setInfo: (msg: string | null) => void;
@@ -70,10 +74,12 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
   const [meta, setMeta] = useState<VaultMeta | null>(null);
   const [busy, setBusy] = useState(false);
   const [hydrating, setHydrating] = useState(false);
+  const [mediaLoading, setMediaLoading] = useState(false);
   const [unlockStage, setUnlockStage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const pinRef = useRef<string | null>(null);
+  const mediaLoadedRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrateCapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAbort = useRef<AbortController | null>(null);
@@ -109,6 +115,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     loadAbort.current?.abort();
     loadAbort.current = null;
     pinRef.current = null;
+    mediaLoadedRef.current = false;
     clearHydrateCap();
     clearVaultKeyCache();
     setVault(null);
@@ -117,6 +124,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     setError(null);
     setUnlockStage(null);
     setHydrating(false);
+    setMediaLoading(false);
     setBusy(false);
   }, [clearHydrateCap]);
 
@@ -133,7 +141,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     (
       parsed: VaultPayload,
       file: { name?: string; modifiedTime?: string; sizeBytes?: number; size?: string },
-      opts?: { partial?: boolean },
+      opts?: { partial?: boolean; keepSelfies?: boolean },
     ) => {
       const sizeBytes =
         file.sizeBytes ??
@@ -146,8 +154,8 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
 
       const selfieCount = parsed.selfies?.length ?? 0;
 
-      // Partial paint: never surface selfies (Media stays empty until hydrate finishes).
-      if (opts?.partial) {
+      // Early partial (pre-selfies): hide photos. Ready/final: keep them.
+      if (opts?.partial && !opts.keepSelfies) {
         setVault({
           ...parsed,
           selfies: [],
@@ -158,8 +166,9 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       }
 
       const sizeLabel = sizeBytes && sizeBytes > 0 ? ` · ${formatMb(sizeBytes)}` : "";
-      const selfieLabel = !opts?.partial && selfieCount ? ` · ${selfieCount} selfie(s)` : "";
-      if (opts?.partial) {
+      const selfieLabel =
+        (!opts?.partial || opts.keepSelfies) && selfieCount ? ` · ${selfieCount} selfie(s)` : "";
+      if (opts?.partial && !opts.keepSelfies) {
         setInfo(null);
       } else {
         setInfo(
@@ -199,6 +208,7 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
 
         setUnlockStage("Loading last hour…");
         await yieldToUi();
+        let readyFired = false;
         const merged = await fetchAndMergeVaultPayload(token, pin, {
           signal: ac.signal,
           onStage: (stage) => {
@@ -219,9 +229,41 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
             unlockedEarly = true;
             setBusy(false);
             setHydrating(true);
-            setUnlockStage(partial.sources.vault ? "Loading selfie packs & history…" : "Loading full history…");
+            setUnlockStage("Loading zones & usage…");
             armHydrateCap();
             bumpIdle();
+          },
+          onReady: (ready) => {
+            if (ac.signal.aborted || gen !== loadGen.current) return;
+            readyFired = true;
+            pinRef.current = pin;
+            applyParsed(
+              ready.vault,
+              {
+                name: ready.meta.name,
+                modifiedTime: ready.meta.modifiedTime,
+                sizeBytes: ready.meta.sizeBytes,
+              },
+              { partial: Boolean(ready.partial), keepSelfies: true },
+            );
+            unlockedEarly = true;
+            setBusy(false);
+            // Stop blocking the UI — capped history may still update quietly.
+            finishHydrating(false);
+            setUnlockStage(null);
+            bumpIdle();
+          },
+          onHistoryProgress: (prog) => {
+            if (ac.signal.aborted || gen !== loadGen.current) return;
+            applyParsed(
+              prog.vault,
+              {
+                name: prog.meta.name,
+                modifiedTime: prog.meta.modifiedTime,
+                sizeBytes: prog.meta.sizeBytes,
+              },
+              { keepSelfies: true },
+            );
           },
         });
 
@@ -237,7 +279,8 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
           sizeBytes: merged.meta.sizeBytes,
         });
         finishHydrating();
-        bumpIdle();
+        if (!readyFired) bumpIdle();
+        else bumpIdle();
         return true;
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
@@ -311,6 +354,22 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
                 setHydrating(true);
                 armHydrateCap();
               },
+          onReady: (ready) => {
+            if (ac.signal.aborted || gen !== loadGen.current) return;
+            applyParsed(
+              ready.vault,
+              {
+                name: ready.meta.name,
+                modifiedTime: ready.meta.modifiedTime,
+                sizeBytes: ready.meta.sizeBytes,
+              },
+              { partial: Boolean(ready.partial), keepSelfies: true },
+            );
+            setBusy(false);
+            finishHydrating(false);
+            setUnlockStage(ready.partial ? "Updating older history in background…" : null);
+            if (ready.partial) armHydrateCap();
+          },
         });
         if (ac.signal.aborted || gen !== loadGen.current) {
           finishHydrating();
@@ -375,6 +434,53 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     return decryptVaultUtf8(blob, pin);
   }, []);
 
+  const loadMediaSelfies = useCallback(async (opts?: { limit?: number; force?: boolean }) => {
+    const pin = pinRef.current;
+    if (!pin) return;
+    if (mediaLoadedRef.current && !opts?.force) return;
+    setMediaLoading(true);
+    try {
+      const token = await requestDriveAppDataToken();
+      const limit = opts?.limit ?? 60;
+      const { selfies, loaded, totalListed } = await fetchSelfiePacks({
+        accessToken: token,
+        pin,
+        limit,
+        onStage: (msg) => setUnlockStage(msg),
+      });
+      if (!pinRef.current) return;
+      setVault((prev) => {
+        if (!prev) return prev;
+        const map = new Map<string, unknown>();
+        for (const s of [...(prev.selfies || []), ...selfies]) {
+          if (!s || typeof s !== "object") continue;
+          const o = s as Record<string, unknown>;
+          const id = String(o.eventId || o.event_id || o.fileName || Math.random());
+          map.set(id, s);
+        }
+        return {
+          ...prev,
+          selfies: Array.from(map.values()),
+          selfiesOmitted: false,
+        };
+      });
+      mediaLoadedRef.current = true;
+      setInfo(
+        loaded
+          ? `Loaded ${loaded} photo(s)${totalListed > loaded ? ` · ${totalListed} on Drive — Load more for older` : ""}`
+          : totalListed
+            ? "No photos decrypted — check PIN / packs"
+            : "No photo packs in Drive",
+      );
+      setUnlockStage(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load photos");
+      setUnlockStage(null);
+    } finally {
+      setMediaLoading(false);
+    }
+  }, []);
+
   const value = useMemo<VaultSessionValue>(
     () => ({
       vault,
@@ -385,8 +491,10 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       error,
       info,
       unlocked: Boolean(vault),
+      mediaLoading,
       unlock,
       refresh,
+      loadMediaSelfies,
       lock,
       clearError: () => setError(null),
       setInfo,
@@ -401,8 +509,10 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       unlockStage,
       error,
       info,
+      mediaLoading,
       unlock,
       refresh,
+      loadMediaSelfies,
       lock,
       getSessionPin,
       decryptWithSessionPin,

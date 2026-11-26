@@ -116,9 +116,11 @@ export type VaultPayload = {
   pendingSync?: unknown[];
   simHistory?: unknown[];
   trackingConfigSnapshot?: Record<string, unknown>;
-  /** v3 — today's usage sessions + safety permission sections */
+  /** v3 — multi-day usage sessions + safety permission sections */
   appUsage?: {
     dayStartMs?: number;
+    rangeStartMs?: number;
+    daysCovered?: number;
     exportedAtMs?: number;
     sessionCount?: number;
     sessions?: Array<{
@@ -127,6 +129,17 @@ export type VaultPayload = {
       startTime?: number;
       endTime?: number;
       durationSeconds?: number;
+    }>;
+    days?: Array<{
+      dayStartMs?: number;
+      sessionCount?: number;
+      sessions?: Array<{
+        packageName?: string;
+        appName?: string;
+        startTime?: number;
+        endTime?: number;
+        durationSeconds?: number;
+      }>;
     }>;
     safety?: {
       sms?: Array<{ packageName?: string; appName?: string; permissions?: string[] }>;

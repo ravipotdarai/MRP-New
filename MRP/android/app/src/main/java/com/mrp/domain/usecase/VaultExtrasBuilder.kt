@@ -23,12 +23,15 @@ import java.util.Calendar
 object VaultExtrasBuilder {
 
     private const val TAG = "VaultExtras"
-    private const val MAX_DAILY_SESSIONS = 400
+    private const val MAX_DAILY_SESSIONS = 1200
+    private const val APP_USAGE_DAYS = 7
+    private const val DAY_MS = 24L * 60L * 60L * 1000L
 
     fun buildAppUsageDaily(context: Context): JSONObject {
-        val dayStart = startOfDayMs()
+        val todayStart = startOfDayMs()
+        val rangeStart = todayStart - (APP_USAGE_DAYS - 1) * DAY_MS
         val now = System.currentTimeMillis()
-        val sessions = querySessions(context, dayStart, now)
+        val sessions = querySessions(context, rangeStart, now)
             .filter { !isNoiseUsagePackage(context, it.packageName, it.appName) }
             .take(MAX_DAILY_SESSIONS)
         val arr = JSONArray()
@@ -42,11 +45,38 @@ object VaultExtrasBuilder {
                     .put("durationSeconds", s.durationSeconds)
             )
         }
+        // Per-day buckets for PathSync Web 7-day share / reports.
+        val daysArr = JSONArray()
+        for (i in 0 until APP_USAGE_DAYS) {
+            val d0 = rangeStart + i * DAY_MS
+            val d1 = if (i == APP_USAGE_DAYS - 1) now else d0 + DAY_MS
+            val daySessions = sessions.filter { it.startMs in d0 until d1 || (it.endMs > d0 && it.startMs < d1) }
+            val dayJson = JSONArray()
+            for (s in daySessions) {
+                dayJson.put(
+                    JSONObject()
+                        .put("packageName", s.packageName)
+                        .put("appName", s.appName)
+                        .put("startTime", s.startMs)
+                        .put("endTime", s.endMs)
+                        .put("durationSeconds", s.durationSeconds)
+                )
+            }
+            daysArr.put(
+                JSONObject()
+                    .put("dayStartMs", d0)
+                    .put("sessionCount", daySessions.size)
+                    .put("sessions", dayJson)
+            )
+        }
         return JSONObject()
-            .put("dayStartMs", dayStart)
+            .put("dayStartMs", todayStart)
+            .put("rangeStartMs", rangeStart)
+            .put("daysCovered", APP_USAGE_DAYS)
             .put("exportedAtMs", now)
             .put("sessionCount", sessions.size)
             .put("sessions", arr)
+            .put("days", daysArr)
             .put("safety", buildSafetySections(context))
     }
 

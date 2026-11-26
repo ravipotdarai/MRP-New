@@ -72,7 +72,7 @@ function TravelBody() {
     loadDay,
   } = trailState;
 
-  const { trail, routing } = useNavigableTrail(points);
+  const { trail, routing, error: routeError } = useNavigableTrail(points);
   const [playIdx, setPlayIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [follow, setFollow] = useState(true);
@@ -215,8 +215,17 @@ function TravelBody() {
                 ? "Snapping to roads…"
                 : trail?.source === "osrm"
                   ? "Travelled route (OSRM)"
-                  : "GPS only (snap failed)"}
+                  : "GPS path (snap failed)"}
             </li>
+            {(trail?.gapCount ?? 0) > 0 || routeError ? (
+              <li>
+                Gaps:{" "}
+                <strong>
+                  {trail?.gapCount ?? 0}
+                  {routeError ? ` · ${routeError}` : " skipped (no air-line)"}
+                </strong>
+              </li>
+            ) : null}
           </ul>
         </aside>
 

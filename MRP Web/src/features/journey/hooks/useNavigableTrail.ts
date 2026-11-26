@@ -4,8 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GpsPoint } from "../types";
 import {
   buildNavigableTrail,
+  countTrailGaps,
+  gpsFallbackLegs,
   type NavigableTrail,
 } from "../lib/routing/navigable-trail";
+
+const ROUTE_TIMEOUT_MS = 22_000;
 
 function fingerprint(points: GpsPoint[]): string {
   if (!points.length) return "";
@@ -14,8 +18,22 @@ function fingerprint(points: GpsPoint[]): string {
   return `${points.length}:${a.t}:${a.lat.toFixed(5)}:${b.t}:${b.lng.toFixed(5)}`;
 }
 
+function rawFallback(rawPoints: GpsPoint[], routed = 0, failed = 0): NavigableTrail {
+  const legs = gpsFallbackLegs(rawPoints);
+  const path = legs.length ? legs.flatMap((l, i) => (i === 0 ? l : l.slice(1))) : [];
+  return {
+    points: rawPoints,
+    path,
+    pathLegs: legs,
+    source: "raw",
+    routedSegments: routed,
+    failedSegments: failed,
+    gapCount: countTrailGaps(rawPoints),
+  };
+}
+
 /**
- * Snap GPS trail to roads (OSRM) progressively; falls back to raw if routing fails.
+ * Snap GPS trail to roads (OSRM) progressively; falls back to gap-split GPS if routing fails/times out.
  * Pass the *source* GPS once — do not feed road output back into this hook.
  */
 export function useNavigableTrail(sourceGps: GpsPoint[]): {
@@ -36,19 +54,7 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
     const rawPoints = gpsRef.current;
 
     if (rawPoints.length < 2) {
-      const path = rawPoints.map((p) => [p.lat, p.lng] as [number, number]);
-      setTrail(
-        rawPoints.length
-          ? {
-              points: rawPoints,
-              path,
-              pathLegs: path.length ? [path] : [],
-              source: "raw",
-              routedSegments: 0,
-              failedSegments: 0,
-            }
-          : null,
-      );
+      setTrail(rawPoints.length ? rawFallback(rawPoints) : null);
       setRouting(false);
       setError(null);
       return;
@@ -58,7 +64,7 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
     setRouting(true);
     setError(null);
 
-    // Never seed pathLegs with raw GPS — that made "Road route" draw air lines.
+    // Dots-only until OSRM returns — never seed road pathLegs with raw GPS air-lines.
     setTrail({
       points: rawPoints,
       path: [],
@@ -66,7 +72,16 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
       source: "raw",
       routedSegments: 0,
       failedSegments: 0,
+      gapCount: countTrailGaps(rawPoints),
     });
+
+    const timeout = window.setTimeout(() => {
+      if (id !== gen.current || ac.signal.aborted) return;
+      ac.abort();
+      setTrail(rawFallback(rawPoints));
+      setError("Road snap timed out — showing GPS path (gaps skipped)");
+      setRouting(false);
+    }, ROUTE_TIMEOUT_MS);
 
     void buildNavigableTrail(rawPoints, {
       signal: ac.signal,
@@ -80,35 +95,36 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
             source: "osrm",
             routedSegments: p.routedSegments,
             failedSegments: p.failedSegments,
+            gapCount: countTrailGaps(rawPoints),
           });
         }
       },
     })
       .then((result) => {
         if (id !== gen.current) return;
-        // Only expose road geometry when OSRM actually snapped.
+        window.clearTimeout(timeout);
         if (result.source === "osrm" && result.pathLegs.some((l) => l.length >= 2)) {
-          setTrail(result);
+          setTrail({ ...result, gapCount: result.gapCount ?? countTrailGaps(rawPoints) });
+          const gaps = result.gapCount || result.failedSegments;
+          setError(
+            gaps > 0 ? `${gaps} gap${gaps === 1 ? "" : "s"} skipped (no air-line)` : null,
+          );
         } else {
-          setTrail({
-            points: rawPoints,
-            path: [],
-            pathLegs: [],
-            source: "raw",
-            routedSegments: result.routedSegments,
-            failedSegments: result.failedSegments,
-          });
-          setError("Road snap unavailable — showing GPS points only");
+          setTrail(rawFallback(rawPoints, result.routedSegments, result.failedSegments));
+          setError("Road snap unavailable — showing GPS path (gaps skipped)");
         }
         setRouting(false);
       })
       .catch((e) => {
         if (id !== gen.current || ac.signal.aborted) return;
-        setError(e instanceof Error ? e.message : "Routing failed");
+        window.clearTimeout(timeout);
+        setTrail(rawFallback(rawPoints));
+        setError(e instanceof Error ? e.message : "Routing failed — showing GPS path");
         setRouting(false);
       });
 
     return () => {
+      window.clearTimeout(timeout);
       ac.abort();
     };
   }, [fp]);

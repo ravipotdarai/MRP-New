@@ -9,7 +9,7 @@ export function VaultUnlockGate({
   children,
   title = "Unlock device data",
   showSessionControls = true,
-  /** Hide page body while history/selfie packs are still loading (e.g. Media). */
+  /** @deprecated Selfies unlock before older history — children always show once unlocked. */
   hideChildrenWhileHydrating = false,
 }: {
   children: ReactNode;
@@ -22,25 +22,42 @@ export function VaultUnlockGate({
   const [pin, setPin] = useState("");
 
   if (unlocked) {
-    const loading = hydrating || busy;
+    // Only block the page during the initial PIN open (busy), not background history.
+    const blocking = busy && !hydrating;
+    const softHydrate = hydrating && !busy;
     return (
       <div>
-        {loading ? (
+        {blocking ? (
           <LoadingProgress
-            title={busy ? "Working…" : "Loading full history"}
+            title="Opening device data"
             detail={unlockStage || "Decrypting Drive packs…"}
           />
-        ) : info ? (
+        ) : null}
+        {softHydrate ? (
+          <LoadingProgress
+            compact
+            title="Finishing unlock"
+            detail={unlockStage || "Loading zones & recent activity…"}
+          />
+        ) : null}
+        {!blocking && !softHydrate && unlockStage ? (
+          <p className="muted" style={{ fontSize: "0.82rem", marginBottom: "0.65rem" }}>
+            {unlockStage}
+          </p>
+        ) : null}
+        {!blocking && !softHydrate && info ? (
           <p className="badge badge-safe mb-md unlock-info-badge">{info}</p>
         ) : null}
-        {showSessionControls && !loading ? (
+        {showSessionControls && !blocking ? (
           <div className="unlock-status-row">
             <SessionInlineControls className="unlock-status-controls" />
           </div>
         ) : null}
-        {hideChildrenWhileHydrating && loading ? (
+        {blocking || (hideChildrenWhileHydrating && softHydrate) ? (
           <p className="muted" style={{ marginTop: "0.5rem" }}>
-            Photos and heavy media stay hidden until this finishes.
+            {hideChildrenWhileHydrating
+              ? "Photos load next — older history continues in the background."
+              : null}
           </p>
         ) : (
           children
@@ -93,7 +110,8 @@ export function VaultUnlockGate({
         </button>
       </form>
       <p className="muted unlock-hint">
-        Unlock once per browser tab. Recent data appears first; the rest loads in the background.
+        Unlock once per browser tab. Recent data and photos appear first; older history fills in
+        quietly.
       </p>
     </div>
   );

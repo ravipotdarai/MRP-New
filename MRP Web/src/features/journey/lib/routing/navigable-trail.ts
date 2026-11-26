@@ -34,7 +34,40 @@ export type NavigableTrail = {
   source: "osrm" | "raw";
   routedSegments: number;
   failedSegments: number;
+  /** Teleport / unroutable hops skipped (no air-line drawn). */
+  gapCount: number;
 };
+
+/** Count GPS hops that must not be drawn (continent-scale / teleport). */
+export function countTrailGaps(points: GpsPoint[]): number {
+  if (points.length < 2) return 0;
+  let gaps = 0;
+  for (let i = 1; i < points.length; i++) {
+    if (!shouldRoutePair(points[i - 1], points[i])) gaps++;
+  }
+  return gaps;
+}
+
+/** GPS path split into continuous legs (teleports omitted). */
+export function gpsFallbackLegs(points: GpsPoint[]): [number, number][][] {
+  if (points.length < 2) {
+    return points.length ? [[[points[0].lat, points[0].lng]]] : [];
+  }
+  const legs: [number, number][][] = [];
+  let cur: [number, number][] = [[points[0].lat, points[0].lng]];
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (!shouldRoutePair(a, b)) {
+      if (cur.length >= 2) legs.push(cur);
+      cur = [[b.lat, b.lng]];
+    } else {
+      cur.push([b.lat, b.lng]);
+    }
+  }
+  if (cur.length >= 2) legs.push(cur);
+  return legs;
+}
 
 function haversineM(a: LatLng, b: LatLng): number {
   const R = 6371000;
@@ -294,6 +327,7 @@ export type NavigableProgress = {
   source: "osrm" | "raw";
   routedSegments: number;
   failedSegments: number;
+  gapCount?: number;
 };
 
 function flattenLegs(legs: [number, number][][]): [number, number][] {
@@ -323,10 +357,19 @@ export async function buildNavigableTrail(
   if (raw.length < 2) {
     const path = raw.map((p) => [p.lat, p.lng] as [number, number]);
     const pathLegs = path.length ? [path] : [];
-    return { points: raw, path, pathLegs, source: "raw", routedSegments: 0, failedSegments: 0 };
+    return {
+      points: raw,
+      path,
+      pathLegs,
+      source: "raw",
+      routedSegments: 0,
+      failedSegments: 0,
+      gapCount: 0,
+    };
   }
 
   const thinned = thinForRouting(raw);
+  const gapCount = countTrailGaps(thinned);
   const preferMatch = !isSparseTrail(thinned);
   const merged: GpsPoint[] = [];
   const allLegs: [number, number][][] = [];
@@ -367,14 +410,16 @@ export async function buildNavigableTrail(
   }
 
   if (merged.length < 2 && allLegs.every((l) => l.length < 2)) {
-    const path = raw.map((p) => [p.lat, p.lng] as [number, number]);
+    const legs = gpsFallbackLegs(raw);
+    const path = flattenLegs(legs);
     const fallback: NavigableTrail = {
       points: raw,
       path,
-      pathLegs: path.length >= 2 ? [path] : [],
+      pathLegs: legs,
       source: "raw",
       routedSegments: 0,
       failedSegments: thinned.length,
+      gapCount,
     };
     opts?.onProgress?.({ ...fallback, done: true });
     return fallback;
@@ -394,6 +439,7 @@ export async function buildNavigableTrail(
     source: anyOsrm ? "osrm" : "raw",
     routedSegments,
     failedSegments,
+    gapCount,
   };
   opts?.onProgress?.({ ...result, done: true });
   return result;

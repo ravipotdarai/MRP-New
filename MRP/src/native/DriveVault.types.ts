@@ -6,6 +6,8 @@ export type DriveVaultStatus = {
   recoveryAcknowledged: boolean;
   wifiOnly: boolean;
   pausedQuota: boolean;
+  /** PIN stored for automatic chunk sync (events / selfies / live / extras). */
+  autoSyncEnabled?: boolean;
   lastBackupMs: number;
   lastFileId?: string | null;
   pendingSyncCount: number;
@@ -37,6 +39,7 @@ type DriveVaultNative = {
   getStatus(): Promise<DriveVaultStatus>;
   setWifiOnly(enabled: boolean): Promise<boolean>;
   connectDrive(): Promise<boolean>;
+  enableAutoSync?(pin: string): Promise<{ok: boolean; autoSyncEnabled?: boolean; mode?: string}>;
   backupNow(pin: string): Promise<DriveBackupResult>;
   restoreLatest(pin: string): Promise<DriveRestoreResult>;
   getAllowedDriveScopes(): Promise<string[]>;
@@ -61,6 +64,15 @@ export async function connectDrive(): Promise<boolean> {
     throw new Error('DriveVault native module missing — reinstall the app');
   }
   return native.connectDrive();
+}
+
+export async function enableAutoSync(
+  pin: string,
+): Promise<{ok: boolean; autoSyncEnabled?: boolean; mode?: string}> {
+  if (!native?.enableAutoSync) {
+    throw new Error('DriveVault native module missing — reinstall the app');
+  }
+  return native.enableAutoSync(pin);
 }
 
 export async function backupNow(pin: string): Promise<DriveBackupResult> {

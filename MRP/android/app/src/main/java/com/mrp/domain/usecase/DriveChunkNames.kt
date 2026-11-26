@@ -5,6 +5,8 @@ package com.mrp.domain.usecase
  */
 object DriveChunkNames {
     const val LIVE_FILE = "mrp_live.enc"
+    /** Replace-only snapshot: appUsage / geofences / deviceHealth (not full vault). */
+    const val EXTRAS_FILE = "mrp_extras.enc"
     const val EVT_PREFIX = "mrp_evt_"
     const val SELFIE_PREFIX = "mrp_selfie_"
     const val PACK_VERSION = 1

@@ -71,10 +71,24 @@ export function rowGeofence(row: TimelineRow): GeofenceBadge {
         ? insideRaw.toLowerCase() === "true"
         : null;
   const fenceId = String(
-    gs.fence_id ?? gs.fenceId ?? meta.geofence_id ?? meta.geofenceId ?? row.geofence_id ?? "",
+    gs.fence_id ??
+      gs.fenceId ??
+      meta.geofence_id ??
+      meta.geofenceId ??
+      meta.fence_id ??
+      meta.fenceId ??
+      row.geofence_id ??
+      row.fence_id ??
+      "",
   ).trim() || null;
   const fenceName = String(
-    meta.geofence_name ?? meta.geofenceName ?? row.geofence_name ?? "",
+    meta.geofence_name ??
+      meta.geofenceName ??
+      meta.zoneName ??
+      meta.transition_zone ??
+      meta.badgeZoneName ??
+      row.geofence_name ??
+      "",
   ).trim() || null;
 
   let label = "No zone";

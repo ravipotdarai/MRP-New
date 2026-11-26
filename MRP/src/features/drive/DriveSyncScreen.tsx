@@ -18,6 +18,7 @@ import {PaywallModal} from '../subscription/PaywallModal';
 import {
   backupNow,
   connectDrive,
+  enableAutoSync,
   getDriveStatus,
   restoreLatest,
   setDriveWifiOnly,
@@ -79,6 +80,29 @@ export function DriveSyncScreen({onUpgrade}: Props) {
       Alert.alert('Drive connected', 'MRP can back up encrypted data to your Drive app folder.');
     } catch (e: any) {
       Alert.alert('Could not connect Drive', e?.message || 'Try again');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onEnableAutoSync = async () => {
+    if (!requirePremium()) return;
+    if (!pin || pin.length < 4) {
+      Alert.alert('PIN required', 'Enter your MRP PIN to enable automatic chunk sync.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await enableAutoSync(pin);
+      setPin('');
+      await refresh();
+      Alert.alert(
+        'Automatic sync on',
+        'Events, selfies, live location, geofences, and app usage will upload as encrypted chunks. No full backup required.',
+      );
+    } catch (e: any) {
+      Alert.alert('Could not enable auto sync', e?.message || 'Try again');
+      await refresh();
     } finally {
       setBusy(false);
     }
@@ -227,6 +251,9 @@ export function DriveSyncScreen({onUpgrade}: Props) {
         <Text style={styles.meta}>Local timeline events: {status?.timelineCount ?? 0}</Text>
         <Text style={styles.meta}>Pending SIM sync items: {status?.pendingSyncCount ?? 0}</Text>
         <Text style={styles.meta}>Last backup: {lastBackup}</Text>
+        <Text style={styles.meta}>
+          Automatic chunk sync: {status?.autoSyncEnabled ? 'On' : 'Off — enable below with PIN'}
+        </Text>
         {status?.remoteModifiedTime ? (
           <Text style={styles.meta}>Remote file: {status.remoteModifiedTime}</Text>
         ) : null}
@@ -266,22 +293,21 @@ export function DriveSyncScreen({onUpgrade}: Props) {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Backup / restore</Text>
+        <Text style={styles.cardTitle}>Automatic sync / restore</Text>
         <Text style={styles.body}>
-          PIN encrypts backups (AES-GCM). Automatic sync uploads small event/selfie/live
-          packs on Wi‑Fi or cellular — not a multi‑MB vault each time. Hub “Back up now”
-          is an optional full snapshot. Same Google account + PIN restores on this phone
-          or a new device.
+          Enter your MRP PIN once to enable automatic encrypted chunks (events, selfies, live,
+          geofences, app usage). No full vault backup needed for PathSync Web. “Back up now” is
+          optional for a single full snapshot / export.
         </Text>
         <Text style={styles.body}>
           New device: install MRP → Google Sign-In → set PIN → acknowledge recovery → Connect Drive
-          → Restore latest.
+          → Enable automatic sync (or Restore latest).
         </Text>
         {status?.wifiOnly &&
         status.lastBackupMs > 0 &&
         Date.now() - status.lastBackupMs > 24 * 60 * 60 * 1000 ? (
           <Text style={styles.meta}>
-            Tip: last backup was over 24h ago. On Wi‑Fi, run Back up now (Wi‑Fi-only is enabled).
+            Tip: last sync was over 24h ago. On Wi‑Fi, enable auto sync or run Back up now.
           </Text>
         ) : null}
         <Text style={styles.label}>MRP PIN</Text>
@@ -297,13 +323,21 @@ export function DriveSyncScreen({onUpgrade}: Props) {
         />
         <TouchableOpacity
           style={[styles.primaryBtn, busy && styles.btnDisabled]}
-          onPress={onBackup}
+          onPress={onEnableAutoSync}
           disabled={busy || !status?.driveConnected}>
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.primaryBtnText}>Back up now</Text>
+            <Text style={styles.primaryBtnText}>
+              {status?.autoSyncEnabled ? 'Refresh automatic sync' : 'Enable automatic sync'}
+            </Text>
           )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.secondaryFull}
+          onPress={onBackup}
+          disabled={busy || !status?.driveConnected}>
+          <Text style={styles.secondaryBtnText}>Back up now (optional full snapshot)</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.secondaryFull}

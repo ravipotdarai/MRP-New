@@ -221,8 +221,11 @@ function AppUsageBody() {
     <div>
       <h1 className="page-title rise">App Usage</h1>
       <p className="page-lead rise rise-delay-1">
-        Same layout as the phone — from your encrypted Drive backup (sessions for {dayLabel}).
-        Weekly/Monthly use whatever days were synced.
+        Same layout as the phone — from your encrypted Drive backup (sessions for {dayLabel}
+        {vault?.appUsage?.daysCovered
+          ? ` · ${vault.appUsage.daysCovered}-day range`
+          : ""}
+        ). Sync the phone after updating the app to refresh multi-day usage.
       </p>
       {sessions.length === 0 ? (
         <p className="badge" style={{ marginBottom: "1rem" }}>
@@ -287,8 +290,8 @@ function AppUsageBody() {
               />
             </div>
             <p className="muted" style={{ fontSize: "0.82rem", margin: "0.5rem 0 0.85rem" }}>
-              Foreground share from UsageStats — not mAh or Android Battery %. Vault sync is usually
-              one day, so 7-day may match today until multi-day sync ships.
+              Foreground share from UsageStats — not mAh or Android Battery %. After a phone sync with
+              the latest app, 7-day uses up to a week of sessions from the vault.
             </p>
             {share.apps.length === 0 ? (
               <p className="muted">No app usage in this period.</p>
