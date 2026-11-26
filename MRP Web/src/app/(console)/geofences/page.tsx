@@ -64,7 +64,8 @@ function GeofencesBody() {
     [vault?.geofences],
   );
 
-  const selected = mapFences.find((z) => z.id === selectedId) || mapFences[0] || null;
+  // Only highlight when user picks a zone — never filter the map down to one circle.
+  const selected = selectedId ? mapFences.find((z) => z.id === selectedId) || null : null;
 
   const resolveZoneName = (row: Record<string, unknown>) => {
     const badge = rowGeofence(row);
@@ -119,30 +120,21 @@ function GeofencesBody() {
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [mapFences, enterExit]);
 
-  const shownFences = selected
-    ? [
-        {
-          id: selected.id,
-          lat: selected.lat,
-          lng: selected.lng,
-          radiusMeters: selected.radiusMeters,
-          name: selected.name,
-        },
-      ]
-    : mapFences.map((z) => ({
-        id: z.id,
-        lat: z.lat,
-        lng: z.lng,
-        radiusMeters: z.radiusMeters,
-        name: z.name,
-      }));
+  const shownFences = mapFences.map((z) => ({
+    id: z.id,
+    lat: z.lat,
+    lng: z.lng,
+    radiusMeters: z.radiusMeters,
+    name: z.name,
+    highlight: selected?.id === z.id,
+  }));
 
   return (
     <div>
       <h1 className="page-title">Geofences</h1>
       <p className="page-lead">
-        Read-only from device backup. Create/edit zones on the phone (Hub → Geofence). Click a zone to
-        preview coverage on the map.
+        Read-only from device backup. Create/edit zones on the phone (Hub → Geofence). Map shows all
+        zone areas; click a zone to highlight it.
       </p>
       <div className="grid-2">
         <div className="panel">
@@ -193,28 +185,39 @@ function GeofencesBody() {
           )}
         </div>
         <div className="panel">
-          <h2>Map{selected ? ` · ${selected.name}` : ""}</h2>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
+            <h2 style={{ margin: 0 }}>
+              Map · {shownFences.length} zone{shownFences.length === 1 ? "" : "s"}
+              {selected ? ` · ${selected.name}` : ""}
+            </h2>
+            {selectedId ? (
+              <button type="button" className="btn btn-sm" onClick={() => setSelectedId(null)}>
+                Show all
+              </button>
+            ) : null}
+          </div>
           {shownFences.length ? (
             <>
               <InteractiveMap
                 geofences={shownFences}
-                markers={
-                  selected
-                    ? [{ lat: selected.lat, lng: selected.lng, id: selected.id, color: "#0d9488" }]
-                    : shownFences.map((g) => ({
-                        lat: g.lat,
-                        lng: g.lng,
-                        id: g.id,
-                        color: "#0d9488",
-                      }))
-                }
+                markers={shownFences.map((g) => ({
+                  lat: g.lat,
+                  lng: g.lng,
+                  id: g.id,
+                  color: g.highlight ? "#f59e0b" : "#0d9488",
+                }))}
+                center={selected ? { lat: selected.lat, lng: selected.lng } : undefined}
+                zoom={selected ? 15 : undefined}
                 height={360}
+                onMarkerClick={(id) => {
+                  if (id) setSelectedId(id);
+                }}
               />
-              {selected ? (
-                <p className="muted" style={{ marginTop: "0.65rem", fontSize: "0.85rem" }}>
-                  Teal circle = {selected.radiusMeters}m coverage around {selected.name}.
-                </p>
-              ) : null}
+              <p className="muted" style={{ marginTop: "0.65rem", fontSize: "0.85rem" }}>
+                {selected
+                  ? `Highlighted: ${selected.name} · ${selected.radiusMeters}m radius. Teal = other zones.`
+                  : "Teal circles = coverage for every zone in this backup."}
+              </p>
             </>
           ) : (
             <p className="muted">Nothing to plot.</p>

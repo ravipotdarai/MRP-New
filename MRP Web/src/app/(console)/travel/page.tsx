@@ -114,9 +114,9 @@ function TravelBody() {
   const mapFences: FenceCircle[] = useMemo(() => {
     return (vault?.geofences || [])
       .map((g, i) => {
-        const lat = num(g.latitude);
-        const lng = num(g.longitude);
-        const r = num(g.radiusMeters) ?? 100;
+        const lat = num(g.latitude ?? g.lat);
+        const lng = num(g.longitude ?? g.lng);
+        const r = num(g.radiusMeters ?? g.radius) ?? 100;
         if (lat == null || lng == null) return null;
         return { id: g.id || `gf-${i}`, lat, lng, radiusMeters: r, name: g.name };
       })

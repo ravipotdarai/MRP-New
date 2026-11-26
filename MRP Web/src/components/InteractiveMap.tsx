@@ -20,6 +20,8 @@ type Props = {
     lng: number;
     radiusMeters: number;
     name?: string;
+    /** Emphasize this zone (thicker outline / stronger fill). */
+    highlight?: boolean;
   }>;
   onMarkerClick?: (id: string | undefined, lat: number, lng: number) => void;
   pathColor?: string;
@@ -45,8 +47,10 @@ const MAP_STYLE: StyleSpecification = {
 
 const PATH_COLOR_DEFAULT = "#e85d04";
 const PATH_CASING = "#fff7ed";
-const GF_FILL = "#0f766e";
-const GF_LINE = "#0d9488";
+const GF_FILL = "#0d9488";
+const GF_LINE = "#115e59";
+const GF_FILL_HI = "#f59e0b";
+const GF_LINE_HI = "#b45309";
 
 /** Closed ring approx. for a geodesic circle (meters). */
 function circlePolygon(lng: number, lat: number, radiusM: number, steps = 72): number[][] {
@@ -76,7 +80,7 @@ function fencesToFeatureCollection(
   type: "FeatureCollection";
   features: Array<{
     type: "Feature";
-    properties: { name: string; id: string };
+    properties: { name: string; id: string; highlight: number };
     geometry: { type: "Polygon"; coordinates: number[][][] };
   }>;
 } {
@@ -86,7 +90,11 @@ function fencesToFeatureCollection(
       .filter((g) => Number.isFinite(g.lat) && Number.isFinite(g.lng) && (g.radiusMeters || 0) > 0)
       .map((g) => ({
         type: "Feature" as const,
-        properties: { name: g.name || "", id: g.id || "" },
+        properties: {
+          name: g.name || "",
+          id: g.id || "",
+          highlight: g.highlight ? 1 : 0,
+        },
         geometry: {
           type: "Polygon" as const,
           coordinates: [circlePolygon(g.lng, g.lat, Math.max(15, g.radiusMeters))],
@@ -245,8 +253,18 @@ export function InteractiveMap({
           type: "fill",
           source: "geofence-circles",
           paint: {
-            "fill-color": GF_FILL,
-            "fill-opacity": 0.32,
+            "fill-color": [
+              "case",
+              ["==", ["get", "highlight"], 1],
+              GF_FILL_HI,
+              GF_FILL,
+            ],
+            "fill-opacity": [
+              "case",
+              ["==", ["get", "highlight"], 1],
+              0.42,
+              0.28,
+            ],
           },
         });
         map.addLayer({
@@ -254,8 +272,18 @@ export function InteractiveMap({
           type: "line",
           source: "geofence-circles",
           paint: {
-            "line-color": GF_LINE,
-            "line-width": 3.5,
+            "line-color": [
+              "case",
+              ["==", ["get", "highlight"], 1],
+              GF_LINE_HI,
+              GF_LINE,
+            ],
+            "line-width": [
+              "case",
+              ["==", ["get", "highlight"], 1],
+              4.5,
+              3,
+            ],
             "line-opacity": 1,
           },
         });
@@ -271,22 +299,29 @@ export function InteractiveMap({
         }
         fittedFenceRef.current = "";
       } else if (coords.length < 2) {
-        // Fit camera to circle(s) when not following a travel path / playhead.
+        // Fit camera to all circles when not following a travel path / playhead.
+        // Include highlight flag so re-selection still refits when useful.
         const fenceSig = fenceFc.features
           .map((f) => {
             const ring = f.geometry.coordinates[0] || [];
-            return `${ring[0]?.join(",")}:${ring.length}`;
+            return `${f.properties.id}:${f.properties.highlight}:${ring[0]?.join(",")}:${ring.length}`;
           })
           .join("|");
         if (fenceSig !== fittedFenceRef.current) {
+          const highlighted = fenceFc.features.filter((f) => f.properties.highlight === 1);
+          const fitFeatures = highlighted.length ? highlighted : fenceFc.features;
           const bounds = new maplibregl.LngLatBounds();
-          for (const f of fenceFc.features) {
+          for (const f of fitFeatures) {
             const ring = f.geometry.coordinates[0] || [];
             for (const c of ring) bounds.extend(c as [number, number]);
           }
           if (!bounds.isEmpty()) {
-            // Small radii (e.g. 30m) need a high zoom or the circle looks like a dot.
-            map.fitBounds(bounds, { padding: 64, maxZoom: 18, duration: 650 });
+            // Small radii need a high maxZoom or the circle looks like a pin.
+            map.fitBounds(bounds, {
+              padding: 56,
+              maxZoom: highlighted.length ? 17 : 15,
+              duration: 650,
+            });
             fittedFenceRef.current = fenceSig;
           }
         }
