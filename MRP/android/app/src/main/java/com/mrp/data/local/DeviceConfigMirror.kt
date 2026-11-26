@@ -11,10 +11,26 @@ object DeviceConfigMirror {
     fun push(context: Context) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return
         try {
-            FirebaseDatabase.getInstance(databaseUrl(context))
-                .getReference("device_config")
-                .child(uid)
-                .updateChildren(DeviceTrackingPrefs.toFirebaseConfigMap(context))
+            val db = FirebaseDatabase.getInstance(databaseUrl(context))
+            val ref = db.getReference("device_config").child(uid)
+            // Do not overwrite a newer PathSync Web / admin command with stale device prefs.
+            ref.get().addOnSuccessListener { snap ->
+                try {
+                    val remoteAt = (snap.child("updatedAtMs").getValue(Long::class.java) ?: 0L)
+                    val remoteSource = snap.child("source").getValue(String::class.java)?.lowercase().orEmpty()
+                    val ageMs = System.currentTimeMillis() - remoteAt
+                    if (remoteAt > 0 && ageMs < 120_000L && (remoteSource == "web" || remoteSource == "admin")) {
+                        return@addOnSuccessListener
+                    }
+                    ref.updateChildren(DeviceTrackingPrefs.toFirebaseConfigMap(context))
+                } catch (_: Exception) {
+                }
+            }.addOnFailureListener {
+                try {
+                    ref.updateChildren(DeviceTrackingPrefs.toFirebaseConfigMap(context))
+                } catch (_: Exception) {
+                }
+            }
         } catch (_: Exception) {
         }
     }

@@ -21,9 +21,9 @@ type ThemeCtx = {
 const STORAGE_KEY = "mrp.web.theme";
 
 const THEMES: { id: WebThemeId; label: string }[] = [
-  { id: "field", label: "Field" },
+  { id: "field", label: "Ops" },
   { id: "slate", label: "Slate" },
-  { id: "dawn", label: "Dawn" },
+  { id: "dawn", label: "Mist" },
 ];
 
 const ThemeContext = createContext<ThemeCtx | null>(null);

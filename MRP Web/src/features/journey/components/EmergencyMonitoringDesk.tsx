@@ -112,7 +112,7 @@ export function EmergencyMonitoringDesk() {
   const [geoLoading, setGeoLoading] = useState(false);
   /** Raw GPS from Drive/vault — used for OSRM snap (never feed road output back). */
   const [sourceGps, setSourceGps] = useState<GpsPoint[]>([]);
-  const [pathMode, setPathMode] = useState<PathMode>("gps");
+  const [pathMode, setPathMode] = useState<PathMode>("roads");
   const [liveNow, setLiveNow] = useState(() => formatLiveClock());
 
   useEffect(() => {
@@ -532,8 +532,9 @@ export function EmergencyMonitoringDesk() {
             heatCells={heatCells}
             stops={heuristics.stops}
             showHeatmap={showHeatmap}
-            roadPath={trail?.path}
-            pathLegs={trail?.pathLegs}
+            roadPath={trail?.source === "osrm" ? trail.path : undefined}
+            pathLegs={trail?.source === "osrm" ? trail.pathLegs : undefined}
+            roadSource={trail?.source === "osrm" ? "osrm" : "raw"}
             routing={routingRoads}
             pathMode={pathMode}
             onPathModeChange={setPathMode}

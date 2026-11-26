@@ -58,6 +58,11 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
                 )
             )
             com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(reactContext)
+            // Full vault snapshot (not event-only flush) so PathSync Web gets all zones.
+            com.mrp.domain.usecase.DriveVaultSync.requestSyncAsync(
+                reactContext,
+                "zones_changed"
+            )
             promise.resolve(zoneId)
         } catch (e: Exception) {
             promise.reject("GEOFENCE_UPSERT", e.message, e)
@@ -69,6 +74,10 @@ class GeofenceModule(private val reactContext: ReactApplicationContext) :
         try {
             GeofenceStorage.remove(reactContext, id)
             com.mrp.domain.usecase.NativeGeofenceRegistrar.sync(reactContext)
+            com.mrp.domain.usecase.DriveVaultSync.requestSyncAsync(
+                reactContext,
+                "zones_changed"
+            )
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("GEOFENCE_REMOVE", e.message, e)

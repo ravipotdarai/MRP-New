@@ -367,6 +367,11 @@ class MrpMonitorService : Service() {
                 Log.w(TAG, "DevicePresenceTracker start skipped", e)
             }
             try {
+                com.mrp.data.local.DeviceConfigRemoteSync.start(this@MrpMonitorService)
+            } catch (e: Exception) {
+                Log.w(TAG, "DeviceConfigRemoteSync start skipped", e)
+            }
+            try {
                 DevicePowerMode.start(this@MrpMonitorService)
             } catch (e: Exception) {
                 Log.w(TAG, "DevicePowerMode start skipped", e)
@@ -456,6 +461,10 @@ class MrpMonitorService : Service() {
         closeCamera()
         unregisterReceivers()
         stopBackgroundThread()
+        try {
+            com.mrp.data.local.DeviceConfigRemoteSync.stop()
+        } catch (_: Exception) {
+        }
         EmergencySyncCoordinator.statusLineUpdater = null
         emergencySyncStatusLine = null
 

@@ -104,6 +104,60 @@ export function isNoisePackage(packageName: string, appName?: string) {
   return false;
 }
 
+/**
+ * Normalize vault.appUsage into session rows — handles sessions[], daily buckets, or alt field names.
+ */
+export function extractAppUsageSessions(appUsage: unknown): AppUsageSession[] {
+  if (!appUsage || typeof appUsage !== "object") return [];
+  const root = appUsage as Record<string, unknown>;
+  const out: AppUsageSession[] = [];
+
+  const pushRow = (row: unknown) => {
+    if (!row || typeof row !== "object") return;
+    const o = row as Record<string, unknown>;
+    const packageName = String(o.packageName || o.package || o.pkg || "").trim();
+    const appName = String(o.appName || o.name || o.label || "").trim() || undefined;
+    const startTime = Number(o.startTime ?? o.startMs ?? o.beginTime ?? o.start ?? 0) || 0;
+    const endTime = Number(o.endTime ?? o.endMs ?? o.end ?? startTime) || startTime;
+    let durationSeconds = Number(o.durationSeconds ?? o.durationSec ?? o.duration ?? 0) || 0;
+    if (!durationSeconds && endTime > startTime) {
+      durationSeconds = Math.round((endTime - startTime) / 1000);
+    }
+    if (!packageName && !appName) return;
+    out.push({
+      packageName: packageName || undefined,
+      appName,
+      category: typeof o.category === "string" ? o.category : undefined,
+      startTime: startTime || undefined,
+      endTime: endTime || undefined,
+      durationSeconds: durationSeconds || undefined,
+    });
+  };
+
+  const sessions = root.sessions;
+  if (Array.isArray(sessions)) {
+    for (const s of sessions) pushRow(s);
+  }
+
+  // Alternate: { days: [{ sessions: [...] }] } or { daily: { "2024-01-01": [...] } }
+  const days = root.days;
+  if (Array.isArray(days)) {
+    for (const d of days) {
+      if (!d || typeof d !== "object") continue;
+      const list = (d as Record<string, unknown>).sessions;
+      if (Array.isArray(list)) for (const s of list) pushRow(s);
+    }
+  }
+  const daily = root.daily;
+  if (daily && typeof daily === "object" && !Array.isArray(daily)) {
+    for (const v of Object.values(daily as Record<string, unknown>)) {
+      if (Array.isArray(v)) for (const s of v) pushRow(s);
+    }
+  }
+
+  return out;
+}
+
 export function dedupeSessions(sessions: AppUsageSession[]): AppUsageSession[] {
   const seen = new Set<string>();
   const unique: AppUsageSession[] = [];

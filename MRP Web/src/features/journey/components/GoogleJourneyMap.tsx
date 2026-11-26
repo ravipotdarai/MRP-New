@@ -62,6 +62,7 @@ type Props = {
   showHeatmap?: boolean;
   roadPath?: [number, number][];
   pathLegs?: [number, number][][];
+  roadSource?: "osrm" | "raw";
   routing?: boolean;
   pathMode?: PathMode;
   onPathModeChange?: (m: PathMode) => void;
@@ -92,6 +93,7 @@ export function GoogleJourneyMap({
   showHeatmap = false,
   roadPath,
   pathLegs,
+  roadSource = "raw",
   routing = false,
   pathMode: pathModeProp,
   onPathModeChange,
@@ -99,7 +101,7 @@ export function GoogleJourneyMap({
   showControls = true,
   onFatalError,
 }: Props) {
-  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("gps");
+  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("roads");
   const pathMode = pathModeProp ?? pathModeLocal;
   const setPathMode = onPathModeChange ?? setPathModeLocal;
   const [fitKey, setFitKey] = useState(0);
@@ -121,10 +123,11 @@ export function GoogleJourneyMap({
     [points],
   );
   const roadLegs = useMemo((): [number, number][][] => {
-    if (pathLegs?.length) return pathLegs;
+    if (roadSource !== "osrm") return [];
+    if (pathLegs?.length) return pathLegs.filter((l) => l.length >= 2);
     if (roadPath && roadPath.length >= 2) return [roadPath];
     return [];
-  }, [pathLegs, roadPath]);
+  }, [pathLegs, roadPath, roadSource]);
   const roadFlat = useMemo(() => flattenRoadLegs(roadLegs), [roadLegs]);
 
   const {
@@ -230,8 +233,24 @@ export function GoogleJourneyMap({
     } else if (showGps && pathMode === "gps" && pose) {
       addCasedPolylines(g, map, remainingLegs, TRAIL_STYLE.remaining, L.lines, 2);
       addCasedPolylines(g, map, completedLegs, TRAIL_STYLE.stroke, L.lines, 4);
-    } else if (showGps && pathMode === "roads" && !showRoads) {
-      addCasedPolylines(g, map, gpsLegs, TRAIL_STYLE.stroke, L.lines, 2);
+    } else if (pathMode === "roads" && !showRoads) {
+      // Dots only — never draw GPS air-lines as a fake road route.
+      points.forEach((p, i) => {
+        L.markers.push(
+          new g.maps.Marker({
+            position: { lat: p.lat, lng: p.lng },
+            map,
+            icon: {
+              path: g.maps.SymbolPath.CIRCLE,
+              scale: i === 0 || i === points.length - 1 ? 7 : 4,
+              fillColor: i === 0 ? "#16a34a" : i === points.length - 1 ? "#dc2626" : "#93c5fd",
+              fillOpacity: 1,
+              strokeColor: "#1d4ed8",
+              strokeWeight: 1,
+            },
+          }),
+        );
+      });
     }
 
     if (showRoads && !pose) {

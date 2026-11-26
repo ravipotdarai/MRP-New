@@ -308,8 +308,11 @@ export function computeSecurityScore(vault: VaultPayload | null): {
 
 export function selfieSrc(s: unknown): string | null {
   const o = s as Record<string, unknown>;
-  const b64 = o.base64 || o.data || o.dataBase64;
-  if (typeof b64 !== "string" || !b64) return null;
+  if (!o || typeof o !== "object") return null;
+  if (o.blobDeferred) return null;
+  const raw = o.dataBase64 || o.base64 || o.data;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const b64 = raw.replace(/\s+/g, "");
   const mime = String(o.mime || o.contentType || "image/jpeg");
   if (b64.startsWith("data:")) return b64;
   return `data:${mime};base64,${b64}`;

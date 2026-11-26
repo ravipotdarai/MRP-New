@@ -230,22 +230,22 @@ object DeviceTrackingPrefs {
         map: Map<String, Any?>
     ) {
         val e = p(context).edit()
-        (map["movementTracking"] as? Boolean)?.let { e.putBoolean(KEY_MOVEMENT, it) }
-        (map["backgroundTracking"] as? Boolean)?.let { e.putBoolean(KEY_BACKGROUND, it) }
-        (map["highAccuracy"] as? Boolean)?.let { e.putBoolean(KEY_HIGH_ACCURACY, it) }
-        (map["eventSyncEnabled"] as? Boolean)?.let { e.putBoolean(KEY_EVENT_SYNC, it) }
-        (map["syncOnWifi"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_WIFI, it) }
-        (map["syncOnMobileData"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_MOBILE, it) }
-        (map["syncLocation"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_LOCATION, it) }
-        (map["syncGeofenceChanges"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_GEOFENCE, it) }
-        (map["syncSelfiesPremium"] as? Boolean)?.let { e.putBoolean(KEY_SYNC_SELFIES, it) }
+        coerceBool(map["movementTracking"])?.let { e.putBoolean(KEY_MOVEMENT, it) }
+        coerceBool(map["backgroundTracking"])?.let { e.putBoolean(KEY_BACKGROUND, it) }
+        coerceBool(map["highAccuracy"])?.let { e.putBoolean(KEY_HIGH_ACCURACY, it) }
+        coerceBool(map["eventSyncEnabled"])?.let { e.putBoolean(KEY_EVENT_SYNC, it) }
+        coerceBool(map["syncOnWifi"])?.let { e.putBoolean(KEY_SYNC_WIFI, it) }
+        coerceBool(map["syncOnMobileData"])?.let { e.putBoolean(KEY_SYNC_MOBILE, it) }
+        coerceBool(map["syncLocation"])?.let { e.putBoolean(KEY_SYNC_LOCATION, it) }
+        coerceBool(map["syncGeofenceChanges"])?.let { e.putBoolean(KEY_SYNC_GEOFENCE, it) }
+        coerceBool(map["syncSelfiesPremium"])?.let { e.putBoolean(KEY_SYNC_SELFIES, it) }
         when (val v = map["syncFrequencyMinutes"]) {
             is Number -> e.putInt(KEY_SYNC_FREQ_MIN, v.toInt().coerceAtLeast(MIN_SYNC_FREQUENCY_MINUTES))
             is String -> v.toIntOrNull()?.let {
                 e.putInt(KEY_SYNC_FREQ_MIN, it.coerceAtLeast(MIN_SYNC_FREQUENCY_MINUTES))
             }
         }
-        (map["emergencyTracking"] as? Boolean)?.let { e.putBoolean(KEY_EMERGENCY, it) }
+        coerceBool(map["emergencyTracking"])?.let { e.putBoolean(KEY_EMERGENCY, it) }
         when (val v = map["emergencyIntervalMinutes"]) {
             is Number -> e.putInt(KEY_EMERGENCY_MIN, v.toInt().coerceAtLeast(1))
             is String -> v.toIntOrNull()?.let { e.putInt(KEY_EMERGENCY_MIN, it.coerceAtLeast(1)) }
@@ -277,4 +277,15 @@ object DeviceTrackingPrefs {
             "updatedAtMs" to System.currentTimeMillis(),
             "source" to "device"
         )
+
+    private fun coerceBool(v: Any?): Boolean? = when (v) {
+        is Boolean -> v
+        is Number -> v.toInt() != 0
+        is String -> when (v.trim().lowercase()) {
+            "true", "1", "yes", "on" -> true
+            "false", "0", "no", "off" -> false
+            else -> null
+        }
+        else -> null
+    }
 }

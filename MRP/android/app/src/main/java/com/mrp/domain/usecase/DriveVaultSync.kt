@@ -93,7 +93,7 @@ object DriveVaultSync {
         }
         val app = context.applicationContext
         when {
-            reason == "manual" -> executor.execute {
+            reason == "manual" || reason == "zones_changed" -> executor.execute {
                 try {
                     trySync(app, reason, panic = false)
                 } catch (t: Throwable) {
@@ -191,7 +191,7 @@ object DriveVaultSync {
             val token = obtainAccessToken(context, account) ?: return false
             val email = account.email ?: ""
             return when {
-                reason == "manual" ->
+                reason == "manual" || reason == "zones_changed" ->
                     performFullVaultBackup(context, pin, token, email, reason)
                 reason.startsWith("drive_heartbeat") ->
                     performLiveOnly(context, pin, token, reason)
@@ -429,6 +429,8 @@ object DriveVaultSync {
         } else {
             try {
                 payload.put("deviceHealth", VaultExtrasBuilder.buildDeviceHealth(context))
+                // Always pack zones so web Locate/Geofence stay in sync even on panic/critical uploads.
+                payload.put("geofences", VaultExtrasBuilder.buildGeofences(context))
             } catch (e: Exception) {
                 Log.w(TAG, "vault critical health failed", e)
             }
@@ -529,7 +531,7 @@ object DriveVaultSync {
             reason.startsWith("drive_heartbeat") -> DriveLocationHeartbeat.INTERVAL_MS
             reason.startsWith("emergency") || DeviceTrackingPrefs.isEmergencyTracking(context) ->
                 DeviceTrackingPrefs.emergencyIntervalMinutes(context) * 60_000L
-            reason == "manual" -> 0L
+            reason == "manual" || reason == "zones_changed" -> 0L
             else -> DeviceTrackingPrefs.syncFrequencyMinutes(context) * 60_000L
         }
         return elapsed >= needMs

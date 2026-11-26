@@ -3,15 +3,14 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <div className="hero-landing">
-      <div className="rise">
-        <p className="hero-kicker">PathSync · Mobile Resilience Platform</p>
-        <h1>Your device data stays yours.</h1>
+      <div>
+        <p className="hero-kicker">Mobile Resilience Platform</p>
+        <h1>PathSync</h1>
+        <p className="hero-tagline">Your device data stays yours.</p>
         <p className="page-lead" style={{ marginBottom: 0 }}>
-          PathSync keeps security data on <strong>your device</strong>. With backup on, an encrypted
-          copy lives only in <strong>your private Google Drive app folder</strong>, unlocked with
-          your PIN. Open this console at{" "}
-          <strong>mobileresilienceplatform.web.app</strong>. We do not sell your data and do not keep
-          a readable copy on MRP servers.
+          Security data stays on <strong>your device</strong>. Encrypted backup lives only in{" "}
+          <strong>your private Google Drive app folder</strong>, unlocked with your PIN. Console:{" "}
+          <strong>mobileresilienceplatform.web.app</strong>.
         </p>
         <div className="hero-actions">
           <Link href="/login" className="btn btn-primary">
@@ -22,24 +21,23 @@ export default function HomePage() {
           </Link>
         </div>
       </div>
-      <div className="hero-card rise rise-delay-2">
-        <span className="badge badge-safe">Drive-only locate</span>
+      <div className="hero-card">
+        <span className="badge badge-safe">Drive-only</span>
         <h2 style={{ fontFamily: "var(--font-display)", marginTop: "1rem", fontSize: "1.35rem" }}>
-          Two apps, one project
+          Phone + web, one vault
         </h2>
         <ul>
           <li>
-            <strong style={{ color: "var(--text)" }}>PathSync</strong> — Android monitoring &amp;
+            <strong style={{ color: "var(--text)" }}>PathSync</strong> — Android monitoring and
             Drive backup
           </li>
           <li>
-            <strong style={{ color: "var(--text)" }}>PathSync Web</strong> — decrypt session, map,
-            find device, sync policy
+            <strong style={{ color: "var(--text)" }}>PathSync Web</strong> — decrypt, map, locate,
+            sync policy
           </li>
           <li>
-            Drive scope: <code className="mono">drive.appdata</code> only
+            Scope: <code className="mono">drive.appdata</code> only
           </li>
-          <li>Admin tools never return backup binaries</li>
         </ul>
       </div>
     </div>

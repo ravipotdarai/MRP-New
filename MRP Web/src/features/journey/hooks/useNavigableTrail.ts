@@ -58,11 +58,11 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
     setRouting(true);
     setError(null);
 
-    const seedPath = rawPoints.map((p) => [p.lat, p.lng] as [number, number]);
+    // Never seed pathLegs with raw GPS — that made "Road route" draw air lines.
     setTrail({
       points: rawPoints,
-      path: seedPath,
-      pathLegs: seedPath.length >= 2 ? [seedPath] : [],
+      path: [],
+      pathLegs: [],
       source: "raw",
       routedSegments: 0,
       failedSegments: 0,
@@ -77,7 +77,7 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
             points: p.points,
             path: p.path,
             pathLegs: p.pathLegs ?? [],
-            source: p.source,
+            source: "osrm",
             routedSegments: p.routedSegments,
             failedSegments: p.failedSegments,
           });
@@ -86,7 +86,20 @@ export function useNavigableTrail(sourceGps: GpsPoint[]): {
     })
       .then((result) => {
         if (id !== gen.current) return;
-        setTrail(result);
+        // Only expose road geometry when OSRM actually snapped.
+        if (result.source === "osrm" && result.pathLegs.some((l) => l.length >= 2)) {
+          setTrail(result);
+        } else {
+          setTrail({
+            points: rawPoints,
+            path: [],
+            pathLegs: [],
+            source: "raw",
+            routedSegments: result.routedSegments,
+            failedSegments: result.failedSegments,
+          });
+          setError("Road snap unavailable — showing GPS points only");
+        }
         setRouting(false);
       })
       .catch((e) => {

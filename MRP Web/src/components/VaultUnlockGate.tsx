@@ -3,33 +3,48 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useVaultSession } from "@/lib/vault-session";
 import { SessionInlineControls } from "@/components/SessionInlineControls";
+import { LoadingProgress } from "@/components/LoadingProgress";
 
 export function VaultUnlockGate({
   children,
   title = "Unlock device data",
   showSessionControls = true,
+  /** Hide page body while history/selfie packs are still loading (e.g. Media). */
+  hideChildrenWhileHydrating = false,
 }: {
   children: ReactNode;
   title?: string;
   showSessionControls?: boolean;
+  hideChildrenWhileHydrating?: boolean;
 }) {
   const { unlocked, busy, hydrating, unlockStage, error, info, unlock, clearError } =
     useVaultSession();
   const [pin, setPin] = useState("");
 
   if (unlocked) {
+    const loading = hydrating || busy;
     return (
       <div>
-        <div className="unlock-status-row">
-          {info ? <p className="badge badge-safe mb-md">{info}</p> : null}
-          {hydrating ? (
-            <p className="muted unlock-stage mb-md" aria-live="polite">
-              {unlockStage || "Loading full history in the background…"}
-            </p>
-          ) : null}
-          {showSessionControls ? <SessionInlineControls className="unlock-status-controls" /> : null}
-        </div>
-        {children}
+        {loading ? (
+          <LoadingProgress
+            title={busy ? "Working…" : "Loading full history"}
+            detail={unlockStage || "Decrypting Drive packs…"}
+          />
+        ) : info ? (
+          <p className="badge badge-safe mb-md unlock-info-badge">{info}</p>
+        ) : null}
+        {showSessionControls && !loading ? (
+          <div className="unlock-status-row">
+            <SessionInlineControls className="unlock-status-controls" />
+          </div>
+        ) : null}
+        {hideChildrenWhileHydrating && loading ? (
+          <p className="muted" style={{ marginTop: "0.5rem" }}>
+            Photos and heavy media stay hidden until this finishes.
+          </p>
+        ) : (
+          children
+        )}
       </div>
     );
   }
@@ -66,18 +81,19 @@ export function VaultUnlockGate({
           />
         </div>
         {error ? <p className="badge badge-alert">{error}</p> : null}
-        {busy && unlockStage ? (
-          <p className="muted unlock-stage" aria-live="polite">
-            {unlockStage}
-          </p>
+        {busy ? (
+          <LoadingProgress
+            compact
+            title="Opening device data"
+            detail={unlockStage || "Connecting…"}
+          />
         ) : null}
         <button type="submit" className="btn btn-primary unlock-submit" disabled={busy}>
           {busy ? "Opening…" : "Unlock"}
         </button>
       </form>
       <p className="muted unlock-hint">
-        Unlock shows the last hour on the map first, then loads the rest of your history in the
-        background. Decryption stays in this browser.
+        Unlock once per browser tab. Recent data appears first; the rest loads in the background.
       </p>
     </div>
   );

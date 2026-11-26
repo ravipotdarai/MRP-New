@@ -41,15 +41,16 @@ function GeofencesBody() {
     () =>
       (vault?.geofences || [])
         .map((g, i) => {
-          const lat = num(g.latitude);
-          const lng = num(g.longitude);
+          const lat = num(g.latitude ?? g.lat);
+          const lng = num(g.longitude ?? g.lng);
           if (lat == null || lng == null) return null;
           return {
             id: String(g.id || `zone-${i}`),
             name: String(g.name || g.id || `Zone ${i + 1}`),
             lat,
             lng,
-            radiusMeters: num(g.radiusMeters) ?? 100,
+            radiusMeters: num(g.radiusMeters ?? g.radius) ?? 100,
+            enabled: g.enabled !== false,
           };
         })
         .filter(Boolean) as Array<{
@@ -58,6 +59,7 @@ function GeofencesBody() {
         lat: number;
         lng: number;
         radiusMeters: number;
+        enabled: boolean;
       }>,
     [vault?.geofences],
   );
@@ -146,7 +148,9 @@ function GeofencesBody() {
         <div className="panel">
           <h2>Zones ({mapFences.length})</h2>
           {mapFences.length === 0 ? (
-            <p className="muted">No geofences in this backup.</p>
+            <p className="muted">
+              No geofences in this backup — create zones on the phone, sync Drive, then Refresh.
+            </p>
           ) : (
             <ul className="zone-list">
               {mapFences.map((z) => {
@@ -160,7 +164,14 @@ function GeofencesBody() {
                     >
                       <div className="zone-card-head">
                         <strong>{z.name}</strong>
-                        {active ? <span className="badge badge-safe">On map</span> : null}
+                        <span className="zone-card-badges">
+                          {z.enabled ? (
+                            <span className="badge badge-safe">On</span>
+                          ) : (
+                            <span className="badge">Off</span>
+                          )}
+                          {active ? <span className="badge badge-safe">On map</span> : null}
+                        </span>
                       </div>
                       <dl className="zone-detail-grid">
                         <dt>ID</dt>
@@ -172,7 +183,7 @@ function GeofencesBody() {
                         <dt>Radius</dt>
                         <dd>{z.radiusMeters} m coverage</dd>
                         <dt>Status</dt>
-                        <dd>Synced from phone</dd>
+                        <dd>{z.enabled ? "Enabled · Drive sync" : "Disabled on phone · still listed"}</dd>
                       </dl>
                     </button>
                   </li>

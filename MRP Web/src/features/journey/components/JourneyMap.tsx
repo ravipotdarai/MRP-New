@@ -24,6 +24,7 @@ import {
 import type { FenceCircle, PathMode } from "./journey-map-types";
 import { MapToolbar } from "./MapToolbar";
 import { GoogleJourneyMap } from "./GoogleJourneyMap";
+import { googleMapsOpenUrl } from "@/lib/google-maps-url";
 import "leaflet/dist/leaflet.css";
 
 function endPointIcon(kind: "start" | "end") {
@@ -57,6 +58,8 @@ type Props = {
   showHeatmap?: boolean;
   roadPath?: [number, number][];
   pathLegs?: [number, number][][];
+  /** Only "osrm" pathLegs count as a road route (not raw GPS). */
+  roadSource?: "osrm" | "raw";
   routing?: boolean;
   /** Default roads — snapped travelled route when OSRM succeeds. */
   pathMode?: PathMode;
@@ -150,9 +153,6 @@ function TrailPolylines({
   );
 }
 
-function mapsUrl(lat: number, lng: number) {
-  return `https://www.google.com/maps/@?api=1&map_action=map&center=${lat},${lng}&zoom=17`;
-}
 
 function OsmJourneyMap({
   points,
@@ -167,13 +167,14 @@ function OsmJourneyMap({
   showHeatmap = false,
   roadPath,
   pathLegs,
+  roadSource = "raw",
   routing = false,
   pathMode: pathModeProp,
   onPathModeChange,
   eventMarkers = [],
   showControls = true,
 }: Props) {
-  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("gps");
+  const [pathModeLocal, setPathModeLocal] = useState<PathMode>("roads");
   const pathMode = pathModeProp ?? pathModeLocal;
   const setPathMode = onPathModeChange ?? setPathModeLocal;
   const [fitKey, setFitKey] = useState(0);
@@ -183,10 +184,12 @@ function OsmJourneyMap({
     [points],
   );
   const roadLegsResolved = useMemo((): [number, number][][] => {
-    if (pathLegs?.length) return pathLegs;
+    // Ignore raw GPS masquerading as road geometry.
+    if (roadSource !== "osrm") return [];
+    if (pathLegs?.length) return pathLegs.filter((l) => l.length >= 2);
     if (roadPath && roadPath.length >= 2) return [roadPath];
     return [];
-  }, [pathLegs, roadPath]);
+  }, [pathLegs, roadPath, roadSource]);
   const roadFlat = useMemo(() => flattenRoadLegs(roadLegsResolved), [roadLegsResolved]);
 
   const {
@@ -214,7 +217,24 @@ function OsmJourneyMap({
   }, [pose, fullPath, points]);
 
   const zoom = fullPath.length || points.length ? 14 : 2;
-  const mapsTarget = pose || (points[0] ? { lat: points[0].lat, lng: points[0].lng } : null);
+  const mapsTarget = useMemo(() => {
+    if (pose) return { lat: pose.lat, lng: pose.lng };
+    if (points.length) {
+      const last = points[points.length - 1]!;
+      return { lat: last.lat, lng: last.lng };
+    }
+    return null;
+  }, [pose, points]);
+  const mapsPath = useMemo(() => {
+    if (showRoads && roadFlat.length >= 2) {
+      return roadFlat.map(([lat, lng]) => ({ lat, lng }));
+    }
+    return points.map((p) => ({ lat: p.lat, lng: p.lng }));
+  }, [showRoads, roadFlat, points]);
+  const mapsHref = useMemo(
+    () => googleMapsOpenUrl({ point: mapsTarget, path: mapsPath }),
+    [mapsTarget, mapsPath],
+  );
 
   return (
     <div
@@ -260,9 +280,21 @@ function OsmJourneyMap({
             <TrailPolylines legs={completedLegs} style={TRAIL_STYLE.stroke} />
           </>
         )}
-        {showGps && pathMode === "roads" && !showRoads && (
-          <TrailPolylines legs={gpsLegs} style={TRAIL_STYLE.stroke} />
-        )}
+        {/* Roads mode: never draw GPS air-lines as a fake route. Dots only until OSRM returns. */}
+        {pathMode === "roads" && !showRoads &&
+          points.map((p, i) => (
+            <CircleMarker
+              key={`gps-dot-${i}`}
+              center={[p.lat, p.lng]}
+              radius={i === 0 || i === points.length - 1 ? 6 : 4}
+              pathOptions={{
+                color: "#1d4ed8",
+                fillColor: i === 0 ? "#16a34a" : i === points.length - 1 ? "#dc2626" : "#93c5fd",
+                fillOpacity: 1,
+                weight: 1,
+              }}
+            />
+          ))}
 
         {showRoads && !pose && (
           <TrailPolylines
@@ -356,7 +388,7 @@ function OsmJourneyMap({
       {mapsTarget ? (
         <a
           className="btn btn-sm map-gmaps-btn"
-          href={mapsUrl(mapsTarget.lat, mapsTarget.lng)}
+          href={mapsHref}
           target="_blank"
           rel="noopener noreferrer"
         >

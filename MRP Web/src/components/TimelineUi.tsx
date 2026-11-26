@@ -26,12 +26,14 @@ export function EventDetailDrawer({
   onClose,
   onPrev,
   onNext,
+  hideMap = false,
 }: {
   row: TimelineRow | null;
   vault?: VaultPayload | null;
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  hideMap?: boolean;
 }) {
   useEffect(() => {
     if (!row) return;
@@ -63,7 +65,6 @@ export function EventDetailDrawer({
 
   const meta = (row.metadata || {}) as Record<string, unknown>;
   const battery = row.battery ?? meta.battery ?? meta.batteryPct;
-  const network = row.network ?? meta.network;
   const accuracy =
     row.accuracy ?? meta.accuracy ?? (row.location as Record<string, unknown> | undefined)?.accuracy;
 
@@ -112,7 +113,9 @@ export function EventDetailDrawer({
 
         {selfieUrl ? (
           <div className="drawer-selfie-wrap">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={selfieUrl} alt="Event selfie" className="drawer-selfie" />
+            <p className="muted drawer-selfie-caption">Surveillance selfie</p>
           </div>
         ) : selfieDeferred ? (
           <p className="muted drawer-selfie-empty-msg">Selfie still loading from backup…</p>
@@ -135,12 +138,6 @@ export function EventDetailDrawer({
               <dd>{String(battery)}</dd>
             </>
           ) : null}
-          {network != null && String(network) !== "" ? (
-            <>
-              <dt>Network</dt>
-              <dd>{String(network)}</dd>
-            </>
-          ) : null}
           {accuracy != null && String(accuracy) !== "" ? (
             <>
               <dt>Accuracy</dt>
@@ -148,7 +145,7 @@ export function EventDetailDrawer({
             </>
           ) : null}
         </dl>
-        {ll ? (
+        {!hideMap && ll ? (
           <div className="drawer-map-wrap">
             <InteractiveMap center={ll} markers={[{ ...ll, id: "ev" }]} height={200} />
           </div>

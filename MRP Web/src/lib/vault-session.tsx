@@ -7,7 +7,6 @@
 
 import {
   createContext,
-  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -21,7 +20,6 @@ import { fetchAndMergeVaultPayload } from "@/lib/vault-chunks";
 import {
   clearVaultKeyCache,
   decryptVaultUtf8,
-  vaultWithoutSelfieBlobs,
   type VaultPayload,
 } from "@/lib/vault-crypto";
 
@@ -52,6 +50,8 @@ type VaultSessionValue = {
 const VaultSessionContext = createContext<VaultSessionValue | null>(null);
 
 const IDLE_MS = 30 * 60 * 1000;
+/** Safety: never leave "loading full history" stuck forever. */
+const HYDRATE_MAX_MS = 4 * 60 * 1000;
 
 function formatMb(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "";
@@ -75,17 +75,41 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<string | null>(null);
   const pinRef = useRef<string | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hydrateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydrateCapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAbort = useRef<AbortController | null>(null);
+  const loadGen = useRef(0);
+
+  const clearHydrateCap = useCallback(() => {
+    if (hydrateCapTimer.current) {
+      clearTimeout(hydrateCapTimer.current);
+      hydrateCapTimer.current = null;
+    }
+  }, []);
+
+  const finishHydrating = useCallback(
+    (stageClear = true) => {
+      clearHydrateCap();
+      setHydrating(false);
+      if (stageClear) setUnlockStage(null);
+    },
+    [clearHydrateCap],
+  );
+
+  const armHydrateCap = useCallback(() => {
+    clearHydrateCap();
+    hydrateCapTimer.current = setTimeout(() => {
+      setHydrating(false);
+      setUnlockStage(null);
+      setInfo((prev) => prev || "Showing available data — background load timed out.");
+    }, HYDRATE_MAX_MS);
+  }, [clearHydrateCap]);
 
   const lock = useCallback(() => {
+    loadGen.current += 1;
     loadAbort.current?.abort();
     loadAbort.current = null;
     pinRef.current = null;
-    if (hydrateTimer.current) {
-      clearTimeout(hydrateTimer.current);
-      hydrateTimer.current = null;
-    }
+    clearHydrateCap();
     clearVaultKeyCache();
     setVault(null);
     setMeta(null);
@@ -93,7 +117,8 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
     setError(null);
     setUnlockStage(null);
     setHydrating(false);
-  }, []);
+    setBusy(false);
+  }, [clearHydrateCap]);
 
   const bumpIdle = useCallback(() => {
     if (idleTimer.current) clearTimeout(idleTimer.current);
@@ -120,31 +145,22 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       });
 
       const selfieCount = parsed.selfies?.length ?? 0;
-      const hasHeavySelfies = (parsed.selfies || []).some((s) => {
-        const o = s as Record<string, unknown>;
-        const b = o.dataBase64 || o.base64 || o.data;
-        return typeof b === "string" && b.length > 8_000;
-      });
 
-      if (hasHeavySelfies) {
-        setVault(vaultWithoutSelfieBlobs(parsed));
-        if (hydrateTimer.current) clearTimeout(hydrateTimer.current);
-        hydrateTimer.current = setTimeout(() => {
-          startTransition(() => {
-            setVault(parsed);
-          });
-          hydrateTimer.current = null;
-        }, 50);
+      // Partial paint: never surface selfies (Media stays empty until hydrate finishes).
+      if (opts?.partial) {
+        setVault({
+          ...parsed,
+          selfies: [],
+          selfiesOmitted: true,
+        });
       } else {
         setVault(parsed);
       }
 
       const sizeLabel = sizeBytes && sizeBytes > 0 ? ` · ${formatMb(sizeBytes)}` : "";
-      const selfieLabel = selfieCount ? ` · ${selfieCount} selfie(s)` : "";
+      const selfieLabel = !opts?.partial && selfieCount ? ` · ${selfieCount} selfie(s)` : "";
       if (opts?.partial) {
-        setInfo(
-          `Last hour ready — loading full history…${file.modifiedTime ? ` · synced ${new Date(file.modifiedTime).toLocaleString()}` : ""}`,
-        );
+        setInfo(null);
       } else {
         setInfo(
           `Device data unlocked${file.modifiedTime ? ` · synced ${new Date(file.modifiedTime).toLocaleString()}` : ""}${sizeLabel}${selfieLabel}`,
@@ -160,9 +176,15 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
         setError("PIN must be at least 4 characters");
         return false;
       }
+      // Already unlocked with same session — avoid re-prompt / abort thrash
+      if (pinRef.current === pin && vault) {
+        return true;
+      }
+
       loadAbort.current?.abort();
       const ac = new AbortController();
       loadAbort.current = ac;
+      const gen = ++loadGen.current;
 
       setBusy(true);
       setHydrating(false);
@@ -173,30 +195,40 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
         setUnlockStage("Connecting to Drive…");
         await yieldToUi();
         const token = await requestDriveAppDataToken();
+        if (ac.signal.aborted || gen !== loadGen.current) return unlockedEarly;
 
         setUnlockStage("Loading last hour…");
         await yieldToUi();
         const merged = await fetchAndMergeVaultPayload(token, pin, {
           signal: ac.signal,
           onStage: (stage) => {
-            if (!ac.signal.aborted) setUnlockStage(stage);
+            if (!ac.signal.aborted && gen === loadGen.current) setUnlockStage(stage);
           },
           onPartial: (partial) => {
-            if (ac.signal.aborted) return;
+            if (ac.signal.aborted || gen !== loadGen.current) return;
             pinRef.current = pin;
-            applyParsed(partial.vault, {
-              name: partial.meta.name,
-              modifiedTime: partial.meta.modifiedTime,
-              sizeBytes: partial.meta.sizeBytes,
-            }, { partial: true });
+            applyParsed(
+              partial.vault,
+              {
+                name: partial.meta.name,
+                modifiedTime: partial.meta.modifiedTime,
+                sizeBytes: partial.meta.sizeBytes,
+              },
+              { partial: true },
+            );
             unlockedEarly = true;
             setBusy(false);
             setHydrating(true);
-            setUnlockStage("Loading full history…");
+            setUnlockStage(partial.sources.vault ? "Loading selfie packs & history…" : "Loading full history…");
+            armHydrateCap();
+            bumpIdle();
           },
         });
 
-        if (ac.signal.aborted) return unlockedEarly;
+        if (ac.signal.aborted || gen !== loadGen.current) {
+          if (unlockedEarly) finishHydrating();
+          return unlockedEarly;
+        }
 
         pinRef.current = pin;
         applyParsed(merged.vault, {
@@ -204,32 +236,38 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
           modifiedTime: merged.meta.modifiedTime,
           sizeBytes: merged.meta.sizeBytes,
         });
-        setHydrating(false);
+        finishHydrating();
+        bumpIdle();
         return true;
       } catch (e) {
         if (e instanceof DOMException && e.name === "AbortError") {
+          if (unlockedEarly) finishHydrating();
           return unlockedEarly;
         }
         if (unlockedEarly && pinRef.current) {
-          // Keep partial vault; surface background failure lightly
-          setHydrating(false);
-          setInfo("Showing recent data — full history failed to finish.");
+          finishHydrating();
+          setInfo("Showing available data — full history did not finish.");
           return true;
         }
         pinRef.current = null;
         setVault(null);
         setMeta(null);
-        setHydrating(false);
+        finishHydrating();
         const raw = e instanceof Error ? e.message : "Failed to open device data";
         setError(raw.replace(/mrp_vault_backup\.v1\.enc/gi, "backup").replace(/\bvault\b/gi, "backup"));
         return false;
       } finally {
         if (loadAbort.current === ac) loadAbort.current = null;
-        setBusy(false);
-        setUnlockStage(null);
+        if (gen === loadGen.current) {
+          setBusy(false);
+          // Keep unlockStage while background hydrate still running
+          if (!unlockedEarly || !pinRef.current) {
+            setUnlockStage(null);
+          }
+        }
       }
     },
-    [applyParsed],
+    [applyParsed, armHydrateCap, bumpIdle, finishHydrating, vault],
   );
 
   const refresh = useCallback(
@@ -239,55 +277,68 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       loadAbort.current?.abort();
       const ac = new AbortController();
       loadAbort.current = ac;
+      const gen = ++loadGen.current;
       if (!quiet) {
         setBusy(true);
         setError(null);
         setUnlockStage("Refreshing packs…");
       } else {
         setHydrating(true);
+        setUnlockStage("Refreshing…");
+        armHydrateCap();
       }
       try {
         const token = await requestDriveAppDataToken();
         const merged = await fetchAndMergeVaultPayload(token, pin, {
           signal: ac.signal,
           onStage: (stage) => {
-            if (!quiet && !ac.signal.aborted) setUnlockStage(stage);
+            if (!ac.signal.aborted && gen === loadGen.current) setUnlockStage(stage);
           },
           onPartial: quiet
             ? undefined
             : (partial) => {
-                if (ac.signal.aborted) return;
-                applyParsed(partial.vault, {
-                  name: partial.meta.name,
-                  modifiedTime: partial.meta.modifiedTime,
-                  sizeBytes: partial.meta.sizeBytes,
-                }, { partial: true });
+                if (ac.signal.aborted || gen !== loadGen.current) return;
+                applyParsed(
+                  partial.vault,
+                  {
+                    name: partial.meta.name,
+                    modifiedTime: partial.meta.modifiedTime,
+                    sizeBytes: partial.meta.sizeBytes,
+                  },
+                  { partial: true },
+                );
                 setBusy(false);
                 setHydrating(true);
+                armHydrateCap();
               },
         });
-        if (ac.signal.aborted) return;
+        if (ac.signal.aborted || gen !== loadGen.current) {
+          finishHydrating();
+          return;
+        }
         applyParsed(merged.vault, {
           name: merged.meta.name,
           modifiedTime: merged.meta.modifiedTime,
           sizeBytes: merged.meta.sizeBytes,
         });
         if (quiet) setInfo(`Data refreshed · ${new Date().toLocaleTimeString()}`);
+        finishHydrating();
+        bumpIdle();
       } catch (e) {
-        if (e instanceof DOMException && e.name === "AbortError") return;
+        if (e instanceof DOMException && e.name === "AbortError") {
+          finishHydrating();
+          return;
+        }
+        finishHydrating();
         if (!quiet) {
           setError(e instanceof Error ? e.message : "Refresh failed");
         }
       } finally {
         if (loadAbort.current === ac) loadAbort.current = null;
-        if (!quiet) {
-          setBusy(false);
-          setUnlockStage(null);
-        }
-        setHydrating(false);
+        if (gen === loadGen.current) setBusy(false);
       }
     },
-    [applyParsed],
+    [applyParsed, armHydrateCap, bumpIdle, finishHydrating],
   );
 
   useEffect(() => {
@@ -342,7 +393,20 @@ export function VaultSessionProvider({ children }: { children: ReactNode }) {
       getSessionPin,
       decryptWithSessionPin,
     }),
-    [vault, meta, busy, hydrating, unlockStage, error, info, unlock, refresh, lock, getSessionPin, decryptWithSessionPin],
+    [
+      vault,
+      meta,
+      busy,
+      hydrating,
+      unlockStage,
+      error,
+      info,
+      unlock,
+      refresh,
+      lock,
+      getSessionPin,
+      decryptWithSessionPin,
+    ],
   );
 
   return (

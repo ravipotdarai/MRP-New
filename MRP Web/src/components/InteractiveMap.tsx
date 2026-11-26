@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { GeoJSONSource, Map, Marker, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { googleMapsOpenUrl } from "@/lib/google-maps-url";
 
 export type MapPoint = { lat: number; lng: number; id?: string; color?: string };
 
@@ -349,13 +350,23 @@ export function InteractiveMap({
   const fallback =
     center || markers[0] || (polyline[0] ? { lat: polyline[0].lat, lng: polyline[0].lng } : null);
 
+  const gmapsHref = useMemo(
+    () =>
+      googleMapsOpenUrl({
+        point: fallback,
+        path: polyline.length >= 2 ? polyline : undefined,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lat/lng + path length
+    [fallback?.lat, fallback?.lng, polyline],
+  );
+
   return (
     <div className="interactive-map sensitive-surface">
       <div ref={containerRef} className="map-canvas" style={{ height }} />
       {fallback ? (
         <a
           className="btn btn-sm map-gmaps-btn"
-          href={`https://www.google.com/maps?q=${fallback.lat},${fallback.lng}`}
+          href={gmapsHref}
           target="_blank"
           rel="noopener noreferrer"
         >

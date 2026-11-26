@@ -89,7 +89,7 @@ export const TRAIL_STYLE = {
   casing: { color: "#0f172a", weight: 10, opacity: 0.55 },
   stroke: { color: "#2563eb", weight: 6, opacity: 0.95 },
   remaining: { color: "#64748b", weight: 5, opacity: 0.55, dashArray: "8 10" as const },
-  roads: { color: "#ea580c", weight: 5, opacity: 0.85 },
+  roads: { color: "#16a34a", weight: 6, opacity: 0.95 },
   gpsBoth: { color: "#2563eb", weight: 4, opacity: 0.7 },
 };
 

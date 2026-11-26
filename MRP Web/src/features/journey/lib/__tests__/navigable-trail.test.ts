@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isSparseTrail,
   shouldBridge,
+  shouldRoutePair,
   splitPathByTime,
   thinForRouting,
 } from "../routing/navigable-trail";
@@ -41,9 +42,16 @@ describe("navigable-trail helpers", () => {
     expect(isSparseTrail(pts)).toBe(true);
   });
 
-  it("does not bridge teleports", () => {
+  it("does not bridge teleports for dense match", () => {
     const a: GpsPoint = { t: 0, lat: 18.5, lng: 73.8 };
     const far: GpsPoint = { t: 5_000, lat: 19.5, lng: 74.8 };
     expect(shouldBridge(a, far)).toBe(false);
+  });
+
+  it("still routes sparse city-scale hops on roads", () => {
+    const a: GpsPoint = { t: 0, lat: 18.52, lng: 73.85 };
+    const b: GpsPoint = { t: 600_000, lat: 18.62, lng: 73.95 };
+    expect(shouldRoutePair(a, b)).toBe(true);
+    expect(shouldBridge(a, b)).toBe(false);
   });
 });

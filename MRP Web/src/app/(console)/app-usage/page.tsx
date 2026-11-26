@@ -14,15 +14,17 @@ import {
 import {
   consolidateSessionsByApp,
   dedupeSessions,
+  extractAppUsageSessions,
   formatAppLabel,
   formatDuration,
   formatPermissionList,
   mergeOverlappingSessions,
   rankScreenTimeShare,
-  type AppUsageSession,
 } from "@/lib/app-usage-utils";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 type Tab = "dashboard" | "timeline" | "reports" | "safety";
+type ReportFrame = "DAILY" | "WEEKLY" | "MONTHLY";
 
 function Widget({ title, value, subtitle }: { title: string; value: string; subtitle?: string }) {
   return (
@@ -49,20 +51,29 @@ function AppUsageBody() {
   };
 
   const [impactPeriod, setImpactPeriod] = useState<"TODAY" | "7D">("TODAY");
-  const [reportFrame, setReportFrame] = useState<"DAILY" | "WEEKLY" | "MONTHLY">("DAILY");
+  const [reportFrame, setReportFrame] = useState<ReportFrame>("DAILY");
 
   const rawSessions = useMemo(
-    () => (vault?.appUsage?.sessions || []) as AppUsageSession[],
-    [vault?.appUsage?.sessions],
+    () => extractAppUsageSessions(vault?.appUsage),
+    [vault?.appUsage],
   );
   const sessions = useMemo(() => dedupeSessions(rawSessions), [rawSessions]);
 
+  // Prefer vault sync day — browser "today" often filters out the phone's synced sessions.
   const todayStart = useMemo(() => {
+    const fromVault = Number(vault?.appUsage?.dayStartMs || 0);
+    if (fromVault > 0) return fromVault;
+    const starts = sessions.map((s) => s.startTime || 0).filter((t) => t > 0);
+    if (starts.length) {
+      const d = new Date(Math.min(...starts));
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    }
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d.getTime();
-  }, []);
-  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  }, [vault?.appUsage?.dayStartMs, sessions]);
+  const weekStart = todayStart - 6 * 24 * 60 * 60 * 1000;
 
   const { totalScreenTime, longestSession, appsUsedToday } = useMemo(() => {
     let totalScreenTime = 0;
@@ -71,12 +82,39 @@ function AppUsageBody() {
     for (const s of sessions) {
       const start = s.startTime || 0;
       const end = s.endTime || start;
-      if (end >= todayStart || start >= todayStart) {
-        const overlapStart = Math.max(start, todayStart);
-        if (end > overlapStart) totalScreenTime += (end - overlapStart) / 1000;
+      const dur =
+        (s.durationSeconds || 0) > 0
+          ? s.durationSeconds || 0
+          : end > start
+            ? (end - start) / 1000
+            : 0;
+      if (end >= todayStart || start >= todayStart || !start) {
+        if (start && end > todayStart) {
+          const overlapStart = Math.max(start, todayStart);
+          if (end > overlapStart) totalScreenTime += (end - overlapStart) / 1000;
+        } else if (!start && dur) {
+          totalScreenTime += dur;
+        }
       }
-      if ((s.durationSeconds || 0) > longestSession) longestSession = s.durationSeconds || 0;
-      if (start >= todayStart && s.packageName) todayPackages.add(s.packageName);
+      if (dur > longestSession) longestSession = dur;
+      if ((start >= todayStart || !start) && s.packageName) todayPackages.add(s.packageName);
+    }
+    // If timezone filtering wiped totals but we have sessions, show all synced sessions.
+    if (totalScreenTime <= 0 && sessions.length) {
+      totalScreenTime = sessions.reduce((n, s) => {
+        const start = s.startTime || 0;
+        const end = s.endTime || start;
+        const dur =
+          (s.durationSeconds || 0) > 0
+            ? s.durationSeconds || 0
+            : end > start
+              ? (end - start) / 1000
+              : 0;
+        return n + dur;
+      }, 0);
+      for (const s of sessions) {
+        if (s.packageName) todayPackages.add(s.packageName);
+      }
     }
     return { totalScreenTime, longestSession, appsUsedToday: todayPackages.size };
   }, [sessions, todayStart]);
@@ -128,13 +166,31 @@ function AppUsageBody() {
   );
 
   const reportSessions = useMemo(() => {
-    const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
     let cutoff = todayStart;
-    if (reportFrame === "WEEKLY") cutoff = now - 7 * day;
-    if (reportFrame === "MONTHLY") cutoff = now - 30 * day;
+    if (reportFrame === "WEEKLY") cutoff = todayStart - 6 * day;
+    if (reportFrame === "MONTHLY") cutoff = todayStart - 29 * day;
+    const ranged = sessions.filter((s) => {
+      const start = s.startTime || 0;
+      if (!start) return true;
+      return start >= cutoff;
+    });
+    // Vault usually holds one day — don't empty Weekly/Monthly when range misses.
+    const use = ranged.length ? ranged : sessions;
     return mergeOverlappingSessions(
-      dedupeSessions(sessions.filter((s) => (s.startTime || 0) >= cutoff && (s.durationSeconds || 0) > 0)),
+      dedupeSessions(
+        use.filter((s) => {
+          const start = s.startTime || 0;
+          const end = s.endTime || start;
+          const dur =
+            (s.durationSeconds || 0) > 0
+              ? s.durationSeconds || 0
+              : end > start
+                ? (end - start) / 1000
+                : 0;
+          return dur > 0 || !start;
+        }),
+      ),
     );
   }, [sessions, reportFrame, todayStart]);
 
@@ -165,31 +221,27 @@ function AppUsageBody() {
     <div>
       <h1 className="page-title rise">App Usage</h1>
       <p className="page-lead rise rise-delay-1">
-        Same layout as the phone App Usage screen — from your encrypted Drive backup (sessions for{" "}
-        {dayLabel}). Weekly/monthly reports only include what was synced.
+        Same layout as the phone — from your encrypted Drive backup (sessions for {dayLabel}).
+        Weekly/Monthly use whatever days were synced.
       </p>
+      {sessions.length === 0 ? (
+        <p className="badge" style={{ marginBottom: "1rem" }}>
+          No app sessions in this backup — grant Usage Access on the phone, then sync Drive, then Refresh
+          here.
+        </p>
+      ) : null}
 
-      <div className="tab-row rise rise-delay-1" role="tablist">
-        {(
-          [
-            ["dashboard", "Dashboard"],
-            ["timeline", "Timeline"],
-            ["reports", "Reports"],
-            ["safety", "Safety"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            className={`btn ${tab === id ? "btn-primary" : ""}`}
-            onClick={() => setTab(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        ariaLabel="App Usage sections"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "dashboard", label: "Dashboard" },
+          { id: "timeline", label: "Timeline" },
+          { id: "reports", label: "Reports" },
+          { id: "safety", label: "Safety" },
+        ]}
+      />
 
       {tab === "dashboard" ? (
         <>
@@ -223,18 +275,16 @@ function AppUsageBody() {
           <div className="panel rise rise-delay-3" style={{ marginBottom: "1rem" }}>
             <div className="usage-impact-head">
               <h2 style={{ margin: 0 }}>Screen-time share</h2>
-              <div className="tab-row" style={{ margin: 0 }}>
-                {(["TODAY", "7D"] as const).map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className={`btn btn-sm ${impactPeriod === p ? "btn-primary" : ""}`}
-                    onClick={() => setImpactPeriod(p)}
-                  >
-                    {p === "TODAY" ? "Today" : "7 days"}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                size="sm"
+                ariaLabel="Share period"
+                value={impactPeriod}
+                onChange={setImpactPeriod}
+                tabs={[
+                  { id: "TODAY", label: "Today" },
+                  { id: "7D", label: "7 days" },
+                ]}
+              />
             </div>
             <p className="muted" style={{ fontSize: "0.82rem", margin: "0.5rem 0 0.85rem" }}>
               Foreground share from UsageStats — not mAh or Android Battery %. Vault sync is usually
@@ -346,18 +396,17 @@ function AppUsageBody() {
       {tab === "reports" ? (
         <div className="panel rise rise-delay-2">
           <h2>Reports</h2>
-          <div className="tab-row">
-            {(["DAILY", "WEEKLY", "MONTHLY"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={`btn btn-sm ${reportFrame === f ? "btn-primary" : ""}`}
-                onClick={() => setReportFrame(f)}
-              >
-                {f === "DAILY" ? "Daily" : f === "WEEKLY" ? "Weekly" : "Monthly"}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs
+            size="sm"
+            ariaLabel="Report range"
+            value={reportFrame}
+            onChange={setReportFrame}
+            tabs={[
+              { id: "DAILY", label: "Daily" },
+              { id: "WEEKLY", label: "Weekly" },
+              { id: "MONTHLY", label: "Monthly" },
+            ]}
+          />
           <ul className="muted" style={{ listStyle: "none", lineHeight: 1.8, margin: "0.75rem 0" }}>
             <li>
               Total foreground: <strong className="mono">{formatDuration(reportTotal)}</strong>

@@ -162,8 +162,8 @@ object VaultExtrasBuilder {
 
     fun buildGeofences(context: Context): JSONArray {
         val arr = JSONArray()
+        // Include disabled zones too — PathSync Web lists all Hub zones from Drive.
         for (z in GeofenceStorage.list(context)) {
-            if (!z.enabled) continue
             arr.put(
                 JSONObject()
                     .put("id", z.id)
@@ -171,6 +171,7 @@ object VaultExtrasBuilder {
                     .put("latitude", z.latitude)
                     .put("longitude", z.longitude)
                     .put("radiusMeters", z.radiusMeters.toDouble())
+                    .put("enabled", z.enabled)
             )
         }
         return arr

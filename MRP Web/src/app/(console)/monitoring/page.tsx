@@ -6,18 +6,13 @@ import { useVaultSession } from "@/lib/vault-session";
 import { useAuth } from "@/lib/auth-context";
 import { readDeviceConfig, writeDeviceConfig } from "@/lib/device-config";
 import { allowAction, remainingCooldownMs } from "@/lib/rate-limit";
-import { InteractiveMap } from "@/components/InteractiveMap";
 import { EventDetailDrawer, TimelineList } from "@/components/TimelineUi";
 import { EventTypeChart } from "@/components/EventTypeChart";
 import { SessionInlineControls } from "@/components/SessionInlineControls";
 import {
   asRows,
   eventTimeMs,
-  liveLatLng,
   liveLocationDetails,
-  movementTrail,
-  num,
-  pathDistanceKm,
   type TimelineRow,
 } from "@/lib/vault-selectors";
 
@@ -40,8 +35,8 @@ function MonitoringBody() {
       setPolicyEmergency(Boolean(cfg?.emergencyTracking));
       setBgTracking(Boolean(cfg?.backgroundTracking));
       if (cfg?.emergencyTracking) setAutoRefresh(true);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read device policy");
     }
   }, [user?.uid]);
 
@@ -91,11 +86,16 @@ function MonitoringBody() {
       setBgTracking(true);
       setAutoRefresh(true);
       setInfo(
-        "Find my device ON — phone syncs GPS about every minute. Live map auto-refreshes every 60s. Stop when done.",
+        "Emergency ON — phone picks up within ~1 min when online. Drive sync refreshes live trail on Travel / Emergency Monitoring.",
       );
       window.setTimeout(() => void refresh(true), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not set find policy");
+      const msg = e instanceof Error ? e.message : "Could not set find policy";
+      setError(
+        /permission|PERMISSION_DENIED/i.test(msg)
+          ? "Firebase denied the write — sign in with the same Google account as the phone."
+          : msg,
+      );
     } finally {
       setFindBusy(false);
     }
@@ -103,8 +103,12 @@ function MonitoringBody() {
 
   const cancelFind = async () => {
     if (!user?.uid) return;
-    if (!allowAction("cancel-find", 5000)) return;
+    if (!allowAction("cancel-find", 5000)) {
+      setError(`Wait ${Math.ceil(remainingCooldownMs("cancel-find", 5000) / 1000)}s before retrying`);
+      return;
+    }
     setFindBusy(true);
+    setError(null);
     try {
       const existing = (await readDeviceConfig(user.uid)) || {};
       await writeDeviceConfig(
@@ -119,33 +123,21 @@ function MonitoringBody() {
       setPolicyEmergency(false);
       setAutoRefresh(false);
       setInfo("Emergency tracking off.");
+      await refreshPolicy();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not clear emergency");
+      const msg = e instanceof Error ? e.message : "Could not clear emergency";
+      setError(
+        /permission|PERMISSION_DENIED/i.test(msg)
+          ? "Firebase denied the write — sign in with the same Google account as the phone."
+          : msg,
+      );
     } finally {
       setFindBusy(false);
     }
   };
 
-  const live = liveLatLng(vault);
   const liveDetails = useMemo(() => liveLocationDetails(vault), [vault]);
-  const trackingActive = policyEmergency || autoRefresh;
-  const trail = useMemo(
-    () => movementTrail(vault, trackingActive ? 6 : 2),
-    [vault, trackingActive],
-  );
-  const trailKm = pathDistanceKm(trail);
-
-  const mapFences = useMemo(() => {
-    return (vault?.geofences || [])
-      .map((g, i) => {
-        const lat = num(g.latitude);
-        const lng = num(g.longitude);
-        const r = num(g.radiusMeters) ?? 100;
-        if (lat == null || lng == null) return null;
-        return { id: g.id || `gf-${i}`, lat, lng, radiusMeters: r, name: g.name };
-      })
-      .filter(Boolean) as Array<{ id: string; lat: number; lng: number; radiusMeters: number; name?: string }>;
-  }, [vault?.geofences]);
+  const trackingSnap = vault?.trackingConfigSnapshot || {};
 
   const rows = useMemo(() => {
     const all = asRows(vault);
@@ -155,26 +147,38 @@ function MonitoringBody() {
   }, [vault, filter]);
 
   const simRows = vault?.simHistory || [];
-  const trackingSnap = vault?.trackingConfigSnapshot || {};
 
   return (
     <div>
       <h1 className="page-title rise">Locate & Timeline</h1>
       <p className="page-lead rise rise-delay-1">
-        Live locate and security timeline from your synced device data — decrypt in this browser.
-        Panic SMS and SIM recovery stay on the phone.
+        Security timeline and Find-my-device policy. Open a row for selfie and event details.
       </p>
 
       <div className="panel rise rise-delay-1" style={{ marginBottom: "1rem" }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
-          <button type="button" className="btn btn-primary" disabled={findBusy || busy} onClick={() => void findMyDevice()}>
-            Find my device
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={findBusy || busy}
+            onClick={() => void findMyDevice()}
+          >
+            {findBusy ? "Starting…" : "Start emergency"}
           </button>
-          <button type="button" className="btn" disabled={findBusy} onClick={() => void cancelFind()}>
+          <button
+            type="button"
+            className="btn"
+            disabled={findBusy || !policyEmergency}
+            onClick={() => void cancelFind()}
+          >
             Stop emergency
           </button>
           <label className="muted" style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
             Auto-refresh (60s)
           </label>
           {policyEmergency ? <span className="badge badge-alert pulse-badge">Emergency ON</span> : null}
@@ -184,79 +188,78 @@ function MonitoringBody() {
           ) : null}
           <SessionInlineControls />
         </div>
-        {error ? <p className="badge badge-alert" style={{ marginTop: "0.75rem" }}>{error}</p> : null}
+        {error ? (
+          <p className="badge badge-alert" style={{ marginTop: "0.75rem" }}>
+            {error}
+          </p>
+        ) : null}
       </div>
 
-      <div className="locate-split rise rise-delay-2">
-        <div className="panel locate-live-panel">
-          <h2>Live location & movement</h2>
-          <ul className="muted" style={{ listStyle: "none", lineHeight: 1.7, marginBottom: "0.75rem" }}>
-            <li>Battery: {liveDetails.batteryPct != null ? `${liveDetails.batteryPct}%` : "—"}</li>
-            <li>Network: {liveDetails.network}</li>
-            <li>
-              Accuracy:{" "}
+      <div className="panel rise rise-delay-2" style={{ marginBottom: "1.25rem" }}>
+        <h2>Last known status</h2>
+        <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+          Snapshot from Drive backup — not a live map. Open Travel or Emergency Monitoring for path.
+        </p>
+        <ul className="list-plain overview-stats">
+          <li>
+            <span className="muted">Battery</span>
+            <strong>{liveDetails.batteryPct != null ? `${liveDetails.batteryPct}%` : "—"}</strong>
+          </li>
+          <li>
+            <span className="muted">Accuracy</span>
+            <strong>
               {liveDetails.accuracyM != null ? `±${Math.round(liveDetails.accuracyM)} m` : "—"}
-            </li>
-            <li>
-              Geofence:{" "}
+            </strong>
+          </li>
+          <li>
+            <span className="muted">Geofence</span>
+            <strong>
               {liveDetails.insideGeofence == null
                 ? liveDetails.geofenceName || "—"
                 : liveDetails.insideGeofence
                   ? `Inside${liveDetails.geofenceName ? ` · ${liveDetails.geofenceName}` : ""}`
                   : `Outside${liveDetails.geofenceName ? ` · ${liveDetails.geofenceName}` : ""}`}
-            </li>
-            {liveDetails.address ? <li>Address: {liveDetails.address}</li> : null}
+            </strong>
+          </li>
+          {liveDetails.address ? (
             <li>
-              Trail: {trail.length} points · {trailKm.toFixed(2)} km
-              {trackingActive ? " · updating while Find is active" : ""}
+              <span className="muted">Address</span>
+              <strong>{liveDetails.address}</strong>
             </li>
-            {liveDetails.atMs ? (
-              <li className="mono" style={{ fontSize: "0.8rem" }}>
-                Fix: {new Date(liveDetails.atMs).toLocaleString()}
+          ) : null}
+          {liveDetails.atMs ? (
+            <li>
+              <span className="muted">Fix</span>
+              <strong className="mono" style={{ fontSize: "0.85rem" }}>
+                {new Date(liveDetails.atMs).toLocaleString()}
                 {liveDetails.source ? ` · ${liveDetails.source}` : ""}
-              </li>
-            ) : null}
-          </ul>
-          {live || trail.length ? (
-            <InteractiveMap
-              center={live || (trail.length ? { lat: trail[trail.length - 1].lat, lng: trail[trail.length - 1].lng } : undefined)}
-              polyline={trail.length >= 2 ? trail : []}
-              markers={
-                live
-                  ? [{ ...live, id: "live", color: "#c45c3e" }]
-                  : trail.length
-                    ? [{ lat: trail[trail.length - 1].lat, lng: trail[trail.length - 1].lng, id: "last", color: "#c45c3e" }]
-                    : []
-              }
-              geofences={mapFences}
-              height={360}
-            />
-          ) : (
-            <p className="muted">No live location yet — enable Find my device and wait for the phone to sync.</p>
-          )}
-        </div>
-        <div className="panel locate-timeline-panel">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
-            <h2>Security timeline</h2>
-            <input
-              className="input"
-              placeholder="Filter events…"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              style={{ maxWidth: 220 }}
-            />
-          </div>
-          <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}>
-            Type, status, and time. Open a row for full details, map, and selfie when available.
-          </p>
-          <TimelineList
-            rows={rows}
-            onSelect={(row, index) => {
-              setSelected(row);
-              setSelectedIdx(index);
-            }}
+              </strong>
+            </li>
+          ) : null}
+        </ul>
+      </div>
+
+      <div className="panel rise rise-delay-2">
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+          <h2>Security timeline</h2>
+          <input
+            className="input"
+            placeholder="Filter events…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={{ maxWidth: 220 }}
           />
         </div>
+        <p className="muted" style={{ marginBottom: "0.5rem", fontSize: "0.85rem" }}>
+          Type, status, and time. Open a row for selfie and full details (same as the phone).
+        </p>
+        <TimelineList
+          rows={rows}
+          onSelect={(row, index) => {
+            setSelected(row);
+            setSelectedIdx(index);
+          }}
+        />
       </div>
 
       <div className="panel rise rise-delay-3" style={{ marginTop: "1.25rem" }}>

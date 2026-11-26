@@ -143,7 +143,11 @@ export type VaultPayload = {
     name?: string;
     latitude?: number;
     longitude?: number;
+    lat?: number;
+    lng?: number;
     radiusMeters?: number;
+    radius?: number;
+    enabled?: boolean;
   }>;
 };
 

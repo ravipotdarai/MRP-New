@@ -90,7 +90,17 @@ export async function writeDeviceConfig(
     updatedAtMs: Date.now(),
     source,
   };
-  await update(ref(getFirebaseDb(), `device_config/${uid}`), scrub(payload as Record<string, unknown>));
+  try {
+    await update(ref(getFirebaseDb(), `device_config/${uid}`), scrub(payload as Record<string, unknown>));
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/permission|PERMISSION_DENIED/i.test(msg)) {
+      throw new Error(
+        "Firebase denied device_config write — sign in with the same Google account as the phone.",
+      );
+    }
+    throw e instanceof Error ? e : new Error(msg);
+  }
 }
 
 export async function appendAdminAudit(entry: {

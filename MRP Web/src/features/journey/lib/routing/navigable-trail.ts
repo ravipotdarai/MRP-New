@@ -9,10 +9,16 @@ import type { LatLng, RouteResult, RoutingProvider } from "./types";
 
 const CHUNK = 80;
 const MIN_STEP_M = 18;
-const MAX_GAP_M = 800;
-/** Max implied speed between samples (~120 km/h). Faster = teleport / bad join. */
+/** Continuous match only — larger jumps break into pair-wise OSRM. */
+const MAX_MATCH_GAP_M = 2_500;
+/**
+ * Still ask OSRM for a road path between sparse day samples (often km apart).
+ * Above this = true teleport; do not draw an air line.
+ */
+const MAX_ROUTE_GAP_M = 80_000;
+/** Max implied speed for dense match stitching (~120 km/h). */
 const MAX_SPEED_MS = 33;
-/** Don't stitch segments after long idle with meaningful move. */
+/** Don't stitch dense match after long idle with meaningful move. */
 const MAX_IDLE_MS = 12 * 60_000;
 /** Sparse trails: skip match API (stitches junk + destroys times). */
 const SPARSE_COUNT = 40;
@@ -81,14 +87,22 @@ export function isSparseTrail(points: GpsPoint[]): boolean {
   return mid >= SPARSE_MEDIAN_GAP_MS;
 }
 
-/** True when two samples belong to the same continuous trip. */
+/** True when two samples belong to the same continuous dense trip (match API). */
 export function shouldBridge(a: GpsPoint, b: GpsPoint): boolean {
   const d = haversineM(a, b);
   const dtMs = Math.max(1, b.t - a.t);
   const speed = d / (dtMs / 1000);
-  if (d > MAX_GAP_M) return false;
+  if (d > MAX_MATCH_GAP_M) return false;
   if (speed > MAX_SPEED_MS) return false;
   if (dtMs > MAX_IDLE_MS && d > 120) return false;
+  return true;
+}
+
+/** True when we should request a road route (not a continent-scale teleport). */
+export function shouldRoutePair(a: GpsPoint, b: GpsPoint): boolean {
+  const d = haversineM(a, b);
+  if (d < 5) return true;
+  if (d > MAX_ROUTE_GAP_M) return false;
   return true;
 }
 
@@ -157,12 +171,16 @@ async function routePair(
   if (d < 8) {
     return { coords: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }], ok: true };
   }
-  if (!shouldBridge(a, b)) {
-    return { coords: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }], ok: false };
+  if (!shouldRoutePair(a, b)) {
+    return { coords: [], ok: false };
   }
   const routed = await provider.route(a, b, signal);
   if (routed?.coordinates?.length) {
     return { coords: routed.coordinates, ok: true };
+  }
+  // Prefer no geometry over a misleading air line when OSRM fails on a long hop.
+  if (d > MAX_MATCH_GAP_M) {
+    return { coords: [], ok: false };
   }
   return { coords: [{ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng }], ok: false };
 }
@@ -187,7 +205,7 @@ async function pairWiseChunk(
   for (let i = 0; i < chunk.length - 1; i++) {
     const a = chunk[i];
     const b = chunk[i + 1];
-    if (!shouldBridge(a, b)) {
+    if (!shouldRoutePair(a, b)) {
       failed++;
       if (!out.length) out.push(a);
       out.push(b);
@@ -196,6 +214,11 @@ async function pairWiseChunk(
     const { coords, ok } = await routePair(provider, a, b, signal);
     if (ok) routed++;
     else failed++;
+    if (coords.length < 2) {
+      if (!out.length) out.push(a);
+      out.push(b);
+      continue;
+    }
     const seg = stampRoadGeometry(coords, a.t, b.t, a);
     const legPath = coords.map((c) => [c.lat, c.lng] as [number, number]);
     if (legPath.length >= 2) legs.push(legPath);

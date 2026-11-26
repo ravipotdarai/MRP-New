@@ -76,7 +76,7 @@ function TravelBody() {
   const [playIdx, setPlayIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [follow, setFollow] = useState(true);
-  const [pathMode, setPathMode] = useState<PathMode>("gps");
+  const [pathMode, setPathMode] = useState<PathMode>("roads");
   const [speed, setSpeed] = useState<PlaybackSpeeds>(1);
   const [liveNow, setLiveNow] = useState(() => formatLiveClock());
 
@@ -228,8 +228,9 @@ function TravelBody() {
               fences={mapFences}
               follow={follow}
               onFollowChange={setFollow}
-              roadPath={trail?.path}
-              pathLegs={trail?.pathLegs}
+              roadPath={trail?.source === "osrm" ? trail.path : undefined}
+              pathLegs={trail?.source === "osrm" ? trail.pathLegs : undefined}
+              roadSource={trail?.source === "osrm" ? "osrm" : "raw"}
               routing={routing}
               pathMode={pathMode}
               onPathModeChange={setPathMode}

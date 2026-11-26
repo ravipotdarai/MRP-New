@@ -267,7 +267,8 @@ function assembleVault(opts: {
     version: opts.base.version ?? 3,
     timeline: outTimeline,
     selfies,
-    selfiesOmitted: selfies.length === 0,
+    // Keep base omitted flag when blobs are deferred / still loading
+    selfiesOmitted: selfies.length > 0 ? false : Boolean(opts.base.selfiesOmitted),
     liveLocation: liveLocation as VaultPayload["liveLocation"],
   };
 }
@@ -400,7 +401,83 @@ export async function fetchAndMergeVaultPayload(
     }
   }
 
-  // --- Phase 2: remaining event packs (parallel) ---
+  // --- Phase 2: vault snapshot early (appUsage / geofences / deviceHealth / selfies meta) ---
+  let merged: VaultPayload = emptyBase;
+  let hadVault = false;
+  let metaName = "Event packs";
+
+  if (latestVault) {
+    onStage?.(
+      partialFired ? "Loading device snapshot…" : "Decrypting vault snapshot…",
+    );
+    throwIfAborted(signal);
+    try {
+      const blob = await downloadDriveFile(accessToken, latestVault.id);
+      sizeBytes += blob.byteLength;
+      const plain = await decryptVaultUtf8(blob, pin);
+      await new Promise<void>((r) => setTimeout(r, 0));
+      throwIfAborted(signal);
+      merged = parseVaultJson(plain);
+      hadVault = true;
+      metaName = latestVault.name || BACKUP_FILE_NAME;
+      metaModified = latestVault.modifiedTime || metaModified;
+
+      // Keep vault selfie blobs when there are no separate packs — otherwise Media stays empty
+      // until a long history load finishes (or aborts). Only defer when packs will supply blobs.
+      const deferSelfieBlobs = selfiePacks.length > 0;
+      const paintSelfies = deferSelfieBlobs
+        ? (merged.selfies || []).map((s) => {
+            if (!s || typeof s !== "object") return s;
+            const o = { ...(s as Record<string, unknown>) };
+            if (
+              typeof o.dataBase64 === "string" ||
+              typeof o.base64 === "string" ||
+              typeof o.data === "string"
+            ) {
+              delete o.dataBase64;
+              delete o.base64;
+              delete o.data;
+              o.blobDeferred = true;
+            }
+            return o;
+          })
+        : merged.selfies || [];
+
+      if (onPartial) {
+        const partialVault = assembleVault({
+          base: { ...merged, selfies: paintSelfies, selfiesOmitted: false },
+          timelineExtra: [...timelineExtra],
+          selfieExtra: [],
+          liveFromPack,
+          filterRecentMs: partialFired ? undefined : RECENT_WINDOW_MS,
+          nowMs,
+        });
+        onPartial({
+          vault: partialVault,
+          meta: {
+            name: metaName,
+            modifiedTime: metaModified,
+            sizeBytes,
+          },
+          sources: {
+            vault: true,
+            evtPacks: sortedRecent.length,
+            selfies: paintSelfies.length,
+            live: Boolean(liveFromPack || partialVault.liveLocation),
+          },
+          partial: true,
+        });
+        partialFired = true;
+        await new Promise<void>((r) => setTimeout(r, 0));
+      }
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") throw e;
+      if (!timelineExtra.length && !liveFromPack) throw e;
+      /* keep chunk-only merge */
+    }
+  }
+
+  // --- Phase 3: remaining event packs ---
   if (sortedOlder.length) {
     onStage?.(partialFired ? "Loading full history…" : `Decrypting ${sortedOlder.length} event packs…`);
     throwIfAborted(signal);
@@ -413,7 +490,7 @@ export async function fetchAndMergeVaultPayload(
     }
   }
 
-  // --- Phase 3: selfie packs (parallel, after timeline so map isn't blocked) ---
+  // --- Phase 4: selfie packs ---
   const selfieExtra: unknown[] = [];
   if (selfiePacks.length) {
     onStage?.(`Loading ${selfiePacks.length} selfie pack(s)…`);
@@ -424,67 +501,6 @@ export async function fetchAndMergeVaultPayload(
       selfieExtra.push(r.row);
       sizeBytes += r.bytes;
       metaModified = r.modifiedTime || metaModified;
-    }
-  }
-
-  // --- Phase 4: legacy vault last (often multi-MB) ---
-  let merged: VaultPayload = emptyBase;
-  let hadVault = false;
-  let metaName = "Event packs";
-
-  if (latestVault) {
-    onStage?.(
-      partialFired ? "Merging legacy vault snapshot…" : "Decrypting vault snapshot…",
-    );
-    throwIfAborted(signal);
-    try {
-      const blob = await downloadDriveFile(accessToken, latestVault.id);
-      sizeBytes += blob.byteLength;
-      const plain = await decryptVaultUtf8(blob, pin);
-      // Yield so UI can paint before heavy JSON.parse on large snapshots
-      await new Promise<void>((r) => setTimeout(r, 0));
-      throwIfAborted(signal);
-      merged = parseVaultJson(plain);
-      hadVault = true;
-      metaName = latestVault.name || BACKUP_FILE_NAME;
-      metaModified = latestVault.modifiedTime || metaModified;
-
-      // Vault-only / no recent chunks: paint 1h slice before returning full merge
-      if (!partialFired && onPartial) {
-        const partialVault = assembleVault({
-          base: merged,
-          timelineExtra: [],
-          selfieExtra: [],
-          liveFromPack,
-          filterRecentMs: RECENT_WINDOW_MS,
-          nowMs,
-        });
-        onPartial({
-          vault: {
-            ...partialVault,
-            selfies: [],
-            selfiesOmitted: true,
-          },
-          meta: {
-            name: "Recent activity",
-            modifiedTime: metaModified,
-            sizeBytes,
-          },
-          sources: {
-            vault: true,
-            evtPacks: 0,
-            selfies: 0,
-            live: Boolean(liveFromPack || partialVault.liveLocation),
-          },
-          partial: true,
-        });
-        partialFired = true;
-        await new Promise<void>((r) => setTimeout(r, 0));
-      }
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "AbortError") throw e;
-      if (!timelineExtra.length && !liveFromPack) throw e;
-      /* keep chunk-only merge */
     }
   }
 

@@ -240,6 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           type="button"
           className="btn btn-sm shell-menu-btn"
           aria-label="Toggle navigation"
+          aria-expanded={navOpen}
           onClick={() => setNavOpen((v) => !v)}
         >
           Menu

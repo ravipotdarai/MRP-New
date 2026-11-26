@@ -31,8 +31,8 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="hero-landing" style={{ maxWidth: 960, margin: "0 auto" }} data-testid="auth-loading">
-        <div className="rise">
+      <div className="auth-stage" data-testid="auth-loading">
+        <div className="auth-card">
           <p className="muted">Checking session…</p>
         </div>
       </div>
@@ -40,16 +40,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="hero-landing" style={{ maxWidth: 960, margin: "0 auto" }} data-testid="login-page">
-      <div className="rise">
+    <div className="auth-stage" data-testid="login-page">
+      <div className="auth-card">
         <Link href="/" className="hero-kicker">
-          ← PathSync Web
+          PathSync Web
         </Link>
-        <h1 style={{ fontSize: "clamp(2rem, 4vw, 3rem)" }}>Sign in</h1>
+        <h1>Sign in</h1>
         <p className="page-lead">
-          <strong>Step 1 — Google:</strong> use the same account linked on your phone.{" "}
-          <strong>Step 2 — PathSync PIN:</strong> unlock your encrypted backup on the next screen
-          (decryption stays in this browser).
+          Use the same Google account as on your phone, then unlock with your PathSync PIN on
+          Overview. Decryption stays in this browser.
         </p>
 
         {!configured ? (
@@ -70,10 +69,6 @@ export default function LoginPage() {
             {error}
           </p>
         ) : null}
-        <p className="muted" style={{ marginTop: "1rem", fontSize: "0.9rem" }}>
-          Complete the Google account picker. After sign-in you should see the PathSync PIN unlock
-          panel on Overview.
-        </p>
       </div>
     </div>
   );

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { VaultUnlockGate } from "@/components/VaultUnlockGate";
 import { useVaultSession } from "@/lib/vault-session";
 import { InteractiveMap } from "@/components/InteractiveMap";
-import { SessionInlineControls } from "@/components/SessionInlineControls";
 import {
   eventIcon,
   findRowForSelfie,
@@ -38,6 +37,7 @@ function MediaBody() {
       .map((s, i) => {
         const o = s as Record<string, unknown>;
         const src = selfieSrc(s);
+        if (!src) return null;
         const type = String(o.eventType || o.event_type || o.event || "SELFIE");
         const at = num(o.atMs ?? o.timestamp ?? o.time) ?? 0;
         let lat = num(o.latitude ?? o.lat);
@@ -64,7 +64,19 @@ function MediaBody() {
           sev: severityOf(type),
         };
       })
-      .filter((x) => x.src);
+      .filter(Boolean) as Array<{
+      s: unknown;
+      i: number;
+      src: string;
+      label: string;
+      type: string;
+      at: number;
+      lat: number | null;
+      lng: number | null;
+      address: string;
+      fence: ReturnType<typeof rowGeofence> | null;
+      sev: ReturnType<typeof severityOf>;
+    }>;
   }, [vault]);
 
   const full = fullIdx != null ? items[fullIdx] : null;
@@ -82,23 +94,40 @@ function MediaBody() {
             . Unlock and Refresh after the phone finishes Drive sync to load new captures.
           </p>
         </div>
-        <SessionInlineControls />
       </div>
 
-      <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem", flexWrap: "wrap" }}>
-        <button type="button" className={`btn ${view === "grid" ? "btn-primary" : ""}`} onClick={() => setView("grid")}>
-          Grid
-        </button>
-        <button type="button" className={`btn ${view === "list" ? "btn-primary" : ""}`} onClick={() => setView("list")}>
-          List
-        </button>
-        <span className="muted mono" style={{ alignSelf: "center", fontSize: "0.85rem" }}>
+      <div className="media-toolbar">
+        <div className="seg-tabs seg-tabs-sm" role="tablist" aria-label="View">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "grid"}
+            className={`seg-tab ${view === "grid" ? "seg-tab-active" : ""}`}
+            onClick={() => setView("grid")}
+          >
+            Grid
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "list"}
+            className={`seg-tab ${view === "list" ? "seg-tab-active" : ""}`}
+            onClick={() => setView("list")}
+          >
+            List
+          </button>
+        </div>
+        <span className="muted mono media-count">
           {items.length} capture{items.length === 1 ? "" : "s"}
         </span>
       </div>
 
       {items.length === 0 ? (
-        <p className="muted">No selfies in this backup.</p>
+        <p className="muted">
+          {vault?.selfiesOmitted
+            ? "Selfies omitted by sync policy."
+            : "No selfies in this backup — enable Premium+ selfies on the phone, sync Drive, then Refresh."}
+        </p>
       ) : view === "grid" ? (
         <div className="selfie-grid sensitive-surface">
           {items.map((it, idx) => (
@@ -109,7 +138,7 @@ function MediaBody() {
               onClick={() => setFullIdx(idx)}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={it.src!} alt="" className="selfie-tile-img" loading="lazy" />
+              <img src={it.src} alt="" className="selfie-tile-img" loading="lazy" />
               <span className="selfie-tile-overlay">
                 <span className={`tl-icon tl-icon-${it.sev} selfie-tile-ico`} aria-hidden>
                   {eventIcon(it.type)}
@@ -135,7 +164,7 @@ function MediaBody() {
             <li key={it.i} className="timeline-item">
               <button type="button" className="timeline-row" onClick={() => setFullIdx(idx)}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={it.src!} alt="" className="selfie-thumb" style={{ width: 56, height: 56 }} />
+                <img src={it.src} alt="" className="selfie-thumb" style={{ width: 56, height: 56 }} />
                 <span className={`tl-icon tl-icon-${it.sev}`} aria-hidden>
                   {eventIcon(it.type)}
                 </span>
@@ -252,7 +281,10 @@ function MediaBody() {
 
 export default function MediaPage() {
   return (
-    <VaultUnlockGate title="Unlock device data for media">
+    <VaultUnlockGate
+      title="Unlock device data for media"
+      hideChildrenWhileHydrating
+    >
       <MediaBody />
     </VaultUnlockGate>
   );
