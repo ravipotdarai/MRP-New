@@ -79,5 +79,10 @@ yarn-error.log
 
 *.csv
 
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
 # Large installers / binaries (do not commit)
 *.exe

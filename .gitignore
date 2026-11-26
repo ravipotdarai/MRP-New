@@ -22,5 +22,20 @@ emergency15_batterystats.txt
 MRP Web/e2e-artifacts/
 MRP Web/scripts/
 
+# PathSync web — local agent skills / design-system scratch (not app source)
+MRP Web/.agents/
+MRP Web/design-system/
+MRP Web/skills-lock.json
+
+# Firebase Hosting local deploy cache
+MRP Web/.firebase/
+
+# Secrets / local env (never commit)
+MRP/.env
+MRP/.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
 # TypeScript incremental build info
 *.tsbuildinfo

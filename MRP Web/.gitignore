@@ -36,6 +36,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# local agent / skill tooling
+.agents/
+design-system/
+skills-lock.json
+
+# Firebase Hosting deploy cache
+.firebase/
+
 # vercel
 .vercel
 
